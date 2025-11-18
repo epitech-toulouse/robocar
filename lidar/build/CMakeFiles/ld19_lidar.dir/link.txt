@@ -1,0 +1,1 @@
+/bin/c++ CMakeFiles/ld19_lidar.dir/main.cpp.o -o ld19_lidar  /usr/lib64/libsfml-graphics.so.2.6.2 /usr/lib64/libsfml-window.so.2.6.2 /usr/lib64/libsfml-system.so.2.6.2
