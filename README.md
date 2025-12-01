@@ -42,8 +42,8 @@ make
 ### 3.`RobocarController`
 A dedicated Python module for manual teleoperation.
 
-*   **🕹️ Gamepad Support**: Designed for the **Logitech F710** controller.
-*   **🔌 Plug & Play**: Automatically detects the controller and maps inputs to steering and throttle commands.
-*   **🐍 Simple Interface**: Easy-to-understand Python script using `evdev`.
+*   **Gamepad Support**: Designed for the **Logitech F710** controller.
+*   **Plug & Play**: Automatically detects the controller and maps inputs to steering and throttle commands.
+*   **Simple Interface**: Easy-to-understand Python script using `evdev`.
 
 ---
