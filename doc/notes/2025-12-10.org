@@ -17,3 +17,10 @@ Follow this guide https://developer.nvidia.com/embedded/learn/get-started-jetson
 ** Flash carte SD
 https://developer.nvidia.com/jetson-nano-sd-card-image
 Flash avec n'importe quel truc (j'ai utilisé Fedora Media Writer vu que je suis sur fedo)
+** Installation
+Lancez la carte avec la carte SD, et branchez HDMI, clavier et souris.
+Essayez de donner l'accès internet à la voiture avec un partage de connexion externe.
+** Git
+- `ssh-keygen` -> `id_rsa`
+- Ensuite mettre la clef publique en accès lecture / écriture du github
+- Cloner le github en ssh
