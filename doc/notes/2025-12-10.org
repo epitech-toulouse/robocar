@@ -1,0 +1,19 @@
+
+* Robocar USB port status
+I'll denote ports with this pattern :
+- Face view of the ports:
+  - Top left : 1
+  - Top right : 2
+  - Bottom left : 3
+  - Bottom right : 4
+
+- Status with Network Interface :
+  1. KO
+  2. OK
+  3. KO
+  4. Unknown
+* Procédure installation voiture
+Follow this guide https://developer.nvidia.com/embedded/learn/get-started-jetson-nano-devkit#write
+** Flash carte SD
+https://developer.nvidia.com/jetson-nano-sd-card-image
+Flash avec n'importe quel truc (j'ai utilisé Fedora Media Writer vu que je suis sur fedo)
