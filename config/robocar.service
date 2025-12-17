@@ -1,0 +1,11 @@
+[Unit]
+Description=Robocar
+ 
+[Service]
+User=robocartls
+Type=simple
+
+ExecStart=/usr/bin/python3.6 /home/robocartls/robocar/follow-the-line/main2.py
+
+[Install]
+WantedBy=multi-user.target

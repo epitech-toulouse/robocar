@@ -1,0 +1,46 @@
+
+* Robocar USB port status
+I'll denote ports with this pattern :
+- Face view of the ports:
+  - Top left : 1
+  - Top right : 2
+  - Bottom left : 3
+  - Bottom right : 4
+
+- Status with Network Interface :
+  1. KO
+  2. OK
+  3. KO
+  4. Unknown
+* Procédure installation voiture
+Follow this guide https://developer.nvidia.com/embedded/learn/get-started-jetson-nano-devkit#write
+** Flash carte SD
+https://developer.nvidia.com/jetson-nano-sd-card-image
+Flash avec n'importe quel truc (j'ai utilisé Fedora Media Writer vu que je suis sur fedo)
+** Installation
+Lancez la carte avec la carte SD, et branchez HDMI, clavier et souris.
+Essayez de donner l'accès internet à la voiture avec un partage de connexion externe.
+** Git
+- ~ssh-keygen~ -> ~id_rsa~
+- Ensuite mettre la clef publique en accès lecture / écriture du github
+- Cloner le github en ssh
+** Apt update
+~sudo apt update~
+~sudo apt upgrade~
+** Installation linux wifi hotspot
+https://github.com/lakinduakash/linux-wifi-hotspot
+
+*** Dépendances
+~sudo apt install -y libgtk-3-dev build-essential gcc g++ pkg-config make hostapd libqrencode-dev libpng-dev~
+*** Clone & build
+# INSTALL EMACS
+~sudo apt install emacs~
+~cd /tmp~
+~git clone https://github.com/lakinduakash/linux-wifi-hotspot~
+~cd linux-wifi-hotspot~
+~emacs src/ui/ui.c~
+On line 134 and 713, add missing names !
+~make~
+~sudo make install~
+*** Config
+TODO
