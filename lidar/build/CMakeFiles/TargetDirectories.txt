@@ -1,3 +1,0 @@
-/home/robocartls/robocar/lidar/build/CMakeFiles/rebuild_cache.dir
-/home/robocartls/robocar/lidar/build/CMakeFiles/ld19_lidar.dir
-/home/robocartls/robocar/lidar/build/CMakeFiles/edit_cache.dir
