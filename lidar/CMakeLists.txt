@@ -4,18 +4,30 @@ project(LD19_SFML)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find SFML
-find_package(SFML 2.5 COMPONENTS graphics window system REQUIRED)
+# Use pkg-config to find SFML (required on Ubuntu 18.04 ARM)
+find_package(PkgConfig REQUIRED)
 
-# Add executable
-add_executable(ld19_lidar main.cpp)
+pkg_check_modules(SFML REQUIRED
+    sfml-graphics
+    sfml-window
+    sfml-system
+)
 
-# Link SFML libraries
-target_link_libraries(ld19_lidar sfml-graphics sfml-window sfml-system)
+add_executable(ld19_lidar
+    main.cpp
+)
 
-# Compiler flags
-target_compile_options(ld19_lidar PRIVATE -Wall -Wextra -O2)
+target_include_directories(ld19_lidar PRIVATE
+    ${SFML_INCLUDE_DIRS}
+)
 
-# For Fedora Silverblue: Enable access to /dev/ttyUSB0
-# Run with: sudo ./ld19_lidar
-# Or add user to dialout group: sudo usermod -aG dialout $USER
+target_link_libraries(ld19_lidar
+    ${SFML_LIBRARIES}
+)
+
+target_compile_options(ld19_lidar PRIVATE
+    -Wall
+    -Wextra
+    -O2
+)
+
