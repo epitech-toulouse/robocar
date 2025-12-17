@@ -174,97 +174,125 @@ void draw_grid(sf::RenderWindow& window) {
     window.draw(line2, 2, sf::Lines);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    // Parse command line arguments
+    bool use_gui = true;
+    for (int i = 1; i < argc; i++) {
+        if (std::strcmp(argv[i], "--nogui") == 0) {
+            use_gui = false;
+        } else if (std::strcmp(argv[i], "--gui") == 0) {
+            use_gui = true;
+        }
+    }
+
     // Initialize serial port
     SerialPort serial("/dev/ttyUSB0", 230400);
     LD19Parser parser;
     
-    // Create window
-    sf::RenderWindow window(sf::VideoMode(WINDOW_SIZE, WINDOW_SIZE), "LD19 LiDAR SFML");
-    window.setFramerateLimit(60);
-    
-    // Store points
-    std::deque<LidarPoint> scan_points;
-    const size_t MAX_POINTS = 2000;
-    
-    // Font for text (optional)
-    sf::Font font;
-    bool font_loaded = font.loadFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
-    
-    sf::Text text;
-    if (font_loaded) {
-        text.setFont(font);
-        text.setCharacterSize(16);
-        text.setFillColor(sf::Color::White);
-        text.setPosition(10, 10);
-    }
-    
     uint8_t read_buffer[1024];
-    int frame_count = 0;
-    
-    std::cout << "Starting LD19 LiDAR visualization..." << std::endl;
-    std::cout << "Close window to exit" << std::endl;
-    
-    while (window.isOpen()) {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed) {
-                window.close();
+
+    if (!use_gui) {
+        // No-GUI mode: Output raw data to stdout
+        while (true) {
+            int bytes_read = serial.read(read_buffer, sizeof(read_buffer));
+            if (bytes_read > 0) {
+                auto new_points = parser.process_data(read_buffer, bytes_read);
+                for (const auto& point : new_points) {
+                    std::cout << point.angle << "," 
+                              << point.distance << "," 
+                              << (int)point.intensity << std::endl;
+                }
             }
         }
+    } else {
+        // GUI mode: SFML visualization
         
-        // Read serial data
-        int bytes_read = serial.read(read_buffer, sizeof(read_buffer));
-        if (bytes_read > 0) {
-            auto new_points = parser.process_data(read_buffer, bytes_read);
-            
-            for (const auto& point : new_points) {
-                scan_points.push_back(point);
-                if (scan_points.size() > MAX_POINTS) {
-                    scan_points.pop_front();
+        // Create window
+        sf::RenderWindow window(sf::VideoMode(WINDOW_SIZE, WINDOW_SIZE), "LD19 LiDAR SFML");
+        window.setFramerateLimit(60);
+        
+        // Store points
+        std::deque<LidarPoint> scan_points;
+        const size_t MAX_POINTS = 2000;
+        
+        // Font for text (optional)
+        sf::Font font;
+        bool font_loaded = font.loadFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+        
+        sf::Text text;
+        if (font_loaded) {
+            text.setFont(font);
+            text.setCharacterSize(16);
+            text.setFillColor(sf::Color::White);
+            text.setPosition(10, 10);
+        }
+        
+        int frame_count = 0;
+        
+        std::cout << "Starting LD19 LiDAR visualization..." << std::endl;
+        std::cout << "Close window to exit" << std::endl;
+        
+        while (window.isOpen()) {
+            sf::Event event;
+            while (window.pollEvent(event)) {
+                if (event.type == sf::Event::Closed) {
+                    window.close();
                 }
             }
             
-            frame_count++;
-        }
-        
-        // Clear window
-        window.clear(sf::Color::Black);
-        
-        // Draw grid
-        draw_grid(window);
-        
-        // Draw LiDAR points
-        sf::VertexArray points(sf::Points);
-        for (const auto& point : scan_points) {
-            // Convert polar to cartesian
-            // Angle 0° = North (top), clockwise
-            float angle_rad = (90.0f - point.angle) * PI / 180.0f;
-            float x = CENTER_X + point.distance * SCALE * std::cos(angle_rad);
-            float y = CENTER_Y - point.distance * SCALE * std::sin(angle_rad);
+            // Read serial data
+            int bytes_read = serial.read(read_buffer, sizeof(read_buffer));
+            if (bytes_read > 0) {
+                auto new_points = parser.process_data(read_buffer, bytes_read);
+                
+                for (const auto& point : new_points) {
+                    scan_points.push_back(point);
+                    if (scan_points.size() > MAX_POINTS) {
+                        scan_points.pop_front();
+                    }
+                }
+                
+                frame_count++;
+            }
             
-            // Color based on intensity
-            uint8_t intensity = point.intensity;
-            sf::Color color(255, 255 - intensity, 0, 200);
+            // Clear window
+            window.clear(sf::Color::Black);
             
-            points.append(sf::Vertex(sf::Vector2f(x, y), color));
+            // Draw grid
+            draw_grid(window);
+            
+            // Draw LiDAR points
+            sf::VertexArray points(sf::Points);
+            for (const auto& point : scan_points) {
+                // Convert polar to cartesian
+                // Angle 0° = North (top), clockwise
+                float angle_rad = (90.0f - point.angle) * PI / 180.0f;
+                float x = CENTER_X + point.distance * SCALE * std::cos(angle_rad);
+                float y = CENTER_Y - point.distance * SCALE * std::sin(angle_rad);
+                
+                // Color based on intensity
+                uint8_t intensity = point.intensity;
+                sf::Color color(255, 255 - intensity, 0, 200);
+                
+                points.append(sf::Vertex(sf::Vector2f(x, y), color));
+            }
+            window.draw(points);
+            
+            // Draw center marker
+            sf::CircleShape center(3);
+            center.setPosition(CENTER_X - 3, CENTER_Y - 3);
+            center.setFillColor(sf::Color::Green);
+            window.draw(center);
+            
+            // Draw info text
+            if (font_loaded) {
+                text.setString("LD19 LiDAR\nPoints: " + std::to_string(scan_points.size()) + 
+                              "\nFrames: " + std::to_string(frame_count));
+                window.draw(text);
+            }
+            
+            window.display();
         }
-        window.draw(points);
-        
-        // Draw center marker
-        sf::CircleShape center(3);
-        center.setPosition(CENTER_X - 3, CENTER_Y - 3);
-        center.setFillColor(sf::Color::Green);
-        window.draw(center);
-        
-        // Draw info text
-        if (font_loaded) {
-            text.setString("LD19 LiDAR\nPoints: " + std::to_string(scan_points.size()) + 
-                          "\nFrames: " + std::to_string(frame_count));
-            window.draw(text);
-        }
-        
-        window.display();
     }
     
     std::cout << "Stopped" << std::endl;
