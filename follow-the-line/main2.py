@@ -5,8 +5,6 @@ import Jetson.GPIO as GPIO
 import time
 import argparse
 from enum import Enum
-from multiprocessing import Process, Value
-from ctypes import c_double
 import tensorflow as tf
 import numpy as np
 from PIL import Image
@@ -14,6 +12,7 @@ import subprocess
 import re
 import cv2
 import gc
+from src.motor.Motor import Motor
 
 runMode = None
 gamepad = None
@@ -77,22 +76,6 @@ class GameMode(Enum):
 serial_port = '/dev/ttyACM0'
 interval = 0.5
 
-# VESC process (runs independently)
-def manage_vesc(speed_obj, steering_obj):
-    with VESC(serial_port=serial_port) as motor:
-        speed = 0.0
-        while True:
-            if speed < speed_obj.value:
-                speed += 0.02
-                if speed > speed_obj.value:
-                    speed = speed_obj.value
-            elif speed > speed_obj.value:
-                speed -= 0.05
-                if speed < speed_obj.value:
-                    speed = speed_obj.value
-
-            motor.set_duty_cycle(speed)
-            motor.set_servo((steering_obj.value + 1) / 2)
             #print(f"[SPEED] {speed:.2f} [STEERING] {steering_obj.value:.2f}")
 
 # Image utilities
@@ -118,7 +101,7 @@ def save_mask_to_file(mask, path="predicted_mask.png"):
     img.close()  # Fix: Explicit cleanup
     return path
 
-def run_ia_loop(speed_obj, steer_obj):
+def run_ia_loop(motor):
     global runMode
     from camera_script import init_camera, get_image_array
     from raycasts_reader import raycast_image
@@ -158,8 +141,8 @@ def run_ia_loop(speed_obj, steer_obj):
         pred_speed = 0.25
         pred_steering = predictions[1][0][0]
 
-        speed_obj.value = pred_speed / 10
-        steer_obj.value = pred_steering
+        motor.set_speed_objective(pred_speed / 10)
+        motor.set_steering_objective(pred_steering)
 
         print(f"[IA] Predicted speed: {pred_speed:.2f}, steering: {pred_steering:.2f}")
 
@@ -259,14 +242,9 @@ if __name__ == "__main__":
         print("F710 controller not found.")
         exit(1)
 
-    # Shared values between processes
-    speed_objective = Value(c_double, 0.0)
-    steering_objective = Value(c_double, 0.0)
-
-    # Start VESC motor process unless in image-only mode
+    # Start VESC motor unless in image-only mode
     if args.mode != 'image':
-        p = Process(target=manage_vesc, args=(speed_objective, steering_objective))
-        p.start()
+        motor = Motor(serial_port)
 
     # Image-only mode: no motor, just masks
     runMode = gamemode
@@ -277,9 +255,8 @@ if __name__ == "__main__":
     running = True
     
     while running:
-        # IA driving mode
         if runMode == GameMode.IA:
-            run_ia_loop(speed_objective, steering_objective)
+            run_ia_loop(motor)
         # Manual controller mode
         elif runMode == GameMode.CONTROLLER:
             R2_value = 0.0
@@ -293,15 +270,20 @@ if __name__ == "__main__":
                     abs_event = evdev.categorize(event)
 
                     if event.code == 0:  # Left stick horizontal
-                        steering_objective.value = abs_event.event.value / 32767
+                        steering = abs_event.event.value / 32767
+                        motor.set_steering_objective(steering)
                     elif event.code == 5:  # R2
                         R2_value = abs_event.event.value / 255 / 3
                     elif event.code == 2:  # L2
                         L2_value = abs_event.event.value / 255 / 5
 
-                    speed_objective.value = R2_value - L2_value
+                    speed = R2_value - L2_value
+                    motor.set_speed_objective(speed)
         else:
             print("Error gamemode unknown!")
             exit(1)
+
+if args.mode != 'image':
+    motor.stop()
 
 GPIO.cleanup()
