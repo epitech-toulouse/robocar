@@ -33,7 +33,7 @@ class Motor:
                     self.speed = self.target_speed
             self.lock.release()
             self.vesc.set_duty_cycle(self.speed)
-            self.vesc.set_servo((-self.steering + 1) / 2)
+            self.vesc.set_servo((self.steering + 1) / 2)
 
     def set_steering_objective(self, steering : float) -> None:
         """steering is a number between -1 and 1."""
