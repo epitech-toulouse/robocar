@@ -1,6 +1,6 @@
 import evdev
 import time
-from Logger import Logger
+from .Logger import Logger
 
 class Gamepad:
     def __init__(self):
@@ -63,12 +63,12 @@ class Gamepad:
                 elif value.code == 2:
                     self.axis["backward"] = abs_event.event.value / 255 / 5
             # If button
-            elif value.type = evdev.ecodes.BTN_SOUTH:
+            elif value.type == evdev.ecodes.BTN_SOUTH:
                 self.buttons["A"] = True
-            elif value.type = evdev.ecodes.BTN_WEST:
+            elif value.type == evdev.ecodes.BTN_WEST:
                 self.buttons["X"] = True
-            elif value.type = evdev.ecodes.BTN_NORTH:
+            elif value.type == evdev.ecodes.BTN_NORTH:
                 self.buttons["Y"] = True
-            elif value.type = evdev.ecodes.BTN_EAST:
+            elif value.type == evdev.ecodes.BTN_EAST:
                 self.buttons["B"] = True
             value = self.device.read_one()

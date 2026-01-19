@@ -1,9 +1,9 @@
 
-from Gamepad import Gamepad
-from Motor import Motor
+from .Gamepad import Gamepad
+from .Motor import Motor
 
 class State:
-    def def __init__(self):
+    def __init__(self):
         pass
 
     def run_single(motor : Motor, gamepad : Gamepad):

@@ -1,0 +1,10 @@
+evdev==1.9.2
+jetson-gpio==2.1.12
+opencv-python==4.12.0.88
+pillow==10.4.0
+pip-chill==1.0.3
+pycrc==0.11.0
+pyserial==3.4
+pythoncrc==1.21
+pyvesc @ git+https://github.com/LiamBindle/PyVESC@d2f2076afe91dafa920a38a437528819697e05e3
+tensorflow

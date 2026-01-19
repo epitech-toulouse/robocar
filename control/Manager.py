@@ -1,9 +1,9 @@
 
-from Gamepad import Gamepad
-from Motor import Motor
-from Logger import Logger
-from State import State
-from ManualState import ManualState
+from .Gamepad import Gamepad
+from .Motor import Motor
+from .Logger import Logger
+from .State import State
+from .ManualState import ManualState
 
 class Manager:
     def __init__(self, state = None):

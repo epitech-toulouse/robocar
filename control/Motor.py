@@ -2,11 +2,11 @@
 
 import threading
 from pyvesc import VESC
-from Motor import Motor
 import time
+from .Logger import Logger
 
 class Motor:
-    def __init__(self, serial_port : str, max_speed = 0.4, max_speed = -0.2) -> None:
+    def __init__(self, serial_port : str, max_speed = 0.4, min_speed = -0.2) -> None:
         self.logger : Logger = Logger("Motor")
         self.logger.log("Starting initialisation.")
         self.vesc = None
