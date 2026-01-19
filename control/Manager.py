@@ -20,21 +20,26 @@ class Manager:
         self.loop()
 
     def take_manual_control(self):
+        self.logger.log("Took manual control.")
         self.gamepad.setLedsOn()
         self.state = self.manual_state
 
     def switch_other_state(self):
+        self.logger.log("Try to switch to other state.")
         if (self.other_state == None):
             return
+        self.logger.log("Switch to other state.")
         self.gamepad.setLedsOff()
         self.state = self.other_state
 
     def urgent_stop(self):
+        self.logger.log("Stopping urgently.")
         self.motor.urgent_stop()
         self.gamepad.setLedsOn()
         self.running = False
 
     def stop(self):
+        self.logger.log("Stopping.")
         self.motor.stop()
         self.take_manual_control()
 
@@ -54,3 +59,4 @@ class Manager:
                 self.take_manual_control()
                 continue
             self.state.run_single(self.motor, self.gamepad)
+        self.logger.log("End of loop.")

@@ -63,12 +63,12 @@ class Gamepad:
                 elif value.code == 2:
                     self.axis["backward"] = abs_event.event.value / 255 / 5
             # If button
-            elif value.type == evdev.ecodes.BTN_SOUTH:
+            elif value.code == evdev.ecodes.BTN_SOUTH:
                 self.buttons["A"] = True
-            elif value.type == evdev.ecodes.BTN_WEST:
+            elif value.code == evdev.ecodes.BTN_NORTH:
                 self.buttons["X"] = True
-            elif value.type == evdev.ecodes.BTN_NORTH:
+            elif value.code == evdev.ecodes.BTN_WEST:
                 self.buttons["Y"] = True
-            elif value.type == evdev.ecodes.BTN_EAST:
+            elif value.code == evdev.ecodes.BTN_EAST:
                 self.buttons["B"] = True
             value = self.device.read_one()

@@ -4,4 +4,4 @@ class Logger:
         self.name = name
 
     def log(self, *args):
-        print(f"[{self.name}] ", args)
+        print(f"[{self.name}]", *args)
