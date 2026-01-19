@@ -30,6 +30,10 @@ class Gamepad:
             "X": False,
             "Y": False,
             "B": False,
+            "Select": False,
+            "Start": False,
+            "LB": False,
+            "RB": False,
         }
 
         self.logger.log("Init done.")
@@ -63,12 +67,20 @@ class Gamepad:
                 elif value.code == 2:
                     self.axis["backward"] = abs_event.event.value / 255 / 5
             # If button
-            elif value.code == evdev.ecodes.BTN_SOUTH:
+            elif value.code == evdev.ecodes.BTN_A:
                 self.buttons["A"] = True
-            elif value.code == evdev.ecodes.BTN_NORTH:
+            elif value.code == evdev.ecodes.BTN_X:
                 self.buttons["X"] = True
-            elif value.code == evdev.ecodes.BTN_WEST:
+            elif value.code == evdev.ecodes.BTN_Y:
                 self.buttons["Y"] = True
-            elif value.code == evdev.ecodes.BTN_EAST:
+            elif value.code == evdev.ecodes.BTN_B:
                 self.buttons["B"] = True
+            elif value.code == evdev.ecodes.BTN_SELECT:
+                self.buttons["Select"] = True
+            elif value.code == evdev.ecodes.BTN_START:
+                self.buttons["Start"] = True
+            elif value.code == evdev.ecodes.BTN_TL:
+                self.buttons["LB"] = True
+            elif value.code == evdev.ecodes.BTN_TR:
+                self.buttons["RB"] = True
             value = self.device.read_one()

@@ -28,6 +28,9 @@ class Motor:
         self.lock = threading.Lock()
         self.thread.start()
 
+    def join(self) -> None:
+        self.thread.join()
+
     def __loop__(self) -> None:
         self.target_speed = 0.0
         self.speed = 0.0
