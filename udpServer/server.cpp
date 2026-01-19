@@ -85,8 +85,9 @@ int main(int argc, char* argv[]) {
                     clients.insert(client_addr);
                     std::cout << "New client connected: " << inet_ntoa(client_addr.sin_addr) << ":" << ntohs(client_addr.sin_port) << std::endl;
                 }
-                // Optional: Print what was received
-                // std::cout << "Received: " << buffer << std::endl;
+                
+                // Print what was received
+                std::cout << "Received from [" << inet_ntoa(client_addr.sin_addr) << ":" << ntohs(client_addr.sin_port) << "]: " << buffer << std::endl;
             }
         }
 
