@@ -32,7 +32,7 @@ class Motor:
         self.target_speed = 0.0
         self.speed = 0.0
         self.running = True
-        while self.running or self.speed != 0.0:
+        while self.running:
             self.lock.acquire()
             if self.target_speed > self.max_speed:
                 self.target_speed = self.max_speed
@@ -51,6 +51,7 @@ class Motor:
             self.lock.release()
             self.vesc.set_duty_cycle(self.speed)
             self.vesc.set_servo((self.steering + 1) / 2)
+        self.vesc.set_duty_cycle(0)
 
     def set_steering_objective(self, steering : float) -> None:
         """steering is a number between -1 and 1."""
@@ -73,5 +74,6 @@ class Motor:
 
     def stop(self) -> None:
         self.lock.acquire()
-        self.running = False
+        self.target_speed = 0.0
+        self.speed = 0.0
         self.lock.release()
