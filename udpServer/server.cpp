@@ -93,18 +93,20 @@ int main(int argc, char* argv[]) {
 
         // Handle stdin input (Broadcast)
         if (FD_ISSET(STDIN_FILENO, &readfds)) {
-            std::string input;
-            if (!std::getline(std::cin, input)) {
-                break; // EOF
-            }
+            char input_buffer[1400]; // Safe UDP payload size
+            ssize_t bytes_read = read(STDIN_FILENO, input_buffer, sizeof(input_buffer));
 
-            if (clients.empty()) {
-                std::cout << "No clients connected. Message not sent." << std::endl;
+            if (bytes_read < 0) {
+                perror("read stdin");
+                break;
+            } else if (bytes_read == 0) {
+                break; // EOF
             } else {
-                for (const auto& client : clients) {
-                    sendto(sockfd, input.c_str(), input.length(), MSG_CONFIRM, (const struct sockaddr *)&client, sizeof(client));
+                if (!clients.empty()) {
+                    for (const auto& client : clients) {
+                        sendto(sockfd, input_buffer, bytes_read, MSG_CONFIRM, (const struct sockaddr *)&client, sizeof(client));
+                    }
                 }
-                // std::cout << "Broadcasted to " << clients.size() << " clients." << std::endl;
             }
         }
     }

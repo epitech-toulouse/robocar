@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Connected to server at " << server_ip << ":" << port << std::endl;
     std::cout << "Waiting for messages..." << std::endl;
 
-    char buffer[1024];
+    char buffer[2048];
 
     while (true) {
         fd_set readfds;
@@ -65,11 +65,11 @@ int main(int argc, char* argv[]) {
         if (FD_ISSET(sockfd, &readfds)) {
             struct sockaddr_in from_addr;
             socklen_t len = sizeof(from_addr);
-            int n = recvfrom(sockfd, (char *)buffer, 1024, MSG_WAITALL, (struct sockaddr *)&from_addr, &len);
+            int n = recvfrom(sockfd, (char *)buffer, 2048, MSG_WAITALL, (struct sockaddr *)&from_addr, &len);
             
             if (n > 0) {
-                buffer[n] = '\0';
-                std::cout << "Server: " << buffer << std::endl;
+                std::cout.write(buffer, n);
+                std::cout.flush();
             }
         }
 
