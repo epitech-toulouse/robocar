@@ -2,11 +2,16 @@
 
 import threading
 from pyvesc import VESC
-
+import time
 
 class Motor:
     def __init__(self, serial_port : str) -> None:
-        self.vesc : VESC = VESC(serial_port=serial_port)
+        self.vesc = None
+        while (self.vesc == None):
+            try:
+                self.vesc : VESC = VESC(serial_port=serial_port)
+            except:
+                time.sleep(1)
         self.target_speed : float = 0.0
         self.speed : float = 0.0
         self.running : bool = True
