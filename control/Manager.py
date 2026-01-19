@@ -6,7 +6,7 @@ from State import State
 from ManualState import ManualState
 
 class Manager:
-    def __init__(self, State state = None):
+    def __init__(self, state = None):
         self.logger = Logger("Manager")
         self.logger.log("Starting initialisation.")
         self.manual_state = ManualState
@@ -24,7 +24,7 @@ class Manager:
         self.state = self.manual_state
 
     def switch_other_state(self):
-        if (self.other_state == None)
+        if (self.other_state == None):
             return
         self.gamepad.setLedsOff()
         self.state = self.other_state
@@ -53,4 +53,4 @@ class Manager:
             if self.gamepad.getButton("A"):
                 self.take_manual_control()
                 continue
-            self.state.run_single(self.gamepad)
+            self.state.run_single(self.motor, self.gamepad)
