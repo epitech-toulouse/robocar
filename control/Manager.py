@@ -1,4 +1,5 @@
 
+import time
 from .Gamepad import Gamepad
 from .Motor import Motor
 from .Logger import Logger
@@ -44,15 +45,21 @@ class Manager:
         self.take_manual_control()
 
     def loop(self):
+        self.logger.log("Waiting for Start call.")
+        self.gamepad.updateEvents()
+        while not self.gamepad.getButton("Start"):
+            time.sleep(0.1)
+            self.gamepad.updateEvents()
+        self.logger.log("Starting !")
         while (self.running):
             self.gamepad.updateEvents()
             if self.gamepad.getButton("B"):
                 self.urgent_stop()
                 continue
-            if self.gamepad.getButton("X"):
+            if self.gamepad.getButton("RB"):
                 self.stop()
                 continue
-            if self.gamepad.getButton("Y"):
+            if self.gamepad.getButton("X"):
                 self.switch_other_state()
                 continue
             if self.gamepad.getButton("A"):
