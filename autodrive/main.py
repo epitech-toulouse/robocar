@@ -115,7 +115,7 @@ class AutoDrive:
                         abs_event = evdev.categorize(event)
                         if event.code == 0:  # Left stick horizontal (Steering)
                             self.manual_steering = abs_event.event.value / 32767
-                            self.motor.set_steering(self.manual_steering)
+                            self.motor.set_steering(-self.manual_steering)
                         elif event.code == 5:  # R2 (Forward)
                             self.r2_value = abs_event.event.value / 255 / 3
                             self.update_manual_speed()
@@ -171,9 +171,9 @@ class AutoDrive:
                     min_right = min([ob['distance'] for ob in right_obs]) if right_obs else 100.0
                     
                     if min_left > min_right:
-                        self.motor.set_steering(-STEER_ANGLE)
-                    else:
                         self.motor.set_steering(STEER_ANGLE)
+                    else:
+                        self.motor.set_steering(-STEER_ANGLE)
                     
                     if min_dist < SAFE_DISTANCE / 2:
                         self.motor.set_speed(0.0)
