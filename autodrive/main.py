@@ -6,14 +6,16 @@ import sys
 import evdev
 from enum import Enum
 from LidarParser import LidarParser
-from MotorController import MotorController
+from Motor import Motor
 
 # Configuration
 SAFE_DISTANCE = 1.5  # meters
-SLOW_DISTANCE = 1.5   # meters
+SLOW_DISTANCE = 0.4   # meters
 STEER_ANGLE = 0.8    # Max steering
-FORWARD_SPEED = 0.1   # Conservative speed
-SCAN_FRONT_DEG = 30   # Degrees to scan in front of car
+FORWARD_SPEED = 0.06   # Conservative speed
+SLOW_SPEED = 0.04
+SCAN_FRONT_DEG = 20   # Degrees to scan in front of car
+angle_offset = 15
 
 class DriveMode(Enum):
     AUTO = 1
@@ -23,7 +25,7 @@ class AutoDrive:
     def __init__(self):
         print("Initializing AutoDrive...")
         self.lidar = LidarParser()
-        self.motor = MotorController()
+        self.motor = Motor("/dev/ttyACM0")
         self.running = True
         self.mode = DriveMode.MANUAL  # Start in manual mode for safety
         self.gamepad = self.setup_gamepad()
@@ -100,7 +102,7 @@ class AutoDrive:
                         if self.mode == DriveMode.AUTO:
                             self.mode = DriveMode.MANUAL
                             print("Switched to MANUAL mode")
-                            self.motor.set_speed(0)
+                            self.motor.set_speed_objective(0)
                         else:
                             self.mode = DriveMode.AUTO
                             print("Switched to AUTO mode")
@@ -115,7 +117,7 @@ class AutoDrive:
                         abs_event = evdev.categorize(event)
                         if event.code == 0:  # Left stick horizontal (Steering)
                             self.manual_steering = abs_event.event.value / 32767
-                            self.motor.set_steering(-self.manual_steering)
+                            self.motor.set_steering_objective(self.manual_steering)
                         elif event.code == 5:  # R2 (Forward)
                             self.r2_value = abs_event.event.value / 255 / 3
                             self.update_manual_speed()
@@ -127,12 +129,12 @@ class AutoDrive:
 
     def update_manual_speed(self):
         self.manual_speed = self.r2_value - self.l2_value
-        self.motor.set_speed(self.manual_speed)
+        self.motor.set_speed_objective(self.manual_speed)
 
     def get_obstacles_in_range(self, points, min_angle, max_angle):
         obstacles = []
         for p in points:
-            angle = p['angle']
+            angle = (p['angle'] + angle_offset) % 360
             if angle > 180:
                 angle -= 360
             if min_angle <= angle <= max_angle:
@@ -171,21 +173,21 @@ class AutoDrive:
                     min_right = min([ob['distance'] for ob in right_obs]) if right_obs else 100.0
                     
                     if min_left > min_right:
-                        self.motor.set_steering(STEER_ANGLE)
+                        self.motor.set_steering_objective(-STEER_ANGLE)
                     else:
-                        self.motor.set_steering(-STEER_ANGLE)
+                        self.motor.set_steering_objective(STEER_ANGLE)
                     
                     if min_dist < SAFE_DISTANCE / 2:
-                        self.motor.set_speed(0.0)
+                        self.motor.set_speed_objective(0.0)
                     else:
-                        self.motor.set_speed(FORWARD_SPEED / 2)
+                        self.motor.set_speed_objective(SLOW_SPEED)
                         
                 elif min_dist < SLOW_DISTANCE:
-                    self.motor.set_speed(FORWARD_SPEED / 2)
-                    self.motor.set_steering(0.0)
+                    self.motor.set_speed_objective(SLOW_SPEED)
+                    self.motor.set_steering_objective(0.0)
                 else:
-                    self.motor.set_speed(FORWARD_SPEED)
-                    self.motor.set_steering(0.0)
+                    self.motor.set_speed_objective(FORWARD_SPEED)
+                    self.motor.set_steering_objective(0.0)
             
             time.sleep(0.02)
 
