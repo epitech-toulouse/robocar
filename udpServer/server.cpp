@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
                 for (const auto& client : clients) {
                     sendto(sockfd, input.c_str(), input.length(), MSG_CONFIRM, (const struct sockaddr *)&client, sizeof(client));
                 }
-                std::cout << "Broadcasted to " << clients.size() << " clients." << std::endl;
+                // std::cout << "Broadcasted to " << clients.size() << " clients." << std::endl;
             }
         }
     }
