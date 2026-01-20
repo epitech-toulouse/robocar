@@ -49,24 +49,6 @@ class AutoDriveState(State):
         return obstacles
     
 
-    def get_speed_from_angle(self, angle):
-        angle = abs(angle)
-        if (angle > 180):
-            angle = 360 - angle
-
-    
-        # if angle > SCAN_FRONT_DEG:
-        #     return FORWARD_SPEED
-        # else:
-        print(f"Calculating speed for angle {angle:.2f}°")
-        angle = abs(angle)
-        angle_factor = angle / SCAN_FRONT_DEG
-        speed = SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * angle_factor
-        print(f"Adjusting speed: {speed:.3f}")
-        return speed
-    
-
-
 
 
 
@@ -96,7 +78,6 @@ class AutoDriveState(State):
                 steering = -obstacle_angle / STERRING_SCAN_FRONT_DEG * STEER_ANGLE * STEER_SMOOTHING
                 print(f"Steering away from obstacle at angle {closest_obstacle['angle']:.2f}°: Steering set to {steering:.2f}")
                 motor.set_steering_objective(steering)
-                # motor.set_speed_objective(self.get_speed_from_angle(closest_obstacle['angle']))
             else:
                 motor.set_steering_objective(0.0)
 
@@ -117,17 +98,29 @@ class AutoDriveState(State):
             if ob['distance'] < min_dist:
                 min_dist = ob['distance']
                 closest_obstacle = ob
-        if min_dist < SAFE_DISTANCE:
-            print(f"Obstacle detected! Min dist: {min_dist:.2f}m. Avoiding...")
-            if closest_obstacle:
-                motor.set_speed_objective(self.get_speed_from_angle(closest_obstacle['angle']))
-            else:
-                motor.set_speed_objective(SLOW_SPEED)
-                        
-        elif min_dist < SLOW_DISTANCE:
-            if min_dist < STOP_DISTANCE:
-                motor.set_speed_objective(BACKWARD_SPEED)
-            else:
-                motor.set_speed_objective(SLOW_SPEED)
+
+        if min_dist < STOP_DISTANCE:
+            print(f"Too close to obstacle! Min dist: {min_dist:.2f}m. Reversing...")
+            motor.set_speed_objective(BACKWARD_SPEED)
+            return
+        
+        if closest_obstacle and min_dist < SAFE_DISTANCE:
+            motor.set_speed_objective(self.get_speed_from_angle(closest_obstacle['angle']))
         else:
             motor.set_speed_objective(FORWARD_SPEED)
+    
+    def get_speed_from_angle(self, angle):
+        angle = abs(angle)
+        if (angle > 180):
+            angle = 360 - angle
+
+        print(f"Calculating speed for angle {angle:.2f}°")
+        angle = abs(angle)
+        angle_factor = angle / SCAN_FRONT_DEG
+        speed = SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * angle_factor
+        print(f"Adjusting speed: {speed:.3f}")
+        return speed
+    
+
+                        
+      
