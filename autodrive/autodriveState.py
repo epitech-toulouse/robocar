@@ -8,7 +8,7 @@ from .LidarParser import LidarParser
 # DIRECTION DRIVE PARAMETERS
 
 SCAN_FRONT_DEG = 10   # Degrees to scan in front of car
-SAFE_DISTANCE = 5.0  # meters - max distance for speed scaling
+SAFE_DISTANCE = 3.0  # meters - max distance for speed scaling
 SLOW_DISTANCE = 1.4   # meters
 STOP_DISTANCE = 0.5    # meters
 
@@ -18,7 +18,7 @@ SLOW_SPEED = 0.02  # Minimum speed
 
 
 # STREERING AVOIDANCE PARAMETERS
-STERRING_SCAN_FRONT_DEG = 23   # Degrees to scan in front of car
+STERRING_SCAN_FRONT_DEG = 33   # Degrees to scan in front of car
 STERRING_SCAN_DISTANCE = 0.5  # meters
 STEER_ANGLE = 0.8    # Max steering
 STEER_SMOOTHING = 0.8  # Reduce steering aggressiveness (0.0 to 1.0)
@@ -77,8 +77,7 @@ class AutoDriveState(State):
 
                 print(f"Closest obstacle at angle {angle:.2f}° and distance {min_dist:.2f}m")
                 
-                # Distance factor: closer obstacles need MORE steering (inverse)
-                # When distance is 0m -> factor = 2.0, when distance is 0.5m -> factor = 1.0
+
                 distance_factor = 2.0 - (min_dist / STERRING_SCAN_DISTANCE)
                 distance_factor = max(1.0, min(2.0, distance_factor))
                 
@@ -88,9 +87,10 @@ class AutoDriveState(State):
                 
                 print(f"Steering away from obstacle at angle {angle:.2f}° (dist: {min_dist:.2f}m): Steering set to {steering:.2f}")
                 motor.set_steering_objective(steering)
-            else:
-                print("No closest obstacle found despite min_dist < STERRING_SCAN_DISTANCE")
-                motor.set_steering_objective(0.0)
+                motor.set_speed_objective(self.get_speed_from_angle(angle))
+        else:
+            print("No closest obstacle found despite min_dist < STERRING_SCAN_DISTANCE")
+            motor.set_steering_objective(0.0)
 
 
     
