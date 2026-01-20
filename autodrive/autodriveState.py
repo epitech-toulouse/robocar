@@ -61,31 +61,54 @@ class AutoDriveState(State):
             return
         front_obstacles = self.get_obstacles_in_range(points, -STERRING_SCAN_FRONT_DEG, STERRING_SCAN_FRONT_DEG)
 
-        max_dist = 0.0
-        farthest_obstacle = None
-        for ob in front_obstacles:
-            if ob['distance'] > max_dist:
-                max_dist = ob['distance']
-                farthest_obstacle = ob
-        
-        if farthest_obstacle:
-            angle = farthest_obstacle['angle'] % 360
-            if angle > 180:
-                angle -= 360  # Normalize to [-180, 180]
-
-            print(f"Farthest opening at angle {angle:.2f}° and distance {max_dist:.2f}m")
-            
-            # Steer towards the most open direction
-            angle_factor = angle / STERRING_SCAN_FRONT_DEG
-            
-            steering = angle_factor * STEER_ANGLE * STEER_SMOOTHING
-            
-            print(f"Steering towards opening at angle {angle:.2f}° (dist: {max_dist:.2f}m): Steering set to {steering:.2f}")
-            motor.set_steering_objective(steering)
-            motor.set_speed_objective(self.get_speed_from_angle(angle))
-        else:
+        if not front_obstacles:
             print("No obstacles found in front range")
             motor.set_steering_objective(0.0)
+            return
+
+        # Divide front area into sectors and find the one with most clearance
+        num_sectors = 5
+        sector_width = (2 * STERRING_SCAN_FRONT_DEG) / num_sectors
+        sector_scores = []
+        
+        for i in range(num_sectors):
+            sector_min = -STERRING_SCAN_FRONT_DEG + i * sector_width
+            sector_max = sector_min + sector_width
+            sector_center = (sector_min + sector_max) / 2
+            
+            # Find average distance in this sector
+            sector_points = [ob for ob in front_obstacles 
+                           if sector_min <= ob['angle'] % 360 - (360 if ob['angle'] % 360 > 180 else 0) < sector_max]
+            
+            if sector_points:
+                avg_dist = sum(p['distance'] for p in sector_points) / len(sector_points)
+                max_dist = max(p['distance'] for p in sector_points)
+                score = (avg_dist + max_dist) / 2  # Combine average and max
+            else:
+                score = 10.0  # No obstacles means very open
+                avg_dist = 10.0
+                max_dist = 10.0
+            
+            sector_scores.append({
+                'center': sector_center,
+                'score': score,
+                'avg_dist': avg_dist,
+                'max_dist': max_dist,
+                'count': len(sector_points)
+            })
+        
+        # Find best sector
+        best_sector = max(sector_scores, key=lambda s: s['score'])
+        
+        print(f"Best sector: center={best_sector['center']:.1f}°, score={best_sector['score']:.2f}m, count={best_sector['count']}")
+        
+        # Steer towards the best sector
+        angle_factor = best_sector['center'] / STERRING_SCAN_FRONT_DEG
+        steering = angle_factor * STEER_ANGLE * STEER_SMOOTHING
+        
+        print(f"Steering towards best opening: {steering:.2f}")
+        motor.set_steering_objective(steering)
+        motor.set_speed_objective(self.get_speed_from_angle(abs(best_sector['center'])))
 
 
     
