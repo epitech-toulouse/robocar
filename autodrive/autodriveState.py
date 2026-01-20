@@ -78,7 +78,7 @@ class AutoDriveState(State):
                 print(f"Closest obstacle at angle {angle:.2f}° and distance {min_dist:.2f}m")
                 
 
-                distance_factor = 2.0 - (min_dist / STERRING_SCAN_DISTANCE)
+                distance_factor = 2.0 - (min_dist / (STERRING_SCAN_DISTANCE / 2.0))
                 distance_factor = max(1.0, min(2.0, distance_factor))
                 
                 angle_factor = angle / STERRING_SCAN_FRONT_DEG
