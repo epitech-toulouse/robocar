@@ -10,11 +10,10 @@ from .LidarParser import LidarParser
 SCAN_FRONT_DEG = 10   # Degrees to scan in front of car
 SAFE_DISTANCE = 1.3  # meters
 SLOW_DISTANCE = 0.4   # meters
-STOP_DISTANCE = 0.2   # meters
-
-FORWARD_SPEED = 0.1   # Conservative speed
+FORWARD_SPEED = 0.06   # Conservative speed
+BACKWARD_SPEED = -0.02  # Reverse speed
+STOP_DISTANCE = 0.2    # meters
 SLOW_SPEED = 0.04
-BACKWARD_SPEED = -0.03  # Reverse speed
 
 
 # STREERING AVOIDANCE PARAMETERS
@@ -39,7 +38,6 @@ class AutoDriveState(State):
         self.speed_drive(motor, gamepad)
 
 
-
     def get_obstacles_in_range(self, points, min_angle, max_angle):
         obstacles = []
         for p in points:
@@ -56,6 +54,10 @@ class AutoDriveState(State):
         if (angle > 180):
             angle = 360 - angle
 
+    
+        # if angle > SCAN_FRONT_DEG:
+        #     return FORWARD_SPEED
+        # else:
         print(f"Calculating speed for angle {angle:.2f}°")
         angle = abs(angle)
         angle_factor = angle / SCAN_FRONT_DEG
@@ -66,8 +68,41 @@ class AutoDriveState(State):
 
 
 
+
+
     def direction_drive(self, motor : Motor, gamepad : Gamepad):
            
+        points = self.lidar.get_points()
+        if not points:
+            time.sleep(0.05)
+            return
+        front_obstacles = self.get_obstacles_in_range(points, -STERRING_SCAN_FRONT_DEG, STERRING_SCAN_FRONT_DEG)
+
+        min_dist = STERRING_SCAN_DISTANCE 
+        closest_obstacle = None
+        for ob in front_obstacles:
+            if ob['distance'] < min_dist:
+                min_dist = ob['distance']
+                closest_obstacle = ob
+        
+        if min_dist < STERRING_SCAN_DISTANCE:
+            print(f"Obstacle detected! Min dist: {min_dist:.2f}m. Avoiding...")
+            
+            if closest_obstacle:
+                obstacle_angle = closest_obstacle['angle'] % 360
+                if obstacle_angle > 180:
+                    obstacle_angle -= 360
+                
+                steering = -obstacle_angle / STERRING_SCAN_FRONT_DEG * STEER_ANGLE * STEER_SMOOTHING
+                print(f"Steering away from obstacle at angle {closest_obstacle['angle']:.2f}°: Steering set to {steering:.2f}")
+                motor.set_steering_objective(steering)
+                # motor.set_speed_objective(self.get_speed_from_angle(closest_obstacle['angle']))
+            else:
+                motor.set_steering_objective(0.0)
+
+
+    
+    def speed_drive(self, motor : Motor, gamepad : Gamepad):   
         points = self.lidar.get_points()
         if not points:
             time.sleep(0.05)
@@ -87,7 +122,6 @@ class AutoDriveState(State):
             if closest_obstacle:
                 motor.set_speed_objective(self.get_speed_from_angle(closest_obstacle['angle']))
             else:
-                motor.set_steering_objective(0.0)
                 motor.set_speed_objective(SLOW_SPEED)
                         
         elif min_dist < SLOW_DISTANCE:
