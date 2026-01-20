@@ -25,9 +25,11 @@ class AutoDriveState(State):
         front_obstacles = self.get_obstacles_in_range(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG)
 
         min_dist = 100.0
+        closest_obstacle = None
         for ob in front_obstacles:
             if ob['distance'] < min_dist:
                 min_dist = ob['distance']
+                closest_obstacle = ob
         if min_dist < SAFE_DISTANCE:
             print(f"Obstacle detected! Min dist: {min_dist:.2f}m. Avoiding...")
             left_obs = self.get_obstacles_in_range(points, -90, -SCAN_FRONT_DEG)
@@ -41,8 +43,9 @@ class AutoDriveState(State):
             else:
                 motor.set_steering_objective(STEER_ANGLE)
             
-            if min_dist < SAFE_DISTANCE / 2:
-                motor.set_speed_objective(0.0)
+            # Speed proportional to obstacle angle (more centered = slower)
+            if closest_obstacle:
+                motor.set_speed_objective(self.get_speed_from_angle(closest_obstacle['angle']))
             else:
                 motor.set_speed_objective(SLOW_SPEED)
                         
@@ -57,9 +60,18 @@ class AutoDriveState(State):
     def get_obstacles_in_range(self, points, min_angle, max_angle):
         obstacles = []
         for p in points:
-            angle = (p['angle'] + angle_offset) % 360
+            angle = (p['angle'] + ANGLE_OFFSET) % 360
             if angle > 180:
                 angle -= 360
             if min_angle <= angle <= max_angle:
                 obstacles.append(p)
         return obstacles
+    
+
+    def get_speed_from_angle(self, angle):
+        angle = abs(angle)
+        if angle > SCAN_FRONT_DEG:
+            return FORWARD_SPEED
+        else:
+            angle_factor = angle / SCAN_FRONT_DEG
+            return SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * angle_factor
