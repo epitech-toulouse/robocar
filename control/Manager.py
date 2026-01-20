@@ -10,7 +10,7 @@ class Manager:
     def __init__(self, state = None):
         self.logger = Logger("Manager")
         self.logger.log("Starting initialisation.")
-        self.manual_state = ManualState
+        self.manual_state = ManualState()
         self.other_state = state
         self.state = self.manual_state
         self.gamepad = Gamepad()
@@ -66,8 +66,11 @@ class Manager:
                 continue
             self.state.run_single(self.motor, self.gamepad)
         self.logger.log("End of loop.")
+        self.safe_stop()
+        # self.motor.join()
+    
+    def safe_stop(self):
         self.motor.stop()
         self.manual_state.stop()
         if self.other_state != None:
             self.other_state.stop()
-        # self.motor.join()

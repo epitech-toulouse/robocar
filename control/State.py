@@ -6,7 +6,7 @@ class State:
     def __init__(self):
         pass
 
-    def run_single(motor : Motor, gamepad : Gamepad):
+    def run_single(self, motor : Motor, gamepad : Gamepad):
         pass
     
     def stop(self):

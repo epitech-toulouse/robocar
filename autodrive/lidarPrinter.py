@@ -20,3 +20,4 @@ while running:
             car_border_dist[angle] = distance
     print(f"Car border: {car_border_dist}")
     time.sleep(0.05)
+
