@@ -8,17 +8,18 @@ from .LidarParser import LidarParser
 # DIRECTION DRIVE PARAMETERS
 
 SCAN_FRONT_DEG = 10   # Degrees to scan in front of car
-SAFE_DISTANCE = 1.3  # meters
-SLOW_DISTANCE = 0.4   # meters
-FORWARD_SPEED = 0.06   # Conservative speed
-BACKWARD_SPEED = -0.02  # Reverse speed
-STOP_DISTANCE = 0.2    # meters
-SLOW_SPEED = 0.04
+SAFE_DISTANCE = 2.0  # meters
+SLOW_DISTANCE = 1.4   # meters
+STOP_DISTANCE = 0.5    # meters
+
+FORWARD_SPEED = 0.1   # Conservative speed
+BACKWARD_SPEED = -0.03  # Reverse speed
+SLOW_SPEED = 0.05
 
 
 # STREERING AVOIDANCE PARAMETERS
-STERRING_SCAN_FRONT_DEG = 20   # Degrees to scan in front of car
-STERRING_SCAN_DISTANCE = 50  # cm
+STERRING_SCAN_FRONT_DEG = 30   # Degrees to scan in front of car
+STERRING_SCAN_DISTANCE = 0.5  # meters
 STEER_ANGLE = 0.8    # Max steering
 STEER_SMOOTHING = 0.8  # Reduce steering aggressiveness (0.0 to 1.0)
 
@@ -60,7 +61,7 @@ class AutoDriveState(State):
             return
         front_obstacles = self.get_obstacles_in_range(points, -STERRING_SCAN_FRONT_DEG, STERRING_SCAN_FRONT_DEG)
 
-        min_dist = STERRING_SCAN_DISTANCE 
+        min_dist = float('inf') 
         closest_obstacle = None
         for ob in front_obstacles:
             if ob['distance'] < min_dist:
@@ -68,15 +69,22 @@ class AutoDriveState(State):
                 closest_obstacle = ob
         
         if min_dist < STERRING_SCAN_DISTANCE:
-            print(f"Obstacle detected! Min dist: {min_dist:.2f}m. Avoiding...")
             
             if closest_obstacle:
-                obstacle_angle = closest_obstacle['angle'] % 360
-                if obstacle_angle > 180:
-                    obstacle_angle -= 360
+                angle = closest_obstacle['angle'] % 360
+                if (angle > 180):
+                    angle = 360 - angle # Normalize to [-30, 30]
+
+                print(f"Closest obstacle at angle {angle:.2f}° and distance {min_dist:.2f}m")
                 
-                steering = -obstacle_angle / STERRING_SCAN_FRONT_DEG * STEER_ANGLE * STEER_SMOOTHING
-                print(f"Steering away from obstacle at angle {closest_obstacle['angle']:.2f}°: Steering set to {steering:.2f}")
+                distance_factor = 1.0 - (min_dist / STERRING_SCAN_DISTANCE)
+                distance_factor = max(0.0, min(1.0, distance_factor))
+                
+                angle_factor = angle / STERRING_SCAN_FRONT_DEG
+                
+                steering = -angle_factor * STEER_ANGLE * STEER_SMOOTHING * distance_factor
+                
+                print(f"Steering away from obstacle at angle {angle:.2f}° (dist: {min_dist:.2f}m): Steering set to {steering:.2f}")
                 motor.set_steering_objective(steering)
             else:
                 motor.set_steering_objective(0.0)
