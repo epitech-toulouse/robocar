@@ -137,7 +137,7 @@ class AutoDriveState(State):
              
         if max_len == 0:
             return None, None
-            
+        print("Max gap from index {} to {}".format(best_start, best_end)    )
         return best_start, best_end
 
     def find_best_goal(self, start_i, end_i, ranges):
