@@ -11,7 +11,6 @@ STEER_SMOOTHING = 0.8  # Reduce steering aggressiveness (0.0 to 1.0)
 FORWARD_SPEED = 0.06   # Conservative speed
 SLOW_SPEED = 0.04
 SCAN_FRONT_DEG = 20   # Degrees to scan in front of car
-ANGLE_OFFSET = 15 # degrees to offset from center
 
 class AutoDriveState(State):
     def __init__(self):
@@ -39,7 +38,7 @@ class AutoDriveState(State):
             
             # Adjust steering based on obstacle angle
             if closest_obstacle:
-                obstacle_angle = (closest_obstacle['angle'] + ANGLE_OFFSET) % 360
+                obstacle_angle = closest_obstacle['angle'] % 360
                 if obstacle_angle > 180:
                     obstacle_angle -= 360
                 
@@ -62,7 +61,7 @@ class AutoDriveState(State):
     def get_obstacles_in_range(self, points, min_angle, max_angle):
         obstacles = []
         for p in points:
-            angle = (p['angle'] + ANGLE_OFFSET) % 360
+            angle = (p['angle']) % 360
             if angle > 180:
                 angle -= 360
             if min_angle <= angle <= max_angle:
