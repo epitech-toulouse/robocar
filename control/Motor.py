@@ -12,6 +12,7 @@ class Motor:
         self.vesc = None
         while (self.vesc == None):
             try:
+                print("Connecting to VESC... on port " + serial_port)
                 self.vesc : VESC = VESC(serial_port=serial_port)
             except:
                 self.logger.log("Waiting for VESC...")
