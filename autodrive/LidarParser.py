@@ -6,8 +6,11 @@ import struct
 import time
 
 class LidarParser:
-    def __init__(self, port='/dev/ttyUSB0', baudrate=230400) -> None:
-        self.ser = serial.Serial(port, baudrate, timeout=0.1)
+    def __init__(self, port=['/dev/ttyUSB0', '/dev/ttyUSB1'], baudrate=230400, angle_offset=15.0) -> None:
+        self.ports = [port] if isinstance(port, str) else port
+        self.baudrate = baudrate
+        self.angle_offset = angle_offset
+        self.ser = None
         self.running = True
         self.points = []
         self.lock = threading.Lock()
@@ -15,9 +18,22 @@ class LidarParser:
         self.thread.start()
 
     def __loop__(self) -> None:
+        while self.running and self.ser is None:
+            for port in self.ports:
+                try:
+                    self.ser = serial.Serial(port, self.baudrate, timeout=0.1)
+                    print(f"Lidar Parser connected to {port}")
+                    break
+                except Exception:
+                    continue
+            if self.ser is None:
+                time.sleep(1)
+
         buffer = b''
         while self.running:
             try:
+                if self.ser is None:
+                    break
                 data = self.ser.read(1024)
                 if not data:
                     continue
@@ -66,9 +82,11 @@ class LidarParser:
             distance = struct.unpack('<H', packet[offset:offset+2])[0] / 1000.0 # meters
             intensity = packet[offset+2]
             
-            angle = start_angle + i * angle_step
+            angle = start_angle + i * angle_step + self.angle_offset
             if angle >= 360.0:
                 angle -= 360.0
+            elif angle < 0:
+                angle += 360.0
             
             # Filter valid points
             if 0.05 < distance < 12.0 and intensity > 0:
@@ -89,4 +107,5 @@ class LidarParser:
 
     def stop(self):
         self.running = False
-        self.ser.close()
+        if self.ser:
+            self.ser.close()

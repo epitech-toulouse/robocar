@@ -177,16 +177,23 @@ void draw_grid(sf::RenderWindow& window) {
 int main(int argc, char* argv[]) {
     // Parse command line arguments
     bool use_gui = true;
+    std::string usb_port = "USB0";  // Default port
+    
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--nogui") == 0) {
             use_gui = false;
         } else if (std::strcmp(argv[i], "--gui") == 0) {
             use_gui = true;
+        } else if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+            usb_port = argv[++i];
+        } else if (std::strncmp(argv[i], "USB", 3) == 0) {
+            usb_port = argv[i];
         }
     }
 
     // Initialize serial port
-    SerialPort serial("/dev/ttyUSB0", 230400);
+    std::string serial_path = "/dev/tty" + usb_port;
+    SerialPort serial(serial_path.c_str(), 230400);
     LD19Parser parser;
     
     uint8_t read_buffer[1024];
