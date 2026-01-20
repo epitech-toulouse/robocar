@@ -18,7 +18,7 @@ SLOW_SPEED = 0.02  # Minimum speed
 
 
 # STREERING AVOIDANCE PARAMETERS
-STERRING_SCAN_FRONT_DEG = 40   # Degrees to scan in front of car
+STERRING_SCAN_FRONT_DEG = 180   # Degrees to scan in front of car
 STERRING_SCAN_DISTANCE = 2.0  # meters
 STEER_ANGLE = 0.8    # Max steering
 STEER_SMOOTHING = 0.8  # Reduce steering aggressiveness (0.0 to 1.0)
