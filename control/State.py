@@ -8,3 +8,6 @@ class State:
 
     def run_single(motor : Motor, gamepad : Gamepad):
         pass
+    
+    def stop(self):
+        pass

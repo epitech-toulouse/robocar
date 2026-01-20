@@ -15,3 +15,6 @@ class ManualState(State):
 
         motor.set_steering_objective(steering)
         motor.set_speed_objective(speed)
+    
+    def stop(self):
+        pass
