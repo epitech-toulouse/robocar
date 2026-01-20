@@ -87,6 +87,7 @@ class AutoDriveState(State):
                 print(f"Steering away from obstacle at angle {angle:.2f}° (dist: {min_dist:.2f}m): Steering set to {steering:.2f}")
                 motor.set_steering_objective(steering)
             else:
+                print("No closest obstacle found despite min_dist < STERRING_SCAN_DISTANCE")
                 motor.set_steering_objective(0.0)
 
 
