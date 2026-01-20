@@ -71,10 +71,16 @@ class AutoDriveState(State):
 
     def get_speed_from_angle(self, angle):
         angle = abs(angle)
+        if (angle > 180):
+            angle = 360 - angle
+
+    
         if angle > SCAN_FRONT_DEG:
             return FORWARD_SPEED
         else:
+            print(f"Calculating speed for angle {angle:.2f}°")
+            angle = abs(angle)
             angle_factor = angle / SCAN_FRONT_DEG
             speed = SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * angle_factor
-            print(f"Adjusting speed based on angle {angle:.2f}°: {speed:.3f}")
+            print(f"Adjusting speed: {speed:.3f}")
             return speed
