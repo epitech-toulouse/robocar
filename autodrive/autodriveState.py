@@ -17,7 +17,7 @@ class AutoDriveState(State):
         print("Initializing AutoDrive...")
         self.lidar = LidarParser()
 
-    def run_single(motor : Motor, gamepad : Gamepad):
+    def run_single(self, motor : Motor, gamepad : Gamepad):
         points = self.lidar.get_points()
         if not points:
             time.sleep(0.05)
@@ -37,21 +37,21 @@ class AutoDriveState(State):
             min_right = min([ob['distance'] for ob in right_obs]) if right_obs else 100.0
             
             if min_left > min_right:
-                self.motor.set_steering_objective(-STEER_ANGLE)
+                motor.set_steering_objective(-STEER_ANGLE)
             else:
-                self.motor.set_steering_objective(STEER_ANGLE)
+                motor.set_steering_objective(STEER_ANGLE)
             
             if min_dist < SAFE_DISTANCE / 2:
-                self.motor.set_speed_objective(0.0)
+                motor.set_speed_objective(0.0)
             else:
-                self.motor.set_speed_objective(SLOW_SPEED)
+                motor.set_speed_objective(SLOW_SPEED)
                         
         elif min_dist < SLOW_DISTANCE:
-            self.motor.set_speed_objective(SLOW_SPEED)
-            self.motor.set_steering_objective(0.0)
+            motor.set_speed_objective(SLOW_SPEED)
+            motor.set_steering_objective(0.0)
         else:
-            self.motor.set_speed_objective(FORWARD_SPEED)
-            self.motor.set_steering_objective(0.0)
+            motor.set_speed_objective(FORWARD_SPEED)
+            motor.set_steering_objective(0.0)
         
 
     def get_obstacles_in_range(self, points, min_angle, max_angle):
