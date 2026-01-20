@@ -72,13 +72,15 @@ class AutoDriveState(State):
             
             if closest_obstacle:
                 angle = closest_obstacle['angle'] % 360
-                if (angle > 180):
-                    angle = 360 - angle # Normalize to [-30, 30]
+                if angle > 180:
+                    angle -= 360  # Normalize to [-180, 180]
 
                 print(f"Closest obstacle at angle {angle:.2f}° and distance {min_dist:.2f}m")
                 
-                distance_factor = 1.0 - (min_dist / STERRING_SCAN_DISTANCE)
-                distance_factor = max(0.0, min(1.0, distance_factor))
+                # Distance factor: closer obstacles need MORE steering (inverse)
+                # When distance is 0m -> factor = 2.0, when distance is 0.5m -> factor = 1.0
+                distance_factor = 2.0 - (min_dist / STERRING_SCAN_DISTANCE)
+                distance_factor = max(1.0, min(2.0, distance_factor))
                 
                 angle_factor = angle / STERRING_SCAN_FRONT_DEG
                 
@@ -110,6 +112,12 @@ class AutoDriveState(State):
 
         if min_dist < STOP_DISTANCE:
             print(f"Too close to obstacle! Min dist: {min_dist:.2f}m. Reversing...")
+            if closest_obstacle:
+                angle = closest_obstacle['angle'] % 360
+                if angle > 180:
+                    angle -= 360
+                steering = -1.0 if angle < 0 else 1.0
+                motor.set_steering_objective(steering * STEER_ANGLE)
             motor.set_speed_objective(BACKWARD_SPEED)
             return
         
