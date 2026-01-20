@@ -18,7 +18,6 @@ class Manager:
         self.logger.log("Init done.")
         self.running = True
         self.take_manual_control()
-        self.loop()
 
     def take_manual_control(self):
         self.logger.log("Took manual control.")
@@ -35,8 +34,8 @@ class Manager:
 
     def urgent_stop(self):
         self.logger.log("Stopping urgently.")
-        self.motor.urgent_stop()
         self.gamepad.setLedsOn()
+        self.motor.urgent_stop()
         self.running = False
 
     def stop(self):
@@ -67,5 +66,5 @@ class Manager:
                 continue
             self.state.run_single(self.motor, self.gamepad)
         self.logger.log("End of loop.")
-        self.motor.urgent_stop()
-        self.motor.join()
+        self.motor.stop()
+        # self.motor.join()
