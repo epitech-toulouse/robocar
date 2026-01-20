@@ -12,7 +12,7 @@ SAFE_DISTANCE = 5.0  # meters - max distance for speed scaling
 SLOW_DISTANCE = 1.4   # meters
 STOP_DISTANCE = 0.5    # meters
 
-FORWARD_SPEED = 0.15   # Max speed at 5+ meters
+FORWARD_SPEED = 0.08   # Max speed at 5+ meters
 BACKWARD_SPEED = -0.03  # Reverse speed
 SLOW_SPEED = 0.02  # Minimum speed
 
