@@ -61,35 +61,30 @@ class AutoDriveState(State):
             return
         front_obstacles = self.get_obstacles_in_range(points, -STERRING_SCAN_FRONT_DEG, STERRING_SCAN_FRONT_DEG)
 
-        min_dist = float('inf') 
-        closest_obstacle = None
+        max_dist = 0.0
+        farthest_obstacle = None
         for ob in front_obstacles:
-            if ob['distance'] < min_dist:
-                min_dist = ob['distance']
-                closest_obstacle = ob
+            if ob['distance'] > max_dist:
+                max_dist = ob['distance']
+                farthest_obstacle = ob
         
-        if min_dist < STERRING_SCAN_DISTANCE:
+        if farthest_obstacle:
+            angle = farthest_obstacle['angle'] % 360
+            if angle > 180:
+                angle -= 360  # Normalize to [-180, 180]
+
+            print(f"Farthest opening at angle {angle:.2f}° and distance {max_dist:.2f}m")
             
-            if closest_obstacle:
-                angle = closest_obstacle['angle'] % 360
-                if angle > 180:
-                    angle -= 360  # Normalize to [-180, 180]
-
-                print(f"Closest obstacle at angle {angle:.2f}° and distance {min_dist:.2f}m")
-                
-
-                distance_factor = 2.0 - (min_dist / (STERRING_SCAN_DISTANCE / 2.0))
-                distance_factor = max(1.0, min(2.0, distance_factor))
-                
-                angle_factor = angle / STERRING_SCAN_FRONT_DEG
-                
-                steering = -angle_factor * STEER_ANGLE * STEER_SMOOTHING * distance_factor
-                
-                print(f"Steering away from obstacle at angle {angle:.2f}° (dist: {min_dist:.2f}m): Steering set to {steering:.2f}")
-                motor.set_steering_objective(steering)
-                motor.set_speed_objective(self.get_speed_from_angle(angle))
+            # Steer towards the most open direction
+            angle_factor = angle / STERRING_SCAN_FRONT_DEG
+            
+            steering = angle_factor * STEER_ANGLE * STEER_SMOOTHING
+            
+            print(f"Steering towards opening at angle {angle:.2f}° (dist: {max_dist:.2f}m): Steering set to {steering:.2f}")
+            motor.set_steering_objective(steering)
+            motor.set_speed_objective(self.get_speed_from_angle(angle))
         else:
-            print("No closest obstacle found despite min_dist < STERRING_SCAN_DISTANCE")
+            print("No obstacles found in front range")
             motor.set_steering_objective(0.0)
 
 
