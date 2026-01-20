@@ -16,6 +16,9 @@ class AutoDriveState(State):
     def __init__(self):
         print("Initializing AutoDrive...")
         self.lidar = LidarParser()
+    
+    def stop(self):
+        self.lidar.stop()
 
     def run_single(self, motor : Motor, gamepad : Gamepad):
         points = self.lidar.get_points()

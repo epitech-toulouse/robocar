@@ -67,4 +67,7 @@ class Manager:
             self.state.run_single(self.motor, self.gamepad)
         self.logger.log("End of loop.")
         self.motor.stop()
+        self.manual_state.stop()
+        if self.other_state != None:
+            self.other_state.stop()
         # self.motor.join()
