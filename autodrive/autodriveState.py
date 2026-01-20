@@ -7,7 +7,7 @@ from .LidarParser import LidarParser
 SAFE_DISTANCE = 1.3  # meters
 SLOW_DISTANCE = 0.4   # meters
 STEER_ANGLE = 0.8    # Max steering
-STEER_SMOOTHING = 0.5  # Reduce steering aggressiveness (0.0 to 1.0)
+STEER_SMOOTHING = 0.8  # Reduce steering aggressiveness (0.0 to 1.0)
 FORWARD_SPEED = 0.06   # Conservative speed
 SLOW_SPEED = 0.04
 SCAN_FRONT_DEG = 20   # Degrees to scan in front of car
@@ -79,9 +79,9 @@ class AutoDriveState(State):
         # if angle > SCAN_FRONT_DEG:
         #     return FORWARD_SPEED
         # else:
-            print(f"Calculating speed for angle {angle:.2f}°")
-            angle = abs(angle)
-            angle_factor = angle / SCAN_FRONT_DEG
-            speed = SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * angle_factor
-            print(f"Adjusting speed: {speed:.3f}")
-            return speed
+        print(f"Calculating speed for angle {angle:.2f}°")
+        angle = abs(angle)
+        angle_factor = angle / SCAN_FRONT_DEG
+        speed = SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * angle_factor
+        print(f"Adjusting speed: {speed:.3f}")
+        return speed
