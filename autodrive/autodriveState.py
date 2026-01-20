@@ -35,21 +35,19 @@ class AutoDriveState(State):
                 closest_obstacle = ob
         if min_dist < SAFE_DISTANCE:
             print(f"Obstacle detected! Min dist: {min_dist:.2f}m. Avoiding...")
-            left_obs = self.get_obstacles_in_range(points, -90, -SCAN_FRONT_DEG)
-            right_obs = self.get_obstacles_in_range(points, SCAN_FRONT_DEG, 90)
             
-            min_left = min([ob['distance'] for ob in left_obs]) if left_obs else 100.0
-            min_right = min([ob['distance'] for ob in right_obs]) if right_obs else 100.0
-            
-            if min_left > min_right:
-                motor.set_steering_objective(-STEER_ANGLE)
-            else:
-                motor.set_steering_objective(STEER_ANGLE)
-            
-            # Speed proportional to obstacle angle (more centered = slower)
+            # Adjust steering based on obstacle angle
             if closest_obstacle:
+                obstacle_angle = (closest_obstacle['angle'] + ANGLE_OFFSET) % 360
+                if obstacle_angle > 180:
+                    obstacle_angle -= 360
+                
+                steering = -obstacle_angle / SCAN_FRONT_DEG * STEER_ANGLE
+                print(f"Steering away from obstacle at angle {closest_obstacle['angle']:.2f}°: Steering set to {steering:.2f}")
+                motor.set_steering_objective(steering)
                 motor.set_speed_objective(self.get_speed_from_angle(closest_obstacle['angle']))
             else:
+                motor.set_steering_objective(0.0)
                 motor.set_speed_objective(SLOW_SPEED)
                         
         elif min_dist < SLOW_DISTANCE:
@@ -77,4 +75,6 @@ class AutoDriveState(State):
             return FORWARD_SPEED
         else:
             angle_factor = angle / SCAN_FRONT_DEG
-            return SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * angle_factor
+            speed = SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * angle_factor
+            print(f"Adjusting speed based on angle {angle:.2f}°: {speed:.3f}")
+            return speed
