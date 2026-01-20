@@ -1,3 +1,11 @@
 build
 __pycache__
 control/__pycache__/
+/venv/
+/udpServer/client
+/udpServer/server
+/udpServer/visualizer
+*~
+/follow-the-line/xvenv/
+*#*
+*pycache*
