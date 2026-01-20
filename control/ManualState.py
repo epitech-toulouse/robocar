@@ -7,7 +7,7 @@ class ManualState(State):
     def __init__(self):
         pass
 
-    def run_single(motor : Motor, gamepad : Gamepad):
+    def run_single(self, motor : Motor, gamepad : Gamepad):
         steering = gamepad.getAxis("steering")
         forward = gamepad.getAxis("forward")
         backward = gamepad.getAxis("backward")

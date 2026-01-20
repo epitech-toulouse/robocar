@@ -10,7 +10,7 @@ class Manager:
     def __init__(self, state = None):
         self.logger = Logger("Manager")
         self.logger.log("Starting initialisation.")
-        self.manual_state = ManualState
+        self.manual_state = ManualState()
         self.other_state = state
         self.state = self.manual_state
         self.gamepad = Gamepad()
