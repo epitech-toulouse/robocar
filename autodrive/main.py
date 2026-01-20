@@ -9,7 +9,7 @@ from LidarParser import LidarParser
 from Motor import Motor
 
 # Configuration
-SAFE_DISTANCE = 1.5  # meters
+SAFE_DISTANCE = 1.3  # meters
 SLOW_DISTANCE = 0.4   # meters
 STEER_ANGLE = 0.8    # Max steering
 FORWARD_SPEED = 0.06   # Conservative speed
