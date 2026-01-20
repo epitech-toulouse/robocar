@@ -2,7 +2,7 @@
 from .State import State
 from .Motor import Motor
 from .Gamepad import Gamepad
-from LidarParser import LidarParser
+from .LidarParser import LidarParser
 
 SAFE_DISTANCE = 1.3  # meters
 SLOW_DISTANCE = 0.4   # meters
