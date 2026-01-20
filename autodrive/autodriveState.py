@@ -18,8 +18,8 @@ SLOW_SPEED = 0.02  # Minimum speed
 
 
 # STREERING AVOIDANCE PARAMETERS
-STERRING_SCAN_FRONT_DEG = 23   # Degrees to scan in front of car
-STERRING_SCAN_DISTANCE = 0.32  # meters
+STERRING_SCAN_FRONT_DEG = 33   # Degrees to scan in front of car
+STERRING_SCAN_DISTANCE = 1.0  # meters
 STEER_ANGLE = 0.8    # Max steering
 STEER_SMOOTHING = 0.8  # Reduce steering aggressiveness (0.0 to 1.0)
 
@@ -88,6 +88,7 @@ class AutoDriveState(State):
                 
                 print(f"Steering away from obstacle at angle {angle:.2f}° (dist: {min_dist:.2f}m): Steering set to {steering:.2f}")
                 motor.set_steering_objective(steering)
+                motor.set_speed_objective(self.get_speed_from_angle(angle))
             else:
                 print("No closest obstacle found despite min_dist < STERRING_SCAN_DISTANCE")
                 motor.set_steering_objective(0.0)
