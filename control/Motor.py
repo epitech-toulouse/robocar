@@ -10,6 +10,7 @@ class Motor:
         self.logger : Logger = Logger("Motor")
         self.logger.log("Starting initialisation.")
         self.vesc = None
+        self.serial_port = serial_port
         index = 0
         while (self.vesc == None):
             try:
@@ -36,7 +37,7 @@ class Motor:
     def join(self) -> None:
         self.thread.join()
 
-    def __loop__(self) -> None:
+    def __loop_item__(self) -> None:
         self.target_speed = 0.0
         self.speed = 0.0
         self.running = True
@@ -60,6 +61,30 @@ class Motor:
             self.vesc.set_duty_cycle(self.speed)
             self.vesc.set_servo((self.steering + 1) / 2)
         self.vesc.set_duty_cycle(0)
+
+    def __loop__(self) -> None:
+        while self.running:
+            try:
+                self.__loop_item__()
+                break
+            except serial.SerialException:
+                if not self.lock.locked():
+                    self.lock.acquire()
+                self.vesc = None
+                self.logger.log("VESC Deconnected, connecting again.")
+                index = 0
+                while (self.vesc == None):
+                    try:
+                        self.logger.log("Trying VESC", self.serial_port[index])
+                        self.vesc : VESC = VESC(serial_port=self.serial_port[index])
+                    except:
+                        self.logger.log("Waiting for VESC...")
+                        index = index + 1
+                        if index == len(serial_port):
+                            index = 0
+                        time.sleep(1)
+                self.logger.log("VESC Reinitialized.")
+                self.lock.release()
 
     def set_steering_objective(self, steering : float) -> None:
         """steering is a number between -1 and 1."""
