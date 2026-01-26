@@ -76,8 +76,13 @@ class Motor:
             except serial.SerialException:
                 if not self.lock.locked():
                     self.lock.acquire()
+                self.vesc.stop_heartbeat()
+                if self.vesc.serial_port.is_open:
+                    self.vesc.serial_port.flush()
+                    self.vesc.serial_port.close()
                 self.vesc = None
-                self.lock.release()
+                if self.lock.locked():
+                    self.lock.release()
                 self.logger.log("VESC Deconnected, connecting again.")
                 index = 0
                 while (self.vesc == None):
@@ -100,6 +105,11 @@ class Motor:
                 if self.lock.locked():
                     self.lock.release()
         self.logger.log("End of global loop.")
+        self.vesc.stop_heartbeat()
+        if self.vesc.serial_port.is_open:
+            self.vesc.serial_port.flush()
+            self.vesc.serial_port.close()
+        self.vesc = None
         if self.lock.locked():
             self.lock.release()
 
