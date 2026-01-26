@@ -14,7 +14,7 @@ class Manager:
         self.other_state = state
         self.state = self.manual_state
         self.gamepad = Gamepad()
-        self.motor = Motor("/dev/ttyACM0", 0.4, -0.2)
+        self.motor = Motor(["/dev/ttyACM0", "/dev/ttyACM1"], 0.4, -0.2)
         self.logger.log("Init done.")
         self.running = True
         self.take_manual_control()
