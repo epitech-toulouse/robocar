@@ -103,25 +103,29 @@ class AutoDriveState(State):
 
 
     def find_best_path(self, front, left, right):
-        """Trouve la meilleure direction à prendre"""
+        """Trouve la meilleure direction à prendre avec braquage proportionnel"""
+        
+        # Calculer le braquage proportionnel basé sur l'espace disponible
+        right_steering = self.calculate_proportional_steering(right, 1.0)   # Positif = droite
+        left_steering = self.calculate_proportional_steering(left, -1.0)    # Négatif = gauche
         
         # Calcul des scores pour chaque direction
         paths = [
             {
                 'name': 'AVANT',
-                'steering': 0.0,
+                'steering': self.fine_tune_steering(front['obstacles']),
                 'score': front['avg_dist'],
                 'free': front['min_dist'] > SAFE_DISTANCE
             },
             {
                 'name': 'DROITE',
-                'steering': STEER_ANGLE,
+                'steering': right_steering,
                 'score': right['avg_dist'] * 0.8,  # Léger malus pour les virages
                 'free': right['min_dist'] > SLOW_DISTANCE
             },
             {
                 'name': 'GAUCHE',
-                'steering': -STEER_ANGLE,
+                'steering': left_steering,
                 'score': left['avg_dist'] * 0.8,
                 'free': left['min_dist'] > SLOW_DISTANCE
             }
@@ -130,15 +134,40 @@ class AutoDriveState(State):
         free_paths = [p for p in paths if p['free']]
         
         if not free_paths:
-            return max(paths, key=lambda p: p['score'])
+            best = max(paths, key=lambda p: p['score'])
+            print(f"⚠️ Aucun chemin libre! Meilleur choix: {best['name']} (steering={best['steering']:+.2f})")
+            return best
         
         best = max(free_paths, key=lambda p: p['score'])
         
-        if best['name'] == 'AVANT':
-            best['steering'] = self.fine_tune_steering(front['obstacles'])
-        
-        print ("✅ Chemin choisi:", best['name'])
+        print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
         return best
+    
+    def calculate_proportional_steering(self, sector_scan, direction):
+        """Calcule un braquage proportionnel basé sur la distance et densité d'obstacles"""
+        min_dist = sector_scan['min_dist']
+        avg_dist = sector_scan['avg_dist']
+        
+        # Plus l'espace est grand, moins on tourne fort
+        # Utiliser la distance moyenne pour un meilleur jugement
+        if avg_dist > 3.5:
+            # Beaucoup d'espace : virage très doux
+            factor = 0.3
+        elif avg_dist > 2.5:
+            # Espace confortable : virage doux
+            factor = 0.5
+        elif avg_dist > 1.8:
+            # Espace moyen : virage modéré
+            factor = 0.7
+        else:
+            # Peu d'espace : virage prononcé
+            factor = 0.9
+        
+        # Ajuster selon la distance minimale (sécurité)
+        if min_dist < SLOW_DISTANCE:
+            factor = min(1.0, factor + 0.2)  # Tourner plus fort si danger proche
+        
+        return direction * STEER_ANGLE * factor
 
     def fine_tune_steering(self, obstacles):
         """Ajustement fin du braquage pour rester au centre"""
