@@ -73,11 +73,9 @@ class Gamepad:
                 if value.code == 0:
                     self.axis["steering"] = abs_event.event.value / 32767
                 elif value.code == 5:
-                    self.axis["forward"] = abs_event.event.value / 255
-                    * self.max_speed_ratio
+                    self.axis["forward"] = abs_event.event.value / 255 * self.max_speed_ratio
                 elif value.code == 2:
-                    self.axis["backward"] = abs_event.event.value / 255
-                    * self.max_speed_ratio / 2
+                    self.axis["backward"] = abs_event.event.value / 255 * self.max_speed_ratio / 2
             # If button
             elif value.code == evdev.ecodes.BTN_A:
                 self.buttons["A"] = True
