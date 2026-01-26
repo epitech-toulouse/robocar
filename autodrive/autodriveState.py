@@ -1,4 +1,4 @@
-
+import time
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
@@ -6,140 +6,190 @@ from .LidarParser import LidarParser
 
 
 # DIRECTION DRIVE PARAMETERS
+SCAN_FRONT_DEG = 35   # Élargi pour mieux détecter les ouvertures
+SAFE_DISTANCE = 4.0   # Distance de sécurité pour ralentir
+SLOW_DISTANCE = 1.5   # Distance de ralentissement
+STOP_DISTANCE = 0.465   # Distance d'arrêt
 
-SCAN_FRONT_DEG = 15   # Degrees to scan in front of car
-SAFE_DISTANCE = 5.0  # meters - max distance for speed scaling
-SLOW_DISTANCE = 1.4   # meters
-STOP_DISTANCE = 0.5    # meters
+FORWARD_SPEED = 0.11   # Vitesse maximale augmentée
+BACKWARD_SPEED = -0.04 # Vitesse de recul
+SLOW_SPEED = 0.03      # Vitesse minimale
 
-FORWARD_SPEED = 0.08   # Max speed at 5+ meters
-BACKWARD_SPEED = -0.03  # Reverse speed
-SLOW_SPEED = 0.02  # Minimum speed
-
-
-# STREERING AVOIDANCE PARAMETERS
-STERRING_SCAN_FRONT_DEG = 1   # Degrees to scan in front of car
-STERRING_SCAN_DISTANCE = 2.0  # meters
-STEER_ANGLE = 0.8    # Max steering
-STEER_SMOOTHING = 0.8  # Reduce steering aggressiveness (0.0 to 1.0)
-
-
+# STEERING AVOIDANCE PARAMETERS
+STEERING_SCAN_ANGLE = 60  # Angle de scan pour trouver les ouvertures
+STEER_ANGLE = 1         # Angle de braquage max
+STEER_SMOOTHING = 0.7     # Lissage du braquage
 
 
 class AutoDriveState(State):
     def __init__(self):
         print("Initializing AutoDrive...")
         self.lidar = LidarParser()
+        self.last_steering = 0.0  # Pour le lissage
+        self.reverse_timer = 0    # Compteur pour la marche arrière
     
     def stop(self):
         self.lidar.stop()
 
-    def run_single(self, motor : Motor, gamepad : Gamepad):
-        self.direction_drive(motor, gamepad)
-        self.speed_drive(motor, gamepad)
+    def run_single(self, motor: Motor, gamepad: Gamepad):
+        """Exécute un cycle de contrôle"""
+        points = self.lidar.get_points()
+        if not points:
+            time.sleep(0.05)
+            return
+        
+        front_scan = self.scan_sector(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG, "AVANT")
+        left_scan = self.scan_sector(points,-STEERING_SCAN_ANGLE, -(SCAN_FRONT_DEG - 10), "GAUCHE")
+        right_scan = self.scan_sector(points, (SCAN_FRONT_DEG - 10), STEERING_SCAN_ANGLE, "DROITE")
+        largescans = self.scan_sector(points, -180, 180, "ALL")
 
+        
+        if self.reverse_timer > 0:
+            self.handle_reverse(motor, largescans)
+            self.reverse_timer -= 1
+        else:
+            self.navigate(motor, front_scan, left_scan, right_scan, largescans)
 
-    def get_obstacles_in_range(self, points, min_angle, max_angle):
+    def scan_sector(self, points, min_angle, max_angle, sector_name=""):
+        """Analyse un secteur angulaire et retourne les statistiques"""
         obstacles = []
         for p in points:
-            angle = (p['angle']) % 360
-            if angle > 180:
-                angle -= 360
+            angle = self.normalize_angle(p['angle'])
             if min_angle <= angle <= max_angle:
                 obstacles.append(p)
-        return obstacles
-    
-
-
-
-
-    def direction_drive(self, motor : Motor, gamepad : Gamepad):
-           
-        points = self.lidar.get_points()
-        if not points:
-            time.sleep(0.05)
-            return
-        front_obstacles = self.get_obstacles_in_range(points, -STERRING_SCAN_FRONT_DEG, STERRING_SCAN_FRONT_DEG)
-
-        max_dist = 0.0
-        farthest_obstacle = None
-        for ob in front_obstacles:
-            if ob['distance'] > max_dist:
-                max_dist = ob['distance']
-                farthest_obstacle = ob
         
-        if farthest_obstacle:
-            angle = farthest_obstacle['angle'] % 360
-            if (angle < 5):
-                print("On right way")
-                motor.set_steering_objective(0.0)
+        if not obstacles:
+            # if sector_name:
+            #     print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): ⚫ NO DATA")
+            return {'min_dist': float('inf'), 'avg_dist': float('inf'), 'count': 0, 'obstacles': []}
+        
+        distances = [o['distance'] for o in obstacles]
+        result = {
+            'min_dist': min(distances),
+            'avg_dist': sum(distances) / len(distances),
+            'count': len(distances),
+            'obstacles': obstacles
+        }
+        # if sector_name:
+        #     status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
+        #     print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
+        
+        
+        return result
 
-            if angle > 180:
-                angle -= 360  # Normalize to [-180, 180]
+    def normalize_angle(self, angle):
+        """Normalise un angle entre -180 et 180"""
+        angle = angle % 360
+        if angle > 180:
+            angle -= 360
+        return angle
 
-            print(f"Farthest opening at angle {angle:.2f}° and distance {max_dist:.2f}m")
-            
-            angle_factor = angle / STERRING_SCAN_FRONT_DEG
-            steering = angle_factor * STEER_ANGLE
-            
-            motor.set_steering_objective(steering)
-            motor.set_speed_objective(self.get_speed_from_angle(angle))
-        else:
-            print("No obstacles found in front range")
-            motor.set_steering_objective(0.0)
-
-
-    
-    def speed_drive(self, motor : Motor, gamepad : Gamepad):   
-        points = self.lidar.get_points()
-        if not points:
-            time.sleep(0.05)
-            return
-     
-
-        front_obstacles = self.get_obstacles_in_range(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG)
-
-        closest_obstacle = None
-        min_dist = float('inf') 
-        for ob in front_obstacles:
-            if ob['distance'] < min_dist:
-                min_dist = ob['distance']
-                closest_obstacle = ob
-
-        if min_dist < STOP_DISTANCE:
-            print(f"Too close to obstacle! Min dist: {min_dist:.2f}m. Reversing...")
-            if closest_obstacle:
-                angle = closest_obstacle['angle'] % 360
-                if angle > 180:
-                    angle -= 360
-                steering = -1.0 if angle < 0 else 1.0
-                motor.set_steering_objective(steering * STEER_ANGLE)
-            motor.set_speed_objective(BACKWARD_SPEED)
+    def navigate(self, motor: Motor, front, left, right, largescans):
+        """Logique principale de navigation"""
+        
+        # Obstacle très proche : marche arrière
+        if front['min_dist'] < STOP_DISTANCE:
+            print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
+            self.initiate_reverse(motor, largescans)
             return
         
-        # Scale speed based on distance: 0.5m -> SLOW_SPEED, 5m+ -> FORWARD_SPEED
-        if min_dist < SAFE_DISTANCE:
-            # Linear interpolation based on distance
-            distance_factor = (min_dist - STOP_DISTANCE) / (SAFE_DISTANCE - STOP_DISTANCE)
-            distance_factor = max(0.0, min(1.0, distance_factor))
-            speed = SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * distance_factor
-            motor.set_speed_objective(speed)
+        best_direction = self.find_best_path(front, left, right)
+        speed = self.calculate_speed(front['min_dist'])
+        target_steering = best_direction['steering']
+        
+        motor.set_steering_objective(target_steering)
+        motor.set_speed_objective(speed)
+        
+
+
+    def find_best_path(self, front, left, right):
+        """Trouve la meilleure direction à prendre"""
+        
+        # Calcul des scores pour chaque direction
+        paths = [
+            {
+                'name': 'AVANT',
+                'steering': 0.0,
+                'score': front['avg_dist'],
+                'free': front['min_dist'] > SAFE_DISTANCE
+            },
+            {
+                'name': 'DROITE',
+                'steering': STEER_ANGLE,
+                'score': right['avg_dist'] * 0.65,  # Léger malus pour les virages
+                'free': right['min_dist'] > SLOW_DISTANCE
+            },
+            {
+                'name': 'GAUCHE',
+                'steering': -STEER_ANGLE,
+                'score': left['avg_dist'] * 0.65,
+                'free': left['min_dist'] > SLOW_DISTANCE
+            }
+        ]
+
+        free_paths = [p for p in paths if p['free']]
+        
+        if not free_paths:
+            return max(paths, key=lambda p: p['score'])
+        
+        best = max(free_paths, key=lambda p: p['score'])
+        
+        if best['name'] == 'AVANT':
+            best['steering'] = self.fine_tune_steering(front['obstacles'])
+        
+        print ("✅ Chemin choisi:", best['name'])
+        return best
+
+    def fine_tune_steering(self, obstacles):
+        """Ajustement fin du braquage pour rester au centre"""
+        if not obstacles:
+            return 0.0
+        
+        closest = min(obstacles, key=lambda o: o['distance'])
+        angle = self.normalize_angle(closest['angle'])
+        
+        correction = -angle / SCAN_FRONT_DEG * 0.3 
+        return max(-STEER_ANGLE, min(STEER_ANGLE, correction))
+
+    def calculate_speed(self, min_distance):
+        """Calcul adaptatif de la vitesse selon la distance"""
+        if min_distance >= SAFE_DISTANCE:
+            return FORWARD_SPEED
+        elif min_distance <= STOP_DISTANCE:
+            return 0.0
         else:
-            motor.set_speed_objective(FORWARD_SPEED)
+            factor = (min_distance - STOP_DISTANCE) / (SAFE_DISTANCE - STOP_DISTANCE)
+            return SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * factor
 
-    
-    def get_speed_from_angle(self, angle):
-        angle = abs(angle)
-        if (angle > 180):
-            angle = 360 - angle
+    def smooth_steering(self, target_steering):
+        """Lisse le braquage pour éviter les changements brusques"""
+        smooth = (STEER_SMOOTHING * self.last_steering + 
+                  (1 - STEER_SMOOTHING) * target_steering)
+        self.last_steering = smooth
+        return smooth
 
-      #  print(f"Calculating speed for angle {angle:.2f}°")
-        angle = abs(angle)
-        angle_factor = angle / SCAN_FRONT_DEG
-        speed = SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * angle_factor
-       # print(f"Adjusting speed: {speed:.3f}")
-        return speed
-    
+    def initiate_reverse(self, motor: Motor, largescans):
+        """Démarre une séquence de marche arrière"""
+        self.reverse_timer = 30  # Nombre de cycles en marche arrière
+        
+        if largescans['obstacles']:
+            left_sector = [o for o in largescans['obstacles'] if 30 <= self.normalize_angle(o['angle']) <= 150]
+            right_sector = [o for o in largescans['obstacles'] if -150 <= self.normalize_angle(o['angle']) <= -30]
+            
+            left_min = min([o['distance'] for o in left_sector]) if left_sector else float('inf')
+            right_min = min([o['distance'] for o in right_sector]) if right_sector else float('inf')
+            
+            
+            if left_min > right_min:
+                steering = -STEER_ANGLE
+            else:
+                steering = STEER_ANGLE 
+        else:
+            steering = 0.0 
+        
+        motor.set_steering_objective(steering)
+        motor.set_speed_objective(BACKWARD_SPEED)
 
-                        
-      
+    def handle_reverse(self, motor: Motor, largescans):
+        """Gère la marche arrière"""
+        print(f"🔄 MARCHE ARRIÈRE ({self.reverse_timer} cycles restants)")
