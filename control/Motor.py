@@ -30,6 +30,7 @@ class Motor:
         self.speed : float = 0.0
         self.running : bool = True
         self.steering : float = 0.0
+        self.need_reset : bool = False
         self.logger.log("Init done.")
         self.thread = threading.Thread(target=self.__loop__)
         self.lock = threading.Lock()
@@ -42,7 +43,7 @@ class Motor:
         self.target_speed = 0.0
         self.speed = 0.0
         self.running = True
-        while self.running:
+        while self.running and not self.need_reset:
             self.lock.acquire()
             if self.target_speed > self.max_speed:
                 self.target_speed = self.max_speed
@@ -67,6 +68,9 @@ class Motor:
         while self.running:
             try:
                 self.__loop_item__()
+                self.need_reset = False
+                if not self.running:
+                    raise serial.SerialException()
                 break
             except serial.SerialException:
                 if not self.lock.locked():
@@ -86,6 +90,11 @@ class Motor:
                         time.sleep(1)
                 self.logger.log("VESC Reinitialized.")
                 self.lock.release()
+
+    def reset(self) -> None:
+        self.lock.acquire()
+        self.need_reset = True
+        self.lock.release()
 
     def set_steering_objective(self, steering : float) -> None:
         """steering is a number between -1 and 1."""
