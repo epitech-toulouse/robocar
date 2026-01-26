@@ -94,7 +94,8 @@ class Gamepad:
             elif value.code == evdev.ecodes.BTN_TR:
                 self.buttons["RB"] = True
             for key, item in evdev.ecodes.__dict__.items():
-                print(key, item)
-                if key == value.code:
-                    print("PRESSED: ", item)
+                if not "BTN_" in key:
+                    continue
+                if item == value.code:
+                    print("PRESSED: ", key)
             value = self.device.read_one()
