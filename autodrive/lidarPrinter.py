@@ -4,7 +4,6 @@ from LidarParser import LidarParser
 import time
 
 lidar = LidarParser()
-car_border_dist = [0.0] * 360
 running = True
 
 lidar_dir = {}
@@ -14,12 +13,13 @@ while running:
     if not points:
         time.sleep(0.05)
         continue
+    print(points)
     for p in points:
         angle = p['angle']
         distance = p['distance']
-        if (lidar_dir[angle] is None):
+        if (lidar_dir.get(angle) is None):
             lidar_dir[angle] = distance
         if (lidar_dir[angle] > distance):
             lidar_dir[angle] = distance
-    print(f"Car border: {car_border_dist}")
+    print(f"Car border: {lidar_dir}")
     time.sleep(0.05)

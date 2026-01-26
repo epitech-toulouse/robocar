@@ -12,7 +12,7 @@ BUBBLE_RADIUS = 0.50     # Safety bubble radius in meters (inflates obstacles)
 MAX_LIDAR_DIST = 4.0     # Cap distance for normalization
 SAFE_THRESHOLD = 0.5     # Threshold to consider a point as "free space"
 
-DRIVE_SPEED_MAX = 0.10
+DRIVE_SPEED_MAX = 0.03
 DRIVE_SPEED_MIN = 0.02
 STEERING_SENSITIVITY = 1.0 
 
