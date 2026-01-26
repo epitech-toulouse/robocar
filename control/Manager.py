@@ -83,12 +83,13 @@ class Manager:
                 continue
             except KeyboardInterrupt:
                 self.logger.log("Interrupted.")
-                self.stop()
+                self.safe_stop()
                 self.running = False
                 break
 
     def safe_stop(self):
-        self.motor.stop()
+        self.running = False
+        self.motor.urgent_stop()
         self.manual_state.stop()
         if self.other_state != None:
             self.other_state.stop()
