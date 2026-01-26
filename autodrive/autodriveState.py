@@ -12,7 +12,7 @@ SLOW_DISTANCE = 2.5   # Distance de ralentissement
 STOP_DISTANCE = 0.7   # Distance d'arrêt
 
 FORWARD_SPEED = 0.21   # Vitesse maximale augmentée
-BACKWARD_SPEED = -0.4 # Vitesse de recul
+BACKWARD_SPEED = -0.04 # Vitesse de recul
 SLOW_SPEED = 0.08      # Vitesse minimale
 
 # STEERING AVOIDANCE PARAMETERS
