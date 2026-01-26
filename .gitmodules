@@ -1,0 +1,6 @@
+[submodule "fusion-engine-client"]
+	path = fusion-engine-client
+	url = https://github.com/PointOneNav/fusion-engine-client
+[submodule "p1-host-tools"]
+	path = p1-host-tools
+	url = https://github.com/PointOneNav/p1-host-tools
