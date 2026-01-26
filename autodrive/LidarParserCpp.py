@@ -16,14 +16,20 @@ class LidarPointC(ctypes.Structure):
 
 class LidarParser:
     def __init__(self, port=['/dev/ttyUSB0', '/dev/ttyUSB1'], baudrate=230400, angle_offset=15.0):
-        # Find and load the shared library
-        lib_path = Path(__file__).parent / "cpp" / "liblidar_parser.so"
-        if not lib_path.exists():
-            # Try build directory
-            lib_path = Path(__file__).parent / "cpp" / "build" / "liblidar_parser.so"
+        # Find and load the shared library - check multiple locations
+        search_paths = [
+            Path(__file__).parent / "cpp" / "liblidar_parser.so",
+            Path(__file__).parent / "cpp" / "build" / "liblidar_parser.so",
+        ]
         
-        if not lib_path.exists():
-            raise RuntimeError(f"Could not find liblidar_parser.so at {lib_path}")
+        lib_path = None
+        for path in search_paths:
+            if path.exists():
+                lib_path = path
+                break
+        
+        if lib_path is None:
+            raise RuntimeError(f"Could not find liblidar_parser.so in: {[str(p) for p in search_paths]}")
         
         self._lib = ctypes.CDLL(str(lib_path))
         
@@ -87,4 +93,5 @@ class LidarParser:
             self._handle = None
     
     def __del__(self):
-        self.stop()
+        if hasattr(self, '_handle'):
+            self.stop()
