@@ -5,6 +5,7 @@ from .Motor import Motor
 from .Logger import Logger
 from .State import State
 from .ManualState import ManualState
+import serial
 
 class Manager:
     def __init__(self, state = None):
@@ -43,7 +44,7 @@ class Manager:
         self.motor.stop()
         self.take_manual_control()
 
-    def loop(self):
+    def _loop(self):
         self.logger.log("Waiting for Start call.")
         self.gamepad.updateEvents()
         while not self.gamepad.getButton("Start"):
@@ -67,8 +68,21 @@ class Manager:
             self.state.run_single(self.motor, self.gamepad)
         self.logger.log("End of loop.")
         self.safe_stop()
-        # self.motor.join()
-    
+
+    def loop(self):
+        while self.running:
+            try:
+                self._loop()
+            except serial.SerialException:
+                self.motor = Motor(["/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2"], 0.4, -0.2)
+                self.stop()
+                continue
+            except KeyboardInterrupt:
+                self.logger.log("Interrupted.")
+                self.stop()
+                self.running = False
+                break
+
     def safe_stop(self):
         self.motor.stop()
         self.manual_state.stop()
