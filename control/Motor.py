@@ -6,16 +6,20 @@ import time
 from .Logger import Logger
 
 class Motor:
-    def __init__(self, serial_port : str, max_speed = 0.4, min_speed = -0.2) -> None:
+    def __init__(self, serial_port : list[str], max_speed = 0.4, min_speed = -0.2) -> None:
         self.logger : Logger = Logger("Motor")
         self.logger.log("Starting initialisation.")
         self.vesc = None
+        index = 0
         while (self.vesc == None):
             try:
-                print("Connecting to VESC... on port " + serial_port)
-                self.vesc : VESC = VESC(serial_port=serial_port)
+                self.logger.log("Trying VESC", serial_port[index])
+                self.vesc : VESC = VESC(serial_port=serial_port[index])
             except:
                 self.logger.log("Waiting for VESC...")
+                index = index + 1
+                if index == len(serial_port):
+                    index = 0
                 time.sleep(1)
         self.logger.log("Motor controler connected.")
         self.max_speed = max_speed
