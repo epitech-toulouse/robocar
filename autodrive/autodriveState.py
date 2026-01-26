@@ -5,6 +5,8 @@ from control.Gamepad import Gamepad
 from .LidarParserCpp import LidarParser
 
 
+vitesse_factor = 2;
+
 # DIRECTION DRIVE PARAMETERS
 SCAN_FRONT_DEG = 35   # Élargi pour mieux détecter les ouvertures
 SAFE_DISTANCE = 8.0   # Distance de sécurité pour ralentir
@@ -154,18 +156,18 @@ class AutoDriveState(State):
         
         # Plus l'espace est grand, moins on tourne fort
         # Utiliser la distance moyenne pour un meilleur jugement
-        if avg_dist > 3.5:
+        if avg_dist > 3.5 * vitesse_factor:
             # Beaucoup d'espace : virage très doux
             factor = 0.3
-        elif avg_dist > 2.5:
+        elif avg_dist > 2.5 * vitesse_factor:
             # Espace confortable : virage doux
             factor = 0.5
-        elif avg_dist > 1.8:
+        elif avg_dist > 1.8 * vitesse_factor:
             # Espace moyen : virage modéré
             factor = 0.7
         else:
             # Peu d'espace : virage prononcé
-            factor = 0.9
+            factor = 0.9 
         
         # Ajuster selon la distance minimale (sécurité)
         if min_dist < SLOW_DISTANCE:
