@@ -4,12 +4,14 @@ import threading
 from pyvesc import VESC
 import time
 from .Logger import Logger
+import serial
 
 class Motor:
     def __init__(self, serial_port : list[str], max_speed = 0.4, min_speed = -0.2) -> None:
         self.logger : Logger = Logger("Motor")
         self.logger.log("Starting initialisation.")
         self.vesc = None
+        self.serial_port = serial_port
         index = 0
         while (self.vesc == None):
             try:
@@ -28,6 +30,7 @@ class Motor:
         self.speed : float = 0.0
         self.running : bool = True
         self.steering : float = 0.0
+        self.need_reset : bool = False
         self.logger.log("Init done.")
         self.thread = threading.Thread(target=self.__loop__)
         self.lock = threading.Lock()
@@ -36,11 +39,11 @@ class Motor:
     def join(self) -> None:
         self.thread.join()
 
-    def __loop__(self) -> None:
+    def __loop_item__(self) -> None:
         self.target_speed = 0.0
         self.speed = 0.0
         self.running = True
-        while self.running:
+        while self.running and not self.need_reset:
             self.lock.acquire()
             if self.target_speed > self.max_speed:
                 self.target_speed = self.max_speed
@@ -60,6 +63,38 @@ class Motor:
             self.vesc.set_duty_cycle(self.speed)
             self.vesc.set_servo((self.steering + 1) / 2)
         self.vesc.set_duty_cycle(0)
+
+    def __loop__(self) -> None:
+        while self.running:
+            try:
+                self.__loop_item__()
+                self.need_reset = False
+                if not self.running:
+                    raise serial.SerialException()
+                break
+            except serial.SerialException:
+                if not self.lock.locked():
+                    self.lock.acquire()
+                self.vesc = None
+                self.logger.log("VESC Deconnected, connecting again.")
+                index = 0
+                while (self.vesc == None):
+                    try:
+                        self.logger.log("Trying VESC", self.serial_port[index])
+                        self.vesc : VESC = VESC(serial_port=self.serial_port[index])
+                    except:
+                        self.logger.log("Waiting for VESC...")
+                        index = index + 1
+                        if index == len(self.serial_port):
+                            index = 0
+                        time.sleep(1)
+                self.logger.log("VESC Reinitialized.")
+                self.lock.release()
+
+    def reset(self) -> None:
+        self.lock.acquire()
+        self.need_reset = True
+        self.lock.release()
 
     def set_steering_objective(self, steering : float) -> None:
         """steering is a number between -1 and 1."""

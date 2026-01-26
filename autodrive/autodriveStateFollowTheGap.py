@@ -8,11 +8,11 @@ from .LidarParser import LidarParser
 
 # --- FTG CONFIGURATION ---
 FOV_DEG = 160            # Field of view (+/- 80 degrees)
-BUBBLE_RADIUS = 0.50     # Safety bubble radius in meters (inflates obstacles)
-MAX_LIDAR_DIST = 4.0     # Cap distance for normalization
+BUBBLE_RADIUS = 1     # Safety bubble radius in meters (inflates obstacles)
+MAX_LIDAR_DIST = 10.0     # Cap distance for normalization
 SAFE_THRESHOLD = 0.5     # Threshold to consider a point as "free space"
 
-DRIVE_SPEED_MAX = 0.10
+DRIVE_SPEED_MAX = 0.03
 DRIVE_SPEED_MIN = 0.02
 STEERING_SENSITIVITY = 1.0 
 
@@ -137,7 +137,7 @@ class AutoDriveState(State):
              
         if max_len == 0:
             return None, None
-            
+        print("Max gap from index {} to {}".format(best_start, best_end)    )
         return best_start, best_end
 
     def find_best_goal(self, start_i, end_i, ranges):

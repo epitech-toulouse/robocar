@@ -2,7 +2,7 @@ import time
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
-from .LidarParser import LidarParser
+from .LidarParserCpp import LidarParser
 
 
 # DIRECTION DRIVE PARAMETERS
