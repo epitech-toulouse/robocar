@@ -228,3 +228,6 @@ class AutoDriveState(State):
     def handle_reverse(self, motor: Motor, largescans):
         """Gère la marche arrière"""
         print(f"🔄 MARCHE ARRIÈRE ({self.reverse_timer} cycles restants)")
+
+        if (self.reverse_timer < 3):
+            motor.set_steering_objective(0.0);
