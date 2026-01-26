@@ -69,7 +69,7 @@ class Motor:
             try:
                 self.__loop_item__()
                 self.need_reset = False
-                if not self.running:
+                if self.running:
                     raise serial.SerialException()
                 break
             except serial.SerialException:
