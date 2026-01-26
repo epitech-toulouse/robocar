@@ -92,6 +92,9 @@ class Motor:
                 self.logger.log("VESC Reinitialized.")
                 self.lock.release()
         self.logger.log("End of global loop.")
+        if self.lock.locked():
+            self.lock.release()
+
 
     def reset(self) -> None:
         self.lock.acquire()
