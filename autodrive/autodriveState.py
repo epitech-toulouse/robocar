@@ -8,7 +8,7 @@ from .LidarParserCpp import LidarParser
 vitesse_factor = 1.5;
 
 # DIRECTION DRIVE PARAMETERS
-SCAN_FRONT_DEG = 35   # Élargi pour mieux détecter les ouvertures
+SCAN_FRONT_DEG = 25   # Élargi pour mieux détecter les ouvertures
 SAFE_DISTANCE = 3.0   # Distance de sécurité pour ralentir
 SLOW_DISTANCE = 1.5   # Distance de ralentissement
 STOP_DISTANCE = 0.55   # Distance d'arrêt
@@ -18,7 +18,7 @@ BACKWARD_SPEED = -0.04 # Vitesse de recul
 SLOW_SPEED = 0.07      # Vitesse minimale
 
 # STEERING AVOIDANCE PARAMETERS
-STEERING_SCAN_ANGLE = 60  # Angle de scan pour trouver les ouvertures
+STEERING_SCAN_ANGLE = 70  # Angle de scan pour trouver les ouvertures
 STEER_ANGLE = 1         # Angle de braquage max
 STEER_SMOOTHING = 0.7     # Lissage du braquage
 
