@@ -77,9 +77,12 @@ class Motor:
                 if not self.lock.locked():
                     self.lock.acquire()
                 self.vesc = None
+                self.lock.release()
                 self.logger.log("VESC Deconnected, connecting again.")
                 index = 0
                 while (self.vesc == None):
+                    if not self.lock.locked():
+                        self.lock.acquire()
                     try:
                         self.logger.log("Trying VESC", self.serial_port[index])
                         self.vesc : VESC = VESC(serial_port=self.serial_port[index])
@@ -88,9 +91,14 @@ class Motor:
                         index = index + 1
                         if index == len(self.serial_port):
                             index = 0
+                        if self.lock.locked():
+                            self.lock.release()
                         time.sleep(1)
+                    if self.lock.locked():
+                        self.lock.release()
                 self.logger.log("VESC Reinitialized.")
-                self.lock.release()
+                if self.lock.locked():
+                    self.lock.release()
         self.logger.log("End of global loop.")
         if self.lock.locked():
             self.lock.release()
