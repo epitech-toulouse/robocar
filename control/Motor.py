@@ -4,6 +4,7 @@ import threading
 from pyvesc import VESC
 import time
 from .Logger import Logger
+import serial
 
 class Motor:
     def __init__(self, serial_port : list[str], max_speed = 0.4, min_speed = -0.2) -> None:
