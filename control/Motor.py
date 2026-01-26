@@ -85,7 +85,7 @@ class Motor:
                     except:
                         self.logger.log("Waiting for VESC...")
                         index = index + 1
-                        if index == len(serial_port):
+                        if index == len(self.serial_port):
                             index = 0
                         time.sleep(1)
                 self.logger.log("VESC Reinitialized.")
