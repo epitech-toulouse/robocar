@@ -83,19 +83,25 @@ class Gamepad:
                 self.buttons["X"] = True
             elif value.code == evdev.ecodes.BTN_Y:
                 self.buttons["Y"] = True
+                self.setNormalSpeed()
             elif value.code == evdev.ecodes.BTN_B:
                 self.buttons["B"] = True
+                self.setNormalSpeed()
             elif value.code == evdev.ecodes.BTN_SELECT:
                 self.buttons["Select"] = True
             elif value.code == evdev.ecodes.BTN_START:
                 self.buttons["Start"] = True
+                self.setNormalSpeed()
             elif value.code == evdev.ecodes.BTN_TL:
                 self.buttons["LB"] = True
+                self.setNormalSpeed()
             elif value.code == evdev.ecodes.BTN_TR:
                 self.buttons["RB"] = True
-            for key, item in evdev.ecodes.__dict__.items():
-                if not "BTN_" in key:
-                    continue
-                if item == value.code:
-                    print("PRESSED: ", key)
+            elif value.code == evdev.ecodes.BTN_THUMBR:
+                self.setManiSpeed()
+            #for key, item in evdev.ecodes.__dict__.items():
+            #    if not "BTN_" in key:
+            #        continue
+            #    if item == value.code:
+            #        print("PRESSED: ", key)
             value = self.device.read_one()
