@@ -113,7 +113,7 @@ class AutoDriveState(State):
         paths = [
             {
                 'name': 'AVANT',
-                'steering': self.fine_tune_steering(front['obstacles']),
+                'steering': 0.0,  # Pas d'ajustement constant, seulement si obstacles très proches
                 'score': front['avg_dist'],
                 'free': front['min_dist'] > SAFE_DISTANCE
             },
@@ -139,6 +139,10 @@ class AutoDriveState(State):
             return best
         
         best = max(free_paths, key=lambda p: p['score'])
+        
+        # Ajustement fin SEULEMENT si on va droit ET qu'il y a un obstacle très proche et décentré
+        if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE * 0.7:
+            best['steering'] = self.fine_tune_steering(front['obstacles'])
         
         print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
         return best
