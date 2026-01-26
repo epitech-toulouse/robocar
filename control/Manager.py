@@ -57,6 +57,7 @@ class Manager:
                 self.urgent_stop()
                 continue
             if self.gamepad.getButton("LB"):
+                self.logger.log("Resetting...")
                 self.motor.reset()
                 continue
             if self.gamepad.getButton("RB"):
