@@ -63,6 +63,7 @@ class Motor:
             self.vesc.set_duty_cycle(self.speed)
             self.vesc.set_servo((self.steering + 1) / 2)
         self.vesc.set_duty_cycle(0)
+        self.logger.log("End of inside loop.")
 
     def __loop__(self) -> None:
         while self.running:
@@ -90,6 +91,7 @@ class Motor:
                         time.sleep(1)
                 self.logger.log("VESC Reinitialized.")
                 self.lock.release()
+        self.logger.log("End of global loop.")
 
     def reset(self) -> None:
         self.lock.acquire()
