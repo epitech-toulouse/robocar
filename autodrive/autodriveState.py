@@ -116,13 +116,13 @@ class AutoDriveState(State):
             {
                 'name': 'DROITE',
                 'steering': STEER_ANGLE,
-                'score': right['avg_dist'] * 0.65,  # Léger malus pour les virages
+                'score': right['avg_dist'] * 0.8,  # Léger malus pour les virages
                 'free': right['min_dist'] > SLOW_DISTANCE
             },
             {
                 'name': 'GAUCHE',
                 'steering': -STEER_ANGLE,
-                'score': left['avg_dist'] * 0.65,
+                'score': left['avg_dist'] * 0.8,
                 'free': left['min_dist'] > SLOW_DISTANCE
             }
         ]
