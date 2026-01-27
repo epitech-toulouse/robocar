@@ -22,7 +22,7 @@ class Motor:
                 index = index + 1
                 if index == len(serial_port):
                     index = 0
-                time.sleep(1)
+                time.sleep(0.2)
         self.logger.log("Motor controler connected.")
         self.max_speed = max_speed
         self.min_speed = min_speed
