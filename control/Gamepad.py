@@ -11,6 +11,7 @@ class Gamepad:
         self.logger.log("Starting initialisation.")
         self.device = None
         self.max_speed_ratio : float = NORMAL_SPEED
+        self.logger.log("Speed is set to NORMAL speed.")
         while (self.device is None):
             devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
             for device in devices:
@@ -43,11 +44,13 @@ class Gamepad:
         self.logger.log("Init done.")
 
     def setManiSpeed(self):
-        self.logger.log("Speed is set to RACE speed. BEWARE !!! \a\a\a.")
+        if self.max_speed_ratio != MANI_SPEED:
+            self.logger.log("Speed is set to RACE speed. BEWARE !!! \a\a\a.")
         self.max_speed_ratio = MANI_SPEED
 
     def setNormalSpeed(self):
-        self.logger.log("Speed is set to NORMAL speed.")
+        if self.max_speed_ratio != NORMAL_SPEED:
+            self.logger.log("Speed is set to NORMAL speed.")
         self.max_speed_ratio = NORMAL_SPEED
 
     def setLedsOn(self):
