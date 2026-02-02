@@ -11,8 +11,185 @@ body {
   overflow: hidden;
 }
 
-.app {
+.app-container {
+  display: flex;
   width: 100vw;
   height: 100vh;
+}
+
+/* Visualization Panel (Left) */
+.viz-panel {
+  flex: 1;
   position: relative;
+  background: #000;
+  border-right: 1px solid #333;
+}
+
+.viz-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.btn-icon:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Terminal Panel (Right) */
+.terminal-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+  overflow: hidden;
+  max-width: 50%;
+  /* Default split */
+}
+
+/* SSH Terminal Component Styles */
+.ssh-terminal-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.connection-panel {
+  padding: 20px;
+  background: #252525;
+  border-bottom: 1px solid #333;
+}
+
+.connection-panel h3 {
+  margin-bottom: 15px;
+  color: #00ff88;
+  font-size: 1.1rem;
+}
+
+.form-group {
+  margin-bottom: 10px;
+}
+
+.form-row {
+  display: flex;
+  gap: 15px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+label {
+  display: block;
+  font-size: 0.8rem;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+
+input {
+  width: 100%;
+  padding: 8px 12px;
+  background: #111;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: white;
+  font-family: monospace;
+}
+
+input:focus {
+  outline: none;
+  border-color: #00ff88;
+}
+
+input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.connection-controls {
+  margin-top: 15px;
+}
+
+.btn-connect {
+  width: 100%;
+  padding: 10px;
+  background: #00ff88;
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-connect:hover {
+  background: #00cc6a;
+}
+
+.btn-connect:disabled {
+  background: #444;
+  color: #888;
+  cursor: wait;
+}
+
+.btn-disconnect {
+  width: 100%;
+  padding: 10px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.btn-disconnect:hover {
+  background: #cc3333;
+}
+
+/* Terminal Wrapper */
+.terminal-wrapper {
+  flex: 1;
+  padding: 10px;
+  background: #1a1a1a;
+  overflow: hidden;
+}
+
+.terminal {
+  height: 100%;
+  width: 100%;
+}
+
+/* XTerm Overrides */
+.xterm-viewport {
+  overflow-y: auto !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .app-container {
+    flex-direction: column;
+  }
+
+  .terminal-panel {
+    max-width: 100%;
+    height: 50%;
+  }
 }

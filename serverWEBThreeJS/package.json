@@ -13,7 +13,9 @@
         "docker:down": "docker compose down"
     },
     "dependencies": {
-        "express": "^4.18.2"
+        "express": "^4.18.2",
+        "ssh2": "^1.17.0",
+        "ws": "^8.19.0"
     },
     "devDependencies": {
         "nodemon": "^3.0.2"

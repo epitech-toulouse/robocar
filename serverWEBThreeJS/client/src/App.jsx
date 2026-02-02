@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import ThreeScene from './components/ThreeScene';
 import LidarPoints from './components/LidarPoints';
+import SSHTerminal from './components/SSHTerminal';
 import './App.css';
 
 function App() {
@@ -38,19 +39,32 @@ function App() {
   };
 
   return (
-    <div className="app">
-      {/* Three.js Scene - 2D Top-Down View */}
-      <ThreeScene onSceneReady={handleSceneReady}>
-        {sceneContext && (
-          <LidarPoints
-            points={lidarData}
-            scene={sceneContext.scene}
-            color={0x00ff88}
-            size={0.2}
-            visible={showLidar}
-          />
-        )}
-      </ThreeScene>
+    <div className="app-container">
+      {/* Left Panel: Visualization */}
+      <div className="viz-panel">
+        <ThreeScene onSceneReady={handleSceneReady}>
+          {sceneContext && (
+            <LidarPoints
+              points={lidarData}
+              scene={sceneContext.scene}
+              color={0x00ff88}
+              size={0.2}
+              visible={showLidar}
+            />
+          )}
+        </ThreeScene>
+
+        {/* Viz Controls Overlay */}
+        <div className="viz-controls">
+          <button className="btn-icon" onClick={generateSampleLidarData} title="Regenerate Data">🔄</button>
+          <button className="btn-icon" onClick={() => setShowLidar(!showLidar)} title="Toggle Lidar">👁️</button>
+        </div>
+      </div>
+
+      {/* Right Panel: SSH Terminal */}
+      <div className="terminal-panel">
+        <SSHTerminal />
+      </div>
     </div>
   );
 }
