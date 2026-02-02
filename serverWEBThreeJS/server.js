@@ -515,10 +515,25 @@ server.listen(PORT, '0.0.0.0', () => {
     initLidar();
 });
 
-// WebSocket server for SSH proxy
-const wss = new WebSocketServer({ server, path: '/ssh' });
+
+
+// WebSocket server for SSH proxy (using noServer to avoid conflicts with Socket.IO)
+const wss = new WebSocketServer({ noServer: true });
+
+// Handle HTTP upgrade manually to route to correct WebSocket server
+server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url, 'http://localhost').pathname;
+    
+    if (pathname === '/ssh') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+            wss.emit('connection', ws, request);
+        });
+    }
+    // Socket.IO handles its own /socket.io/ path internally
+});
 
 console.log('WebSocket SSH proxy ready on port', PORT);
+
 
 wss.on('connection', (ws) => {
     console.log('New WebSocket connection');
