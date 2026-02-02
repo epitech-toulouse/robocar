@@ -9,6 +9,15 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - LIDAR_BAUD_RATE=115200
+    # Option 1: Mode privilégié pour accès aux ports série (plus simple)
+    privileged: true
+    # Option 2: Monter les devices spécifiques (décommenter si Option 1 ne convient pas)
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    #   - /dev/ttyUSB1:/dev/ttyUSB1
+    volumes:
+      - /dev:/dev
     restart: unless-stopped
     networks:
       - robocar-network

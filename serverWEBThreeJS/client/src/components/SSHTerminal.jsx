@@ -46,7 +46,7 @@ export default function SSHTerminal() {
         term.open(terminalRef.current);
         fitAddon.current.fit();
 
-        term.writeln('\x1b[1;36m🚗 Robocar SSH Terminal\x1b[0m');
+        term.writeln('\x1b[1;36m Robocar SSH Terminal\x1b[0m');
         term.writeln('\x1b[90mEnter connection details and click Connect\x1b[0m');
         term.writeln('');
 
@@ -152,7 +152,7 @@ export default function SSHTerminal() {
         <div className="ssh-terminal-container">
             {/* Connection Form */}
             <div className="connection-panel">
-                <h3>🔐 SSH Connection</h3>
+                <h3>SSH Connection</h3>
 
                 <div className="form-group">
                     <label>Host IP:</label>

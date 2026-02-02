@@ -20,12 +20,13 @@ export default function ThreeScene({ children, onSceneReady }) {
         // Scene setup
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0a0a0a);
-        scene.fog = new THREE.Fog(0x0a0a0a, 10, 50);
+        // Disable fog to see all lidar points
+        // scene.fog = new THREE.Fog(0x0a0a0a, 10, 50);
         sceneRef.current = scene;
 
         // Camera setup - 2D top-down view with orthographic camera
         const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
-        const frustumSize = 15;
+        const frustumSize = 30; // Increased to see lidar points up to 15m away
         const camera = new THREE.OrthographicCamera(
             frustumSize * aspect / -2,
             frustumSize * aspect / 2,
@@ -34,7 +35,7 @@ export default function ThreeScene({ children, onSceneReady }) {
             0.1,
             1000
         );
-        camera.position.set(0, 20, 0); // Camera directly above
+        camera.position.set(0, 50, 0); // Camera higher up
         camera.lookAt(0, 0, 0); // Looking straight down
         cameraRef.current = camera;
 
@@ -68,12 +69,13 @@ export default function ThreeScene({ children, onSceneReady }) {
         directionalLight.castShadow = true;
         scene.add(directionalLight);
 
-        // Grid and axes helpers
-        const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+        // Grid helper only (no axes)
+        const gridHelper = new THREE.GridHelper(30, 30, 0x444444, 0x222222);
         scene.add(gridHelper);
 
-        const axesHelper = new THREE.AxesHelper(5);
-        scene.add(axesHelper);
+        // Removed axes helper for cleaner view
+        // const axesHelper = new THREE.AxesHelper(5);
+        // scene.add(axesHelper);
 
         // Notify parent that scene is ready
         if (onSceneReady) {
@@ -93,7 +95,7 @@ export default function ThreeScene({ children, onSceneReady }) {
             if (!containerRef.current) return;
 
             const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
-            const frustumSize = 15;
+            const frustumSize = 30; // Match the initial frustumSize
             camera.left = frustumSize * aspect / -2;
             camera.right = frustumSize * aspect / 2;
             camera.top = frustumSize / 2;
@@ -121,6 +123,8 @@ export default function ThreeScene({ children, onSceneReady }) {
         <div
             ref={containerRef}
             style={{ width: '100%', height: '100vh' }}
-        />
+        >
+            {children}
+        </div>
     );
 }

@@ -15,6 +15,9 @@ RUN npm run build
 # Stage 2: Production server
 FROM node:20-alpine
 
+# Install dependencies for serialport (native module compilation)
+RUN apk add --no-cache python3 make g++ linux-headers eudev-dev
+
 WORKDIR /app
 
 # Copy server package files
