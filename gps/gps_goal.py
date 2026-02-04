@@ -14,6 +14,7 @@ sys.path.insert(0, root_dir)
 from fusion_engine_client.utils.argument_parser import ArgumentParser
 from fusion_engine_client.messages import MessagePayload
 from fusion_engine_client.messages.core import PoseMessage
+from fusion_engine_client.messages.defs import yaw_to_heading
 from fusion_engine_client.parsers import FusionEngineDecoder
 
 
@@ -59,6 +60,21 @@ def bearing_to_direction(bearing):
                   'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
     index = round(bearing / 22.5) % 16
     return directions[index]
+
+
+def smallest_angle_diff_deg(from_deg, to_deg):
+    """Return signed smallest angle difference from from_deg to to_deg in degrees (-180..180]."""
+    return (to_deg - from_deg + 180.0) % 360.0 - 180.0
+
+
+def turn_instruction(current_heading_deg, target_bearing_deg):
+    """Return a simple turn instruction based on heading vs target bearing."""
+    diff = smallest_angle_diff_deg(current_heading_deg, target_bearing_deg)
+    abs_diff = abs(diff)
+    if abs_diff < 5.0:
+        return "On course"
+    direction = "Right" if diff > 0 else "Left"
+    return f"Turn {direction} {abs_diff:.1f}°"
 
 
 if __name__ == "__main__":
@@ -109,11 +125,19 @@ Connect to GPS stream and display direction to a goal position.
                                 bearing = calculate_bearing(current_lat, current_lon, goal_lat, goal_lon)
                                 distance = calculate_distance(current_lat, current_lon, goal_lat, goal_lon)
                                 direction = bearing_to_direction(bearing)
+
+                                # Calculate vehicle heading from device yaw (Point One convention)
+                                yaw_deg = message.ypr_deg[0]
+                                heading_deg = yaw_to_heading(yaw_deg)
+                                heading_direction = bearing_to_direction(heading_deg)
+                                turn = turn_instruction(heading_deg, bearing)
                                 
                                 # Display information
                                 print(f"Current: {current_lat:.6f}°, {current_lon:.6f}° [{current_alt:.2f}m]")
                                 print(f"Distance to goal: {distance:.2f}m")
-                                print(f"Bearing: {bearing:.1f}° ({direction})")
+                                print(f"Bearing to goal: {bearing:.1f}° ({direction})")
+                                print(f"Vehicle heading: {heading_deg:.1f}° ({heading_direction})")
+                                print(f"Turn: {turn}")
                                 print(f"Solution: {message.solution_type}")
                                 print("-" * 60)
                                 
