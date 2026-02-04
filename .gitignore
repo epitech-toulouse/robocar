@@ -9,3 +9,8 @@ control/__pycache__/
 /follow-the-line/xvenv/
 *#*
 *pycache*
+node_modules
+node_modules/*
+dist/
+dist
+ws/
