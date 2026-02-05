@@ -184,6 +184,8 @@ class AutoDriveState(State):
             turn_angle = gps_data['turn_angle']
             distance = gps_data['goal_distance']
             
+            print(f"🧭 [GPS-NAV] Turn angle: {turn_angle:.1f}°, Distance: {distance:.1f}m")
+            
             # Bonus GPS décroissant selon la distance (plus d'influence quand on est loin)
             if distance > 50.0:
                 gps_weight = 0.5  # Influence forte quand on est loin
@@ -194,8 +196,11 @@ class AutoDriveState(State):
             else:
                 gps_weight = 0.15  # Très faible quand proche (priorité aux obstacles)
             
+            print(f"🎯 [GPS-NAV] GPS weight: {gps_weight}")
+            
             # Calculer le bonus pour chaque direction selon l'angle de virage GPS
             for path in paths:
+                old_score = path['score']
                 if turn_angle < -10:  # Tourner à gauche
                     if path['name'] == 'GAUCHE':
                         path['score'] += gps_weight * 2.0
@@ -209,6 +214,12 @@ class AutoDriveState(State):
                 else:  # Tout droit (on course)
                     if path['name'] == 'AVANT':
                         path['score'] += gps_weight * 2.0
+                
+                if path['score'] != old_score:
+                    print(f"   [{path['name']}] Score: {old_score:.2f} → {path['score']:.2f} (bonus: +{path['score']-old_score:.2f})")
+        else:
+            if gps_data:
+                print(f"⚠️  [GPS-NAV] GPS data incomplete: turn_angle={gps_data.get('turn_angle')}, distance={gps_data.get('goal_distance')}")
 
         free_paths = [p for p in paths if p['free']]
         
