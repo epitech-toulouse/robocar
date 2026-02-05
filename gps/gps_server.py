@@ -301,19 +301,3 @@ if __name__ == "__main__":
     
     server = GPSServer(goal_lat=args.goal_lat, goal_lon=args.goal_lon)
     server.start()
-
-    
-    args = parser.parse_args()
-    
-    server = GPSServer(goal_lat=args.goal_lat, goal_lon=args.goal_lon age = time.time() - self.current_data['timestamp']
-                        if age < 2.0:
-                            heading_str = f"{self.current_data['heading']:.1f}°" if self.current_data['heading'] is not None else "N/A"
-                            print(f"📍 GPS: {self.current_data['lat']:.6f}°, {self.current_data['lon']:.6f}° [Heading: {heading_str}]")
-        except KeyboardInterrupt:
-            print("\n🛑 Arrêt du serveur...")
-            self.running = False
-
-
-if __name__ == "__main__":
-    server = GPSServer()
-    server.start()
