@@ -235,7 +235,8 @@ class GPSServer:
         
         print("✅ Serveur GPS démarré")
         if self.goal_lat and self.goal_lon:
-            print(f"🎯 Objectif: {self.goal_lat:.6f}°, {self.goal_lon:.6f}°")
+            print(f"Goal position: {self.goal_lat:.6f}°, {self.goal_lon:.6f}°")
+        print("Waiting for GPS data...\n")
         
         try:
             while True:
