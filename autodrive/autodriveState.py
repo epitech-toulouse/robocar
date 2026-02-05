@@ -4,23 +4,11 @@ import math
 import threading
 import os
 import sys
+import struct
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
 from .LidarParserCpp import LidarParser
-
-# Import GPS FusionEngine
-root_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, root_dir)
-
-try:
-    from fusion_engine_client.messages.core import PoseMessage
-    from fusion_engine_client.messages.defs import yaw_to_heading
-    from fusion_engine_client.parsers import FusionEngineDecoder
-    GPS_AVAILABLE = True
-except ImportError:
-    print("⚠️ GPS FusionEngine non disponible")
-    GPS_AVAILABLE = False
 
 
 vitesse_factor = 1.5;
@@ -64,7 +52,6 @@ class GPSNavigator:
         self.solution_type = None
         
         self.transport = None
-        self.decoder = None
         self.running = False
         self.thread = None
         self.last_update = 0
@@ -105,15 +92,10 @@ class GPSNavigator:
     
     def start(self):
         """Démarre la connexion GPS en thread séparé"""
-        if not GPS_AVAILABLE:
-            print("⚠️ GPS non disponible")
-            return False
-            
         try:
             self.transport = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.transport.settimeout(5.0)
             self.transport.connect((socket.gethostbyname(self.hostname), self.port))
-            self.decoder = FusionEngineDecoder()
             self.running = True
             
             self.thread = threading.Thread(target=self._gps_loop, daemon=True)
@@ -128,43 +110,73 @@ class GPSNavigator:
             return False
     
     def _gps_loop(self):
-        """Boucle de réception des données GPS"""
+        """Boucle de réception des données GPS - parse format binaire FusionEngine"""
+        buffer = bytearray()
+        
         while self.running:
             try:
-                received_data = self.transport.recv(1024)
+                received_data = self.transport.recv(4096)
                 if not received_data:
                     break
-                    
-                messages = self.decoder.on_data(received_data)
-                current_time = time.time()
                 
-                for header, message in messages:
-                    if isinstance(message, PoseMessage):
-                        # Mise à jour de la position
-                        self.current_lat = message.lla_deg[0]
-                        self.current_lon = message.lla_deg[1]
-                        self.current_alt = message.lla_deg[2]
+                buffer.extend(received_data)
+                
+                # Chercher le sync pattern FusionEngine (0x2E31)
+                while len(buffer) >= 12:  # Taille minimale d'un header
+                    # Chercher le début d'un message
+                    if len(buffer) >= 2 and buffer[0] == 0x2E and buffer[1] == 0x31:
+                        # Header trouvé
+                        if len(buffer) < 12:
+                            break
                         
-                        # Calcul du cap du véhicule
-                        yaw_deg = message.ypr_deg[0]
-                        self.heading_deg = yaw_to_heading(yaw_deg)
+                        # Lire la longueur du payload
+                        payload_len = struct.unpack('<I', buffer[8:12])[0]
+                        message_len = 12 + payload_len + 4  # header + payload + CRC
                         
-                        # Type de solution GPS
-                        self.solution_type = str(message.solution_type)
+                        if len(buffer) < message_len:
+                            break
                         
-                        # Calcul vers l'objectif si défini
-                        if self.goal_lat and self.goal_lon:
-                            self.bearing_to_goal = self.calculate_bearing(
-                                self.current_lat, self.current_lon,
-                                self.goal_lat, self.goal_lon
-                            )
-                            self.distance_to_goal = self.calculate_distance(
-                                self.current_lat, self.current_lon,
-                                self.goal_lat, self.goal_lon
-                            )
+                        # Extraire le message complet
+                        message_type = struct.unpack('<H', buffer[2:4])[0]
                         
-                        self.last_update = current_time
-                        break
+                        # Type 10000 = PoseMessage
+                        if message_type == 10000 and payload_len >= 136:
+                            try:
+                                # Offset dans le payload pour les données
+                                payload = buffer[12:12+payload_len]
+                                
+                                # Position LLA (3 doubles à offset 8)
+                                self.current_lat = struct.unpack('<d', payload[8:16])[0]
+                                self.current_lon = struct.unpack('<d', payload[16:24])[0]
+                                self.current_alt = struct.unpack('<d', payload[24:32])[0]
+                                
+                                # YPR angles (3 floats à offset 56)
+                                yaw_rad = struct.unpack('<f', payload[56:60])[0]
+                                
+                                # Convertir yaw en heading (0-360)
+                                self.heading_deg = (90.0 - (yaw_rad * 180.0 / 3.14159265359)) % 360.0
+                                
+                                # Calcul vers l'objectif si défini
+                                if self.goal_lat and self.goal_lon:
+                                    self.bearing_to_goal = self.calculate_bearing(
+                                        self.current_lat, self.current_lon,
+                                        self.goal_lat, self.goal_lon
+                                    )
+                                    self.distance_to_goal = self.calculate_distance(
+                                        self.current_lat, self.current_lon,
+                                        self.goal_lat, self.goal_lon
+                                    )
+                                
+                                self.last_update = time.time()
+                            except Exception as e:
+                                pass
+                        
+                        # Supprimer le message traité
+                        buffer = buffer[message_len:]
+                    else:
+                        # Pas de sync, chercher le prochain
+                        buffer.pop(0)
+                        
             except socket.timeout:
                 continue
             except Exception as e:
@@ -192,8 +204,7 @@ class GPSNavigator:
             'lat': self.current_lat,
             'lon': self.current_lon,
             'alt': self.current_alt,
-            'heading': self.heading_deg,
-            'solution': self.solution_type
+            'heading': self.heading_deg
         }
         
         if self.goal_lat and self.goal_lon and self.bearing_to_goal is not None:
@@ -217,7 +228,7 @@ class AutoDriveState(State):
         
         # GPS Navigation
         self.gps = None
-        self.use_gps = use_gps and GPS_AVAILABLE
+        self.use_gps = use_gps
         if self.use_gps:
             self.gps = GPSNavigator(gps_host, gps_port, goal_lat, goal_lon)
             if not self.gps.start():
