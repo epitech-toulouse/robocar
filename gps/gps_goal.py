@@ -94,6 +94,7 @@ Connect to GPS stream and display direction to a goal position.
 
     goal_lat = options.goal_lat
     goal_lon = options.goal_lon
+    print(options)
 
     print(f"Goal position: {goal_lat:.6f}°, {goal_lon:.6f}°")
     print("Waiting for GPS data...\n")
@@ -128,15 +129,23 @@ Connect to GPS stream and display direction to a goal position.
 
                                 # Calculate vehicle heading from device yaw (Point One convention)
                                 yaw_deg = message.ypr_deg[0]
-                                heading_deg = yaw_to_heading(yaw_deg)
-                                heading_direction = bearing_to_direction(heading_deg)
-                                turn = turn_instruction(heading_deg, bearing)
+                                if not math.isnan(yaw_deg):
+                                    heading_deg = yaw_to_heading(yaw_deg)
+                                    heading_direction = bearing_to_direction(heading_deg)
+                                    turn = turn_instruction(heading_deg, bearing)
+                                else:
+                                    heading_deg = float('nan')
+                                    heading_direction = "N/A"
+                                    turn = "Heading not available"
                                 
                                 # Display information
                                 print(f"Current: {current_lat:.6f}°, {current_lon:.6f}° [{current_alt:.2f}m]")
                                 print(f"Distance to goal: {distance:.2f}m")
                                 print(f"Bearing to goal: {bearing:.1f}° ({direction})")
-                                print(f"Vehicle heading: {heading_deg:.1f}° ({heading_direction})")
+                                if not math.isnan(heading_deg):
+                                    print(f"Vehicle heading: {heading_deg:.1f}° ({heading_direction})")
+                                else:
+                                    print(f"Vehicle heading: N/A (stationary or no IMU data)")
                                 print(f"Turn: {turn}")
                                 print(f"Solution: {message.solution_type}")
                                 print("-" * 60)

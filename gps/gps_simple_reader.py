@@ -46,6 +46,7 @@ class SimpleGPSReader:
     def _gps_loop(self):
         """Boucle de réception des données GPS - parse format binaire FusionEngine"""
         buffer = bytearray()
+        message_count = 0
         
         while self.running:
             try:
@@ -54,11 +55,13 @@ class SimpleGPSReader:
                     break
                 
                 buffer.extend(received_data)
+                print(f"DEBUG: Reçu {len(received_data)} bytes, buffer={len(buffer)} bytes, premier bytes: {buffer[:4].hex()}")
                 
                 # Chercher le sync pattern FusionEngine (0x2E31)
                 while len(buffer) >= 12:  # Taille minimale d'un header
                     # Chercher le début d'un message
                     if len(buffer) >= 2 and buffer[0] == 0x2E and buffer[1] == 0x31:
+                        print(f"DEBUG: Sync trouvé à position 0!")
                         # Header trouvé
                         if len(buffer) < 12:
                             break
@@ -72,6 +75,8 @@ class SimpleGPSReader:
                         
                         # Extraire le message complet
                         message_type = struct.unpack('<H', buffer[2:4])[0]
+                        message_count += 1
+                        print(f"DEBUG: Message #{message_count} - Type={message_type}, Payload={payload_len}B")
                         
                         # Type 10000 = PoseMessage
                         if message_type == 10000 and payload_len >= 136:
@@ -91,8 +96,13 @@ class SimpleGPSReader:
                                 self.heading_deg = (90.0 - (yaw_rad * 180.0 / 3.14159265359)) % 360.0
                                 
                                 self.last_update = time.time()
+                                print(f"DEBUG: PoseMessage reçu - Type={message_type}, Payload={payload_len}B")
                             except Exception as e:
-                                pass
+                                print(f"DEBUG: Erreur parsing PoseMessage: {e}")
+                        else:
+                            # Debug: afficher les autres types de messages
+                            if message_type != 10000:
+                                print(f"DEBUG: Message Type={message_type}, Payload={payload_len}B (pas PoseMessage)")
                         
                         # Supprimer le message traité
                         buffer = buffer[message_len:]
