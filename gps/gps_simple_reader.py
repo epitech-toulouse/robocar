@@ -124,10 +124,12 @@ class SimpleGPSReader:
                             pass
                     
                     elif line.startswith('Turn:'):
-                        # Format: "Turn: Turn Left 165.8°" ou "Turn: On course"
+                        # Format: "Turn: Turn Left 165.8°" ou "Turn: On course" ou "Turn: Heading not available"
                         try:
                             turn_part = line.split(':', 1)[1].strip()
-                            if 'Left' in turn_part:
+                            if 'Heading not available' in turn_part or 'not available' in turn_part:
+                                current_block['turn_angle'] = None
+                            elif 'Left' in turn_part:
                                 angle_str = turn_part.split()[2].rstrip('°')
                                 current_block['turn_angle'] = -float(angle_str)  # Négatif pour gauche
                             elif 'Right' in turn_part:
