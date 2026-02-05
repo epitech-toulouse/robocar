@@ -39,27 +39,18 @@ class AutoDriveState(State):
         # GPS Reader
         self.gps = None
         self.use_gps = use_gps
-        if self.use_gps:
-            print(f"Activation du GPS ({gps_host}:{gps_port})...")
-        # Récupérer les données GPS si disponibles
-        gps_data = None
-        if self.use_gps and self.gps:
-            gps_data = self.gps.get_position()
-            if gps_data:
-                # Afficher les données GPS toutes les 2 secondes
-                if not hasattr(self, '_last_gps_print'):
-                    self._last_gps_print = 0
-                
-                if time.time() - self._last_gps_print >= 2.0:
-                    print(f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° - Cap: {gps_data['heading']:.1f}°")
-                    self._last_gps_print = time.time()
+        self._last_gps_print = 0  # Initialiser le compteur
         
+        if self.use_gps:
+            print(f"🛰️  [DEBUG] Activation du GPS ({gps_host}:{gps_port})...")
             self.gps = SimpleGPSReader(gps_host, gps_port)
             if not self.gps.start():
-                print("⚠️  Mode LIDAR seul (GPS non disponible)")
+                print("⚠️  [DEBUG] Mode LIDAR seul (GPS non disponible)")
                 self.use_gps = False
+            else:
+                print("✅ [DEBUG] GPS connecté avec succès")
         else:
-            print("ℹ️  Mode LIDAR seul")
+            print("ℹ️  [DEBUG] Mode LIDAR seul (GPS désactivé)")
     
     def stop(self):
         self.lidar.stop()
@@ -77,16 +68,20 @@ class AutoDriveState(State):
         gps_data = None
         if self.use_gps and self.gps:
             gps_data = self.gps.get_position()
+            
+            # Debug GPS
             if gps_data:
                 # Afficher les données GPS toutes les 2 secondes
-                if not hasattr(self, '_last_gps_print'):
-                    self._last_gps_print = 0
-                
                 if time.time() - self._last_gps_print >= 2.0:
                     if gps_data.get('goal_distance') is not None:
-                        print(f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Goal: {gps_data['goal_distance']:.1f}m @ {gps_data['goal_bearing']:.0f}° | Turn: {gps_data['turn_angle']:.0f}°")
+                        print(f"📍 [GPS] Pos: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Goal: {gps_data['goal_distance']:.1f}m @ {gps_data['goal_bearing']:.0f}° | Turn: {gps_data['turn_angle']:.0f}°")
                     else:
-                        print(f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Heading: {gps_data['heading']:.0f}°" if gps_data['heading'] else f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}°")
+                        heading_str = f"{gps_data['heading']:.0f}°" if gps_data.get('heading') else "N/A"
+                        print(f"📍 [GPS] Pos: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Heading: {heading_str}")
+                    self._last_gps_print = time.time()
+            else:
+                if time.time() - self._last_gps_print >= 2.0:
+                    print("⚠️  [GPS] Aucune donnée GPS reçue")
                     self._last_gps_print = time.time()
         
         front_scan = self.scan_sector(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG, "AVANT")
@@ -189,6 +184,8 @@ class AutoDriveState(State):
             turn_angle = gps_data['turn_angle']
             distance = gps_data['goal_distance']
             
+            print(f"🧭 [GPS-NAV] Turn angle: {turn_angle:.1f}°, Distance: {distance:.1f}m")
+            
             # Bonus GPS décroissant selon la distance (plus d'influence quand on est loin)
             if distance > 50.0:
                 gps_weight = 0.5  # Influence forte quand on est loin
@@ -199,8 +196,11 @@ class AutoDriveState(State):
             else:
                 gps_weight = 0.15  # Très faible quand proche (priorité aux obstacles)
             
+            print(f"🎯 [GPS-NAV] GPS weight: {gps_weight}")
+            
             # Calculer le bonus pour chaque direction selon l'angle de virage GPS
             for path in paths:
+                old_score = path['score']
                 if turn_angle < -10:  # Tourner à gauche
                     if path['name'] == 'GAUCHE':
                         path['score'] += gps_weight * 2.0
@@ -214,6 +214,12 @@ class AutoDriveState(State):
                 else:  # Tout droit (on course)
                     if path['name'] == 'AVANT':
                         path['score'] += gps_weight * 2.0
+                
+                if path['score'] != old_score:
+                    print(f"   [{path['name']}] Score: {old_score:.2f} → {path['score']:.2f} (bonus: +{path['score']-old_score:.2f})")
+        else:
+            if gps_data:
+                print(f"⚠️  [GPS-NAV] GPS data incomplete: turn_angle={gps_data.get('turn_angle')}, distance={gps_data.get('goal_distance')}")
 
         free_paths = [p for p in paths if p['free']]
         
