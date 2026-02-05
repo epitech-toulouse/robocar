@@ -105,9 +105,9 @@ class AutoDriveState(State):
             'count': len(distances),
             'obstacles': obstacles
         }
-        if sector_name:
-            status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
-            print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
+        # if sector_name:
+        #     status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
+        #     print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
         
         
         return result
@@ -124,7 +124,7 @@ class AutoDriveState(State):
         
         # Obstacle très proche : marche arrière
         if front['min_dist'] < STOP_DISTANCE:
-            print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
+            # print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
             self.initiate_reverse(motor, largescans)
             return
         
@@ -171,8 +171,8 @@ class AutoDriveState(State):
         free_paths = [p for p in paths if p['free']]
         
         if not free_paths:
-            best = max(paths, key=lambda p: p['score'])
-            print(f"⚠️ Aucun chemin libre! Meilleur choix: {best['name']} (steering={best['steering']:+.2f})")
+            # best = max(paths, key=lambda p: p['score'])
+            # print(f"⚠️ Aucun chemin libre! Meilleur choix: {best['name']} (steering={best['steering']:+.2f})")
             return best
         
         best = max(free_paths, key=lambda p: p['score'])
@@ -181,7 +181,7 @@ class AutoDriveState(State):
         if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE * 0.7:
             best['steering'] = self.fine_tune_steering(front['obstacles'])
         
-        print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
+        # print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
         return best
     
     def calculate_proportional_steering(self, sector_scan, direction):
@@ -264,5 +264,5 @@ class AutoDriveState(State):
         """Gère la marche arrière"""
         print(f"🔄 MARCHE ARRIÈRE ({self.reverse_timer} cycles restants)")
         if (self.reverse_timer < 10):
-            print("🔙 FIN DE MARCHE ARRIÈRE dans 10 cycle restet steering")
+            # print("🔙 FIN DE MARCHE ARRIÈRE dans 10 cycle restet steering")
             motor.set_steering_objective(0.0);

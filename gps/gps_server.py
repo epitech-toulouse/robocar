@@ -69,6 +69,7 @@ class GPSServer:
             'lon': None,
             'alt': None,
             'heading': None,
+            'solution_type': None,
             'timestamp': 0
         }
         self.data_lock = threading.Lock()
@@ -106,6 +107,9 @@ class GPSServer:
                             else:
                                 heading = None
                             
+                            # Solution type (DGPS, RTK, etc.)
+                            solution_type = str(message.solution_type)
+                            
                             # Mettre à jour les données
                             with self.data_lock:
                                 self.current_data = {
@@ -113,6 +117,7 @@ class GPSServer:
                                     'lon': lon,
                                     'alt': alt,
                                     'heading': heading,
+                                    'solution_type': solution_type,
                                     'timestamp': time.time()
                                 }
                             break
@@ -139,6 +144,7 @@ class GPSServer:
                 lon = data['lon']
                 alt = data['alt']
                 heading = data['heading']
+                solution_type = data.get('solution_type', 'N/A')
                 
                 # Construire le message au format gps_goal.py
                 message = f"Current: {lat:.6f}°, {lon:.6f}° [{alt:.2f}m]\n"
@@ -180,6 +186,7 @@ class GPSServer:
                     else:
                         message += f"Vehicle heading: N/A (stationary or no IMU data)\n"
                 
+                message += f"Solution: {solution_type}\n"
                 message += "-" * 60 + "\n"
                 
                 # Envoyer le message
@@ -241,6 +248,7 @@ class GPSServer:
                             lon = self.current_data['lon']
                             alt = self.current_data['alt']
                             heading = self.current_data['heading']
+                            solution_type = self.current_data.get('solution_type', 'N/A')
                             
                             # Format identique à gps_goal.py
                             print(f"Current: {lat:.6f}°, {lon:.6f}° [{alt:.2f}m]")
@@ -282,6 +290,7 @@ class GPSServer:
                                 else:
                                     print(f"Vehicle heading: N/A (stationary or no IMU data)")
                             
+                            print(f"Solution: {solution_type}")
                             print("-" * 60)
         except KeyboardInterrupt:
             print("\n🛑 Arrêt du serveur...")
