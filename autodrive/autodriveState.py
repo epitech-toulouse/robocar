@@ -40,7 +40,7 @@ class AutoDriveState(State):
         self.gps = None
         self.use_gps = use_gps
         if self.use_gps:
-            print(f"🛰️  Activation du GPS ({gps_host}:{gps_port})...")
+            print(f"Activation du GPS ({gps_host}:{gps_port})...")
         # Récupérer les données GPS si disponibles
         gps_data = None
         if self.use_gps and self.gps:
@@ -73,6 +73,22 @@ class AutoDriveState(State):
             time.sleep(0.05)
             return
         
+        # Récupérer les données GPS si disponibles
+        gps_data = None
+        if self.use_gps and self.gps:
+            gps_data = self.gps.get_position()
+            if gps_data:
+                # Afficher les données GPS toutes les 2 secondes
+                if not hasattr(self, '_last_gps_print'):
+                    self._last_gps_print = 0
+                
+                if time.time() - self._last_gps_print >= 2.0:
+                    if gps_data.get('goal_distance') is not None:
+                        print(f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Goal: {gps_data['goal_distance']:.1f}m @ {gps_data['goal_bearing']:.0f}° | Turn: {gps_data['turn_angle']:.0f}°")
+                    else:
+                        print(f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Heading: {gps_data['heading']:.0f}°" if gps_data['heading'] else f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}°")
+                    self._last_gps_print = time.time()
+        
         front_scan = self.scan_sector(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG, "AVANT")
         left_scan = self.scan_sector(points,-STEERING_SCAN_ANGLE, -(SCAN_FRONT_DEG - 10), "GAUCHE")
         right_scan = self.scan_sector(points, (SCAN_FRONT_DEG - 10), STEERING_SCAN_ANGLE, "DROITE")
@@ -83,7 +99,7 @@ class AutoDriveState(State):
             self.handle_reverse(motor, largescans)
             self.reverse_timer -= 1
         else:
-            self.navigate(motor, front_scan, left_scan, right_scan, largescans)
+            self.navigate(motor, front_scan, left_scan, right_scan, largescans, gps_data)
 
     def scan_sector(self, points, min_angle, max_angle, sector_name=""):
         """Analyse un secteur angulaire et retourne les statistiques"""
@@ -119,8 +135,8 @@ class AutoDriveState(State):
             angle -= 360
         return angle
 
-    def navigate(self, motor: Motor, front, left, right, largescans):
-        """Logique principale de navigation"""
+    def navigate(self, motor: Motor, front, left, right, largescans, gps_data=None):
+        """Logique principale de navigation avec intégration GPS"""
         
         # Obstacle très proche : marche arrière
         if front['min_dist'] < STOP_DISTANCE:
@@ -128,7 +144,7 @@ class AutoDriveState(State):
             self.initiate_reverse(motor, largescans)
             return
         
-        best_direction = self.find_best_path(front, left, right)
+        best_direction = self.find_best_path(front, left, right, gps_data)
         speed = self.calculate_speed(front['min_dist'])
         target_steering = best_direction['steering']
         
@@ -137,8 +153,8 @@ class AutoDriveState(State):
         
 
 
-    def find_best_path(self, front, left, right):
-        """Trouve la meilleure direction à prendre avec braquage proportionnel"""
+    def find_best_path(self, front, left, right, gps_data=None):
+        """Trouve la meilleure direction à prendre avec braquage proportionnel et GPS"""
         
         # Calculer le braquage proportionnel basé sur l'espace disponible
         right_steering = self.calculate_proportional_steering(right, 1.0)   # Positif = droite
@@ -150,7 +166,7 @@ class AutoDriveState(State):
         paths = [
             {
                 'name': 'AVANT',
-                'steering': front_steering,  # Pas d'ajustement constant, seulement si obstacles très proches
+                'steering': front_steering,
                 'score': front['avg_dist'],
                 'free': front['min_dist'] > SAFE_DISTANCE
             },
@@ -167,11 +183,42 @@ class AutoDriveState(State):
                 'free': left['min_dist'] > SLOW_DISTANCE
             }
         ]
+        
+        # Intégration GPS : ajouter un bonus au score selon la direction du goal
+        if gps_data and gps_data.get('turn_angle') is not None and gps_data.get('goal_distance') is not None:
+            turn_angle = gps_data['turn_angle']
+            distance = gps_data['goal_distance']
+            
+            # Bonus GPS décroissant selon la distance (plus d'influence quand on est loin)
+            if distance > 50.0:
+                gps_weight = 0.5  # Influence forte quand on est loin
+            elif distance > 20.0:
+                gps_weight = 0.3  # Influence moyenne
+            elif distance > 10.0:
+                gps_weight = 0.25  # Influence faible
+            else:
+                gps_weight = 0.15  # Très faible quand proche (priorité aux obstacles)
+            
+            # Calculer le bonus pour chaque direction selon l'angle de virage GPS
+            for path in paths:
+                if turn_angle < -10:  # Tourner à gauche
+                    if path['name'] == 'GAUCHE':
+                        path['score'] += gps_weight * 2.0
+                    elif path['name'] == 'AVANT':
+                        path['score'] += gps_weight * 0.5
+                elif turn_angle > 10:  # Tourner à droite
+                    if path['name'] == 'DROITE':
+                        path['score'] += gps_weight * 2.0
+                    elif path['name'] == 'AVANT':
+                        path['score'] += gps_weight * 0.5
+                else:  # Tout droit (on course)
+                    if path['name'] == 'AVANT':
+                        path['score'] += gps_weight * 2.0
 
         free_paths = [p for p in paths if p['free']]
         
         if not free_paths:
-            # best = max(paths, key=lambda p: p['score'])
+            best = max(paths, key=lambda p: p['score'])
             # print(f"⚠️ Aucun chemin libre! Meilleur choix: {best['name']} (steering={best['steering']:+.2f})")
             return best
         
