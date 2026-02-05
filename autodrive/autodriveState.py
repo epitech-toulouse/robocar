@@ -39,27 +39,18 @@ class AutoDriveState(State):
         # GPS Reader
         self.gps = None
         self.use_gps = use_gps
-        if self.use_gps:
-            print(f"Activation du GPS ({gps_host}:{gps_port})...")
-        # Récupérer les données GPS si disponibles
-        gps_data = None
-        if self.use_gps and self.gps:
-            gps_data = self.gps.get_position()
-            if gps_data:
-                # Afficher les données GPS toutes les 2 secondes
-                if not hasattr(self, '_last_gps_print'):
-                    self._last_gps_print = 0
-                
-                if time.time() - self._last_gps_print >= 2.0:
-                    print(f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° - Cap: {gps_data['heading']:.1f}°")
-                    self._last_gps_print = time.time()
+        self._last_gps_print = 0  # Initialiser le compteur
         
+        if self.use_gps:
+            print(f"🛰️  [DEBUG] Activation du GPS ({gps_host}:{gps_port})...")
             self.gps = SimpleGPSReader(gps_host, gps_port)
             if not self.gps.start():
-                print("⚠️  Mode LIDAR seul (GPS non disponible)")
+                print("⚠️  [DEBUG] Mode LIDAR seul (GPS non disponible)")
                 self.use_gps = False
+            else:
+                print("✅ [DEBUG] GPS connecté avec succès")
         else:
-            print("ℹ️  Mode LIDAR seul")
+            print("ℹ️  [DEBUG] Mode LIDAR seul (GPS désactivé)")
     
     def stop(self):
         self.lidar.stop()
@@ -77,16 +68,20 @@ class AutoDriveState(State):
         gps_data = None
         if self.use_gps and self.gps:
             gps_data = self.gps.get_position()
+            
+            # Debug GPS
             if gps_data:
                 # Afficher les données GPS toutes les 2 secondes
-                if not hasattr(self, '_last_gps_print'):
-                    self._last_gps_print = 0
-                
                 if time.time() - self._last_gps_print >= 2.0:
                     if gps_data.get('goal_distance') is not None:
-                        print(f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Goal: {gps_data['goal_distance']:.1f}m @ {gps_data['goal_bearing']:.0f}° | Turn: {gps_data['turn_angle']:.0f}°")
+                        print(f"📍 [GPS] Pos: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Goal: {gps_data['goal_distance']:.1f}m @ {gps_data['goal_bearing']:.0f}° | Turn: {gps_data['turn_angle']:.0f}°")
                     else:
-                        print(f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Heading: {gps_data['heading']:.0f}°" if gps_data['heading'] else f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}°")
+                        heading_str = f"{gps_data['heading']:.0f}°" if gps_data.get('heading') else "N/A"
+                        print(f"📍 [GPS] Pos: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Heading: {heading_str}")
+                    self._last_gps_print = time.time()
+            else:
+                if time.time() - self._last_gps_print >= 2.0:
+                    print("⚠️  [GPS] Aucune donnée GPS reçue")
                     self._last_gps_print = time.time()
         
         front_scan = self.scan_sector(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG, "AVANT")
