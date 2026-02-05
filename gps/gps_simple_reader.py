@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-Lecteur GPS simple - Lit les données du port 25000 et extrait position/cap
-Sans dépendance FusionEngine - parse les données brutes
+Lecteur GPS simple - Lit les données JSON depuis le serveur GPS (port 25001)
 """
 
 import socket
-import struct
+import json
 import threading
 import time
 
 
 class SimpleGPSReader:
-    def __init__(self, hostname='localhost', port=25000):
+    def __init__(self, hostname='localhost', port=25001):
         self.hostname = hostname
         self.port = port
         
@@ -44,9 +43,8 @@ class SimpleGPSReader:
             return False
     
     def _gps_loop(self):
-        """Boucle de réception des données GPS - parse format binaire FusionEngine"""
-        buffer = bytearray()
-        message_count = 0
+        """Boucle de réception des données GPS - lit le JSON"""
+        buffer = ""
         
         while self.running:
             try:
@@ -54,61 +52,22 @@ class SimpleGPSReader:
                 if not received_data:
                     break
                 
-                buffer.extend(received_data)
-                print(f"DEBUG: Reçu {len(received_data)} bytes, buffer={len(buffer)} bytes, premier bytes: {buffer[:4].hex()}")
+                buffer += received_data.decode('utf-8')
                 
-                # Chercher le sync pattern FusionEngine (0x2E31)
-                while len(buffer) >= 12:  # Taille minimale d'un header
-                    # Chercher le début d'un message
-                    if len(buffer) >= 2 and buffer[0] == 0x2E and buffer[1] == 0x31:
-                        print(f"DEBUG: Sync trouvé à position 0!")
-                        # Header trouvé
-                        if len(buffer) < 12:
-                            break
+                # Traiter les lignes complètes
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    try:
+                        data = json.loads(line)
                         
-                        # Lire la longueur du payload
-                        payload_len = struct.unpack('<I', buffer[8:12])[0]
-                        message_len = 12 + payload_len + 4  # header + payload + CRC
-                        
-                        if len(buffer) < message_len:
-                            break
-                        
-                        # Extraire le message complet
-                        message_type = struct.unpack('<H', buffer[2:4])[0]
-                        message_count += 1
-                        print(f"DEBUG: Message #{message_count} - Type={message_type}, Payload={payload_len}B")
-                        
-                        # Type 10000 = PoseMessage
-                        if message_type == 10000 and payload_len >= 136:
-                            try:
-                                # Offset dans le payload pour les données
-                                payload = buffer[12:12+payload_len]
-                                
-                                # Position LLA (3 doubles à offset 8)
-                                self.current_lat = struct.unpack('<d', payload[8:16])[0]
-                                self.current_lon = struct.unpack('<d', payload[16:24])[0]
-                                self.current_alt = struct.unpack('<d', payload[24:32])[0]
-                                
-                                # YPR angles (3 floats à offset 56)
-                                yaw_rad = struct.unpack('<f', payload[56:60])[0]
-                                
-                                # Convertir yaw en heading (0-360)
-                                self.heading_deg = (90.0 - (yaw_rad * 180.0 / 3.14159265359)) % 360.0
-                                
-                                self.last_update = time.time()
-                                print(f"DEBUG: PoseMessage reçu - Type={message_type}, Payload={payload_len}B")
-                            except Exception as e:
-                                print(f"DEBUG: Erreur parsing PoseMessage: {e}")
-                        else:
-                            # Debug: afficher les autres types de messages
-                            if message_type != 10000:
-                                print(f"DEBUG: Message Type={message_type}, Payload={payload_len}B (pas PoseMessage)")
-                        
-                        # Supprimer le message traité
-                        buffer = buffer[message_len:]
-                    else:
-                        # Pas de sync, chercher le prochain
-                        buffer.pop(0)
+                        if data.get('valid') and data['lat'] is not None:
+                            self.current_lat = data['lat']
+                            self.current_lon = data['lon']
+                            self.current_alt = data['alt']
+                            self.heading_deg = data['heading']
+                            self.last_update = time.time()
+                    except json.JSONDecodeError:
+                        pass
                         
             except socket.timeout:
                 continue
@@ -147,7 +106,7 @@ if __name__ == "__main__":
     
     # Test du lecteur
     host = sys.argv[1] if len(sys.argv) > 1 else 'localhost'
-    port = int(sys.argv[2]) if len(sys.argv) > 2 else 25000
+    port = int(sys.argv[2]) if len(sys.argv) > 2 else 25001
     
     print(f"Connexion à {host}:{port}...")
     reader = SimpleGPSReader(host, port)
@@ -165,7 +124,10 @@ if __name__ == "__main__":
             
             if pos and current_time - last_print >= 1.0:
                 print(f"Position: {pos['lat']:.6f}°, {pos['lon']:.6f}° [{pos['alt']:.2f}m]")
-                print(f"Cap: {pos['heading']:.1f}°")
+                if pos['heading'] is not None:
+                    print(f"Cap: {pos['heading']:.1f}°")
+                else:
+                    print(f"Cap: N/A")
                 print(f"Age: {pos['age']:.1f}s")
                 print("-" * 60)
                 last_print = current_time

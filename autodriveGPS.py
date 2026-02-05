@@ -19,8 +19,8 @@ def main():
                         help='Activer la lecture GPS')
     parser.add_argument('--gps-host', type=str, default='localhost',
                         help='Adresse du serveur GPS (défaut: localhost)')
-    parser.add_argument('--gps-port', type=int, default=25000,
-                        help='Port du serveur GPS (défaut: 25000)')
+    parser.add_argument('--gps-port', type=int, default=25001,
+                        help='Port du serveur GPS (défaut: 25001)')
     
     args = parser.parse_args()
     
