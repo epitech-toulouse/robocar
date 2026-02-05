@@ -180,6 +180,31 @@ class GPSServer:
         
         while self.running:
             try:
+                client_socket, address = server_socket.accept()
+                print(f"📱 Client connecté: {address}")
+                client_thread = threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True)
+                client_thread.start()
+            except socket.timeout:
+                continue
+            except Exception as e:
+                if self.running:
+                    print(f"⚠️ Erreur serveur: {e}")
+        
+        server_socket.close()
+    
+    def start(self):
+        """Démarre le serveur GPS"""
+        self.running = True
+        
+        # Thread pour lire le stream GPS
+        gps_thread = threading.Thread(target=self.read_gps_stream, daemon=True)
+        gps_thread.start()
+        
+        # Thread pour servir les clients
+        server_thread = threading.Thread(target=self.serve_clients, daemon=True)
+        server_thread.start()
+        
+        print("✅ Serveur GPS démarré")
         if self.goal_lat and self.goal_lon:
             print(f"🎯 Objectif: {self.goal_lat:.6f}°, {self.goal_lon:.6f}°")
         
@@ -199,25 +224,10 @@ class GPSServer:
                                                           self.goal_lat, self.goal_lon)
                                 distance = calculate_distance(self.current_data['lat'], self.current_data['lon'],
                                                             self.goal_lat, self.goal_lon)
-                                print(f"🎯 Distance: {distance:.2f}m, Bearing: {bearing:.1f}°
-        server_socket.close()
-    
-    def start(self):
-        """Démarre le serveur GPS"""
-        self.running = True
-        
-        # Thread pour lire le stream GPS
-        gps_thread = threading.Thread(target=self.read_gps_stream, daemon=True)
-        gps_thread.start()
-        
-        # Thread pour servir les clients
-        server_thread = threading.Thread(target=self.serve_clients, daemon=True)
-        server_thread.start()
-        
-        print("✅ Serveur GPS démarré")
-        
-        try:
-            while True:
+                                print(f"🎯 Distance: {distance:.2f}m, Bearing: {bearing:.1f}°")
+        except KeyboardInterrupt:
+            print("\n🛑 Arrêt du serveur...")
+            self.running = False
                 time.sleep(1)
                 with self.data_lock:
                     if self.current_data['timestamp'] > 0:
