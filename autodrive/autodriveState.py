@@ -73,11 +73,11 @@ class AutoDriveState(State):
             if gps_data:
                 # Afficher les données GPS toutes les 2 secondes
                 if time.time() - self._last_gps_print >= 2.0:
-                    if gps_data.get('goal_distance') is not None:
+                    if gps_data.get('goal_distance') is not None and gps_data.get('turn_angle') is not None:
                         print(f"📍 [GPS] Pos: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Goal: {gps_data['goal_distance']:.1f}m @ {gps_data['goal_bearing']:.0f}° | Turn: {gps_data['turn_angle']:.0f}°")
                     else:
                         heading_str = f"{gps_data['heading']:.0f}°" if gps_data.get('heading') else "N/A"
-                        print(f"📍 [GPS] Pos: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Heading: {heading_str}")
+                        print(f"📍 [GPS] Pos: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Heading: {heading_str} | Goal data: distance={gps_data.get('goal_distance')}, bearing={gps_data.get('goal_bearing')}, turn={gps_data.get('turn_angle')}")
                     self._last_gps_print = time.time()
             else:
                 if time.time() - self._last_gps_print >= 2.0:
