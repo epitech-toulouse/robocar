@@ -30,7 +30,7 @@ STEER_SMOOTHING = 0.7     # Lissage du braquage
 
 
 class AutoDriveState(State):
-    def __init__(self, use_gps=False, gps_host='localhost', gps_port=25000):
+    def __init__(self, use_gps=False, gps_host='localhost', gps_port=25001):
         print("Initializing AutoDrive...")
         self.lidar = LidarParser()
         self.last_steering = 0.0  # Pour le lissage
