@@ -2,23 +2,21 @@ import time
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
-from .LidarParserCpp import LidarParser
+from .LidarParser import LidarParser
 
-
-vitesse_factor = 1.5;
 
 # DIRECTION DRIVE PARAMETERS
-SCAN_FRONT_DEG = 25   # Élargi pour mieux détecter les ouvertures
-SAFE_DISTANCE = 3.0   # Distance de sécurité pour ralentir
+SCAN_FRONT_DEG = 35   # Élargi pour mieux détecter les ouvertures
+SAFE_DISTANCE = 4.0   # Distance de sécurité pour ralentir
 SLOW_DISTANCE = 1.5   # Distance de ralentissement
-STOP_DISTANCE = 0.55   # Distance d'arrêt
+STOP_DISTANCE = 0.465   # Distance d'arrêt
 
 FORWARD_SPEED = 0.11   # Vitesse maximale augmentée
 BACKWARD_SPEED = -0.04 # Vitesse de recul
-SLOW_SPEED = 0.07      # Vitesse minimale
+SLOW_SPEED = 0.03      # Vitesse minimale
 
 # STEERING AVOIDANCE PARAMETERS
-STEERING_SCAN_ANGLE = 70  # Angle de scan pour trouver les ouvertures
+STEERING_SCAN_ANGLE = 60  # Angle de scan pour trouver les ouvertures
 STEER_ANGLE = 1         # Angle de braquage max
 STEER_SMOOTHING = 0.7     # Lissage du braquage
 
@@ -72,9 +70,9 @@ class AutoDriveState(State):
             'count': len(distances),
             'obstacles': obstacles
         }
-        if sector_name:
-            status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
-            print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
+        # if sector_name:
+        #     status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
+        #     print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
         
         
         return result
@@ -110,14 +108,12 @@ class AutoDriveState(State):
         # Calculer le braquage proportionnel basé sur l'espace disponible
         right_steering = self.calculate_proportional_steering(right, 1.0)   # Positif = droite
         left_steering = self.calculate_proportional_steering(left, -1.0)    # Négatif = gauche
-        front_steering = self.calculate_proportional_steering(front, 0.0) 
-
         
         # Calcul des scores pour chaque direction
         paths = [
             {
                 'name': 'AVANT',
-                'steering': front_steering,  # Pas d'ajustement constant, seulement si obstacles très proches
+                'steering': 0.0,  # Pas d'ajustement constant, seulement si obstacles très proches
                 'score': front['avg_dist'],
                 'free': front['min_dist'] > SAFE_DISTANCE
             },
@@ -158,18 +154,18 @@ class AutoDriveState(State):
         
         # Plus l'espace est grand, moins on tourne fort
         # Utiliser la distance moyenne pour un meilleur jugement
-        if avg_dist > 3.5 * vitesse_factor:
+        if avg_dist > 3.5:
             # Beaucoup d'espace : virage très doux
             factor = 0.3
-        elif avg_dist > 2.5 * vitesse_factor:
+        elif avg_dist > 2.5:
             # Espace confortable : virage doux
             factor = 0.5
-        elif avg_dist > 1.8 * vitesse_factor:
+        elif avg_dist > 1.8:
             # Espace moyen : virage modéré
             factor = 0.7
         else:
             # Peu d'espace : virage prononcé
-            factor = 0.9 
+            factor = 0.9
         
         # Ajuster selon la distance minimale (sécurité)
         if min_dist < SLOW_DISTANCE:
@@ -230,6 +226,3 @@ class AutoDriveState(State):
     def handle_reverse(self, motor: Motor, largescans):
         """Gère la marche arrière"""
         print(f"🔄 MARCHE ARRIÈRE ({self.reverse_timer} cycles restants)")
-        if (self.reverse_timer < 10):
-            print("🔙 FIN DE MARCHE ARRIÈRE dans 10 cycle restet steering")
-            motor.set_steering_objective(0.0);
