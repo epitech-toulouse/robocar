@@ -126,43 +126,65 @@ class GPSServer:
         """Gère un client connecté"""
         try:
             while self.running:
+                time.sleep(1)
                 with self.data_lock:
                     data = self.current_data.copy()
                 
-                # Ajouter un flag pour indiquer si les données sont fraîches
-                data['age'] = time.time() - data['timestamp'] if data['timestamp'] > 0 else None
-                data['valid'] = data['age'] is not None and data['age'] < 2.0
+                # Vérifier si les données sont fraîches
+                age = time.time() - data['timestamp'] if data['timestamp'] > 0 else None
+                if age is None or age >= 2.0:
+                    continue
                 
-                # Calculer les données vers l'objectif si défini
-                if self.goal_lat is not None and self.goal_lon is not None and data['lat'] is not None:
-                    data['goal_bearing'] = calculate_bearing(data['lat'], data['lon'], self.goal_lat, self.goal_lon)
-                    data['goal_distance'] = calculate_distance(data['lat'], data['lon'], self.goal_lat, self.goal_lon)
+                lat = data['lat']
+                lon = data['lon']
+                alt = data['alt']
+                heading = data['heading']
+                
+                # Construire le message au format gps_goal.py
+                message = f"Current: {lat:.6f}°, {lon:.6f}° [{alt:.2f}m]\n"
+                
+                # Afficher les infos vers l'objectif
+                if self.goal_lat and self.goal_lon:
+                    bearing = calculate_bearing(lat, lon, self.goal_lat, self.goal_lon)
+                    distance = calculate_distance(lat, lon, self.goal_lat, self.goal_lon)
                     
-                    # Calculer l'angle de virage si on a un heading
-                    if data['heading'] is not None:
-                        angle_diff = smallest_angle_diff_deg(data['heading'], data['goal_bearing'])
-                        data['turn_angle'] = angle_diff
+                    # Direction cardinale
+                    directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 
+                                'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+                    direction_idx = round(bearing / 22.5) % 16
+                    direction = directions[direction_idx]
+                    
+                    message += f"Distance to goal: {distance:.2f}m\n"
+                    message += f"Bearing to goal: {bearing:.1f}° ({direction})\n"
+                    
+                    if heading is not None:
+                        heading_direction_idx = round(heading / 22.5) % 16
+                        heading_direction = directions[heading_direction_idx]
+                        message += f"Vehicle heading: {heading:.1f}° ({heading_direction})\n"
                         
-                        if abs(angle_diff) < 5.0:
-                            data['turn_direction'] = "straight"
-                        elif angle_diff > 0:
-                            data['turn_direction'] = "right"
+                        # Instruction de virage
+                        angle_diff = smallest_angle_diff_deg(heading, bearing)
+                        abs_diff = abs(angle_diff)
+                        if abs_diff < 5.0:
+                            turn = "On course"
                         else:
-                            data['turn_direction'] = "left"
+                            turn_dir = "Right" if angle_diff > 0 else "Left"
+                            turn = f"Turn {turn_dir} {abs_diff:.1f}°"
+                        message += f"Turn: {turn}\n"
                     else:
-                        data['turn_angle'] = None
-                        data['turn_direction'] = None
+                        message += f"Vehicle heading: N/A (stationary or no IMU data)\n"
+                        message += f"Turn: Heading not available\n"
                 else:
-                    data['goal_bearing'] = None
-                    data['goal_distance'] = None
-                    data['turn_angle'] = None
-                    data['turn_direction'] = None
+                    if heading is not None:
+                        message += f"Vehicle heading: {heading:.1f}°\n"
+                    else:
+                        message += f"Vehicle heading: N/A (stationary or no IMU data)\n"
                 
-                # Envoyer en JSON avec newline
-                json_data = json.dumps(data) + '\n'
-                client_socket.sendall(json_data.encode('utf-8'))
+                message += "-" * 60 + "\n"
                 
-                time.sleep(0.1)  # 10 Hz
+                # Envoyer le message
+                client_socket.sendall(message.encode('utf-8'))
+                
         except (BrokenPipeError, ConnectionResetError):
             pass
         finally:
@@ -215,22 +237,58 @@ class GPSServer:
                     if self.current_data['timestamp'] > 0:
                         age = time.time() - self.current_data['timestamp']
                         if age < 2.0:
-                            heading_str = f"{self.current_data['heading']:.1f}°" if self.current_data['heading'] is not None else "N/A"
-                            print(f"📍 GPS: {self.current_data['lat']:.6f}°, {self.current_data['lon']:.6f}° [Heading: {heading_str}]")
+                            lat = self.current_data['lat']
+                            lon = self.current_data['lon']
+                            alt = self.current_data['alt']
+                            heading = self.current_data['heading']
+                            
+                            # Format identique à gps_goal.py
+                            print(f"Current: {lat:.6f}°, {lon:.6f}° [{alt:.2f}m]")
                             
                             # Afficher les infos vers l'objectif
                             if self.goal_lat and self.goal_lon:
-                                bearing = calculate_bearing(self.current_data['lat'], self.current_data['lon'], 
-                                                          self.goal_lat, self.goal_lon)
-                                distance = calculate_distance(self.current_data['lat'], self.current_data['lon'],
-                                                            self.goal_lat, self.goal_lon)
-                                print(f"🎯 Distance: {distance:.2f}m, Bearing: {bearing:.1f}°")
+                                bearing = calculate_bearing(lat, lon, self.goal_lat, self.goal_lon)
+                                distance = calculate_distance(lat, lon, self.goal_lat, self.goal_lon)
+                                
+                                # Direction cardinale
+                                directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 
+                                            'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+                                direction_idx = round(bearing / 22.5) % 16
+                                direction = directions[direction_idx]
+                                
+                                print(f"Distance to goal: {distance:.2f}m")
+                                print(f"Bearing to goal: {bearing:.1f}° ({direction})")
+                                
+                                if heading is not None:
+                                    heading_direction_idx = round(heading / 22.5) % 16
+                                    heading_direction = directions[heading_direction_idx]
+                                    print(f"Vehicle heading: {heading:.1f}° ({heading_direction})")
+                                    
+                                    # Instruction de virage
+                                    angle_diff = smallest_angle_diff_deg(heading, bearing)
+                                    abs_diff = abs(angle_diff)
+                                    if abs_diff < 5.0:
+                                        turn = "On course"
+                                    else:
+                                        turn_dir = "Right" if angle_diff > 0 else "Left"
+                                        turn = f"Turn {turn_dir} {abs_diff:.1f}°"
+                                    print(f"Turn: {turn}")
+                                else:
+                                    print(f"Vehicle heading: N/A (stationary or no IMU data)")
+                                    print(f"Turn: Heading not available")
+                            else:
+                                if heading is not None:
+                                    print(f"Vehicle heading: {heading:.1f}°")
+                                else:
+                                    print(f"Vehicle heading: N/A (stationary or no IMU data)")
+                            
+                            print("-" * 60)
         except KeyboardInterrupt:
             print("\n🛑 Arrêt du serveur...")
             self.running = False
-                time.sleep(1)
-                with self.data_lock:
-                    if self.current_data['timestamp'] > 0:
+
+
+if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Serveur GPS avec objectif optionnel')
@@ -238,6 +296,12 @@ class GPSServer:
                         help='Latitude de l\'objectif en degrés')
     parser.add_argument('--goal-lon', type=float, default=None,
                         help='Longitude de l\'objectif en degrés')
+    
+    args = parser.parse_args()
+    
+    server = GPSServer(goal_lat=args.goal_lat, goal_lon=args.goal_lon)
+    server.start()
+
     
     args = parser.parse_args()
     
