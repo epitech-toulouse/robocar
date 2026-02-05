@@ -8,7 +8,6 @@ import socket
 import struct
 import threading
 import time
-import json
 
 
 class SimpleGPSReader:
@@ -121,7 +120,7 @@ class SimpleGPSReader:
     
     def get_position(self):
         """Retourne la position actuelle"""
-        if self.current_lat is None:
+        if not self.current_lat or time.time() - self.last_update > 5.0:
             return None
         
         return {
@@ -129,7 +128,7 @@ class SimpleGPSReader:
             'lon': self.current_lon,
             'alt': self.current_alt,
             'heading': self.heading_deg,
-            'timestamp': self.last_update
+            'age': time.time() - self.last_update
         }
 
 
@@ -155,12 +154,14 @@ if __name__ == "__main__":
             current_time = time.time()
             
             if pos and current_time - last_print >= 1.0:
-                print(f"Position: {pos['lat']:.6f}°, {pos['lon']:.6f}° | "
-                      f"Alt: {pos['alt']:.2f}m | Cap: {pos['heading']:.1f}°")
+                print(f"Position: {pos['lat']:.6f}°, {pos['lon']:.6f}° [{pos['alt']:.2f}m]")
+                print(f"Cap: {pos['heading']:.1f}°")
+                print(f"Age: {pos['age']:.1f}s")
+                print("-" * 60)
                 last_print = current_time
             
             time.sleep(0.1)
+            
     except KeyboardInterrupt:
-        print("\n🛑 Arrêt...")
-    finally:
+        print("\nArrêt...")
         reader.stop()
