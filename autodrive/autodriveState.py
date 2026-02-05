@@ -1,14 +1,14 @@
 import time
-import socket
-import math
-import threading
-import os
 import sys
-import struct
+import os
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
 from .LidarParserCpp import LidarParser
+
+# Ajouter le chemin pour importer gps_simple_reader
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from gps.gps_simple_reader import SimpleGPSReader
 
 
 vitesse_factor = 1.5;
@@ -28,214 +28,38 @@ STEERING_SCAN_ANGLE = 65  # Angle de scan pour trouver les ouvertures
 STEER_ANGLE = 1         # Angle de braquage max
 STEER_SMOOTHING = 0.7     # Lissage du braquage
 
-# GPS PARAMETERS
-GPS_HOST = "localhost"
-GPS_PORT = 25000
-GOAL_REACHED_DISTANCE = 2.0  # Distance en mètres pour considérer l'objectif atteint
-
-
-class GPSNavigator:
-    """Gère la connexion GPS et le calcul de navigation vers un objectif"""
-    def __init__(self, hostname=GPS_HOST, port=GPS_PORT, goal_lat=None, goal_lon=None):
-        self.hostname = hostname
-        self.port = port
-        self.goal_lat = goal_lat
-        self.goal_lon = goal_lon
-        
-        # État GPS
-        self.current_lat = None
-        self.current_lon = None
-        self.current_alt = None
-        self.heading_deg = None
-        self.bearing_to_goal = None
-        self.distance_to_goal = None
-        self.solution_type = None
-        
-        self.transport = None
-        self.running = False
-        self.thread = None
-        self.last_update = 0
-        
-    def calculate_bearing(self, lat1, lon1, lat2, lon2):
-        """Calcule le cap de point 1 vers point 2 en degrés (0-360)"""
-        lat1_rad = math.radians(lat1)
-        lat2_rad = math.radians(lat2)
-        lon_diff_rad = math.radians(lon2 - lon1)
-        
-        x = math.sin(lon_diff_rad) * math.cos(lat2_rad)
-        y = math.cos(lat1_rad) * math.sin(lat2_rad) - math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(lon_diff_rad)
-        
-        bearing_rad = math.atan2(x, y)
-        bearing_deg = math.degrees(bearing_rad)
-        bearing_deg = (bearing_deg + 360) % 360
-        
-        return bearing_deg
-    
-    def calculate_distance(self, lat1, lon1, lat2, lon2):
-        """Calcule la distance entre deux points en mètres (Haversine)"""
-        R = 6371000  # Rayon de la Terre en mètres
-        
-        lat1_rad = math.radians(lat1)
-        lat2_rad = math.radians(lat2)
-        dlat = math.radians(lat2 - lat1)
-        dlon = math.radians(lon2 - lon1)
-        
-        a = math.sin(dlat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon/2)**2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-        
-        distance = R * c
-        return distance
-    
-    def smallest_angle_diff(self, from_deg, to_deg):
-        """Retourne la plus petite différence d'angle signée (-180..180]"""
-        return (to_deg - from_deg + 180.0) % 360.0 - 180.0
-    
-    def start(self):
-        """Démarre la connexion GPS en thread séparé"""
-        try:
-            self.transport = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.transport.settimeout(5.0)
-            self.transport.connect((socket.gethostbyname(self.hostname), self.port))
-            self.running = True
-            
-            self.thread = threading.Thread(target=self._gps_loop, daemon=True)
-            self.thread.start()
-            
-            print(f"✅ GPS connecté à {self.hostname}:{self.port}")
-            if self.goal_lat and self.goal_lon:
-                print(f"🎯 Objectif: {self.goal_lat:.6f}°, {self.goal_lon:.6f}°")
-            return True
-        except Exception as e:
-            print(f"❌ Erreur connexion GPS: {e}")
-            return False
-    
-    def _gps_loop(self):
-        """Boucle de réception des données GPS - parse format binaire FusionEngine"""
-        buffer = bytearray()
-        
-        while self.running:
-            try:
-                received_data = self.transport.recv(4096)
-                if not received_data:
-                    break
-                
-                buffer.extend(received_data)
-                
-                # Chercher le sync pattern FusionEngine (0x2E31)
-                while len(buffer) >= 12:  # Taille minimale d'un header
-                    # Chercher le début d'un message
-                    if len(buffer) >= 2 and buffer[0] == 0x2E and buffer[1] == 0x31:
-                        # Header trouvé
-                        if len(buffer) < 12:
-                            break
-                        
-                        # Lire la longueur du payload
-                        payload_len = struct.unpack('<I', buffer[8:12])[0]
-                        message_len = 12 + payload_len + 4  # header + payload + CRC
-                        
-                        if len(buffer) < message_len:
-                            break
-                        
-                        # Extraire le message complet
-                        message_type = struct.unpack('<H', buffer[2:4])[0]
-                        
-                        # Type 10000 = PoseMessage
-                        if message_type == 10000 and payload_len >= 136:
-                            try:
-                                # Offset dans le payload pour les données
-                                payload = buffer[12:12+payload_len]
-                                
-                                # Position LLA (3 doubles à offset 8)
-                                self.current_lat = struct.unpack('<d', payload[8:16])[0]
-                                self.current_lon = struct.unpack('<d', payload[16:24])[0]
-                                self.current_alt = struct.unpack('<d', payload[24:32])[0]
-                                
-                                # YPR angles (3 floats à offset 56)
-                                yaw_rad = struct.unpack('<f', payload[56:60])[0]
-                                
-                                # Convertir yaw en heading (0-360)
-                                self.heading_deg = (90.0 - (yaw_rad * 180.0 / 3.14159265359)) % 360.0
-                                
-                                # Calcul vers l'objectif si défini
-                                if self.goal_lat and self.goal_lon:
-                                    self.bearing_to_goal = self.calculate_bearing(
-                                        self.current_lat, self.current_lon,
-                                        self.goal_lat, self.goal_lon
-                                    )
-                                    self.distance_to_goal = self.calculate_distance(
-                                        self.current_lat, self.current_lon,
-                                        self.goal_lat, self.goal_lon
-                                    )
-                                
-                                self.last_update = time.time()
-                            except Exception as e:
-                                pass
-                        
-                        # Supprimer le message traité
-                        buffer = buffer[message_len:]
-                    else:
-                        # Pas de sync, chercher le prochain
-                        buffer.pop(0)
-                        
-            except socket.timeout:
-                continue
-            except Exception as e:
-                if self.running:
-                    print(f"⚠️ Erreur GPS: {e}")
-                time.sleep(1)
-    
-    def stop(self):
-        """Arrête la connexion GPS"""
-        self.running = False
-        if self.transport:
-            try:
-                self.transport.close()
-            except:
-                pass
-        if self.thread:
-            self.thread.join(timeout=2.0)
-    
-    def get_navigation_data(self):
-        """Retourne les données de navigation actuelles"""
-        if not self.current_lat or not self.heading_deg:
-            return None
-            
-        data = {
-            'lat': self.current_lat,
-            'lon': self.current_lon,
-            'alt': self.current_alt,
-            'heading': self.heading_deg
-        }
-        
-        if self.goal_lat and self.goal_lon and self.bearing_to_goal is not None:
-            angle_diff = self.smallest_angle_diff(self.heading_deg, self.bearing_to_goal)
-            data.update({
-                'bearing_to_goal': self.bearing_to_goal,
-                'distance_to_goal': self.distance_to_goal,
-                'angle_to_goal': angle_diff,
-                'goal_reached': self.distance_to_goal < GOAL_REACHED_DISTANCE
-            })
-        
-        return data
-
 
 class AutoDriveState(State):
-    def __init__(self, use_gps=False, gps_host=GPS_HOST, gps_port=GPS_PORT, goal_lat=None, goal_lon=None):
+    def __init__(self, use_gps=False, gps_host='localhost', gps_port=25000):
         print("Initializing AutoDrive...")
         self.lidar = LidarParser()
         self.last_steering = 0.0  # Pour le lissage
         self.reverse_timer = 0    # Compteur pour la marche arrière
         
-        # GPS Navigation
+        # GPS Reader
         self.gps = None
         self.use_gps = use_gps
         if self.use_gps:
-            self.gps = GPSNavigator(gps_host, gps_port, goal_lat, goal_lon)
+            print(f"🛰️  Activation du GPS ({gps_host}:{gps_port})...")
+        # Récupérer les données GPS si disponibles
+        gps_data = None
+        if self.use_gps and self.gps:
+            gps_data = self.gps.get_position()
+            if gps_data:
+                # Afficher les données GPS toutes les 2 secondes
+                if not hasattr(self, '_last_gps_print'):
+                    self._last_gps_print = 0
+                
+                if time.time() - self._last_gps_print >= 2.0:
+                    print(f"📍 GPS: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° - Cap: {gps_data['heading']:.1f}°")
+                    self._last_gps_print = time.time()
+        
+            self.gps = SimpleGPSReader(gps_host, gps_port)
             if not self.gps.start():
-                print("⚠️ Mode LIDAR seul (GPS non disponible)")
+                print("⚠️  Mode LIDAR seul (GPS non disponible)")
                 self.use_gps = False
         else:
-            print("ℹ️ Mode LIDAR seul")
+            print("ℹ️  Mode LIDAR seul")
     
     def stop(self):
         self.lidar.stop()
@@ -244,19 +68,6 @@ class AutoDriveState(State):
 
     def run_single(self, motor: Motor, gamepad: Gamepad):
         """Exécute un cycle de contrôle"""
-        # Récupérer les données GPS si disponibles
-        gps_data = None
-        if self.use_gps and self.gps:
-            gps_data = self.gps.get_navigation_data()
-            if gps_data:
-                if 'distance_to_goal' in gps_data:
-                    print(f"📍 GPS: {gps_data['distance_to_goal']:.1f}m vers objectif, angle: {gps_data['angle_to_goal']:+.0f}° (cap:{gps_data['heading']:.0f}°)")
-                    if gps_data['goal_reached']:
-                        print("🎯 OBJECTIF ATTEINT!")
-                        motor.set_speed_objective(0.0)
-                        motor.set_steering_objective(0.0)
-                        return
-        
         points = self.lidar.get_points()
         if not points:
             time.sleep(0.05)
@@ -272,7 +83,7 @@ class AutoDriveState(State):
             self.handle_reverse(motor, largescans)
             self.reverse_timer -= 1
         else:
-            self.navigate(motor, front_scan, left_scan, right_scan, largescans, gps_data)
+            self.navigate(motor, front_scan, left_scan, right_scan, largescans)
 
     def scan_sector(self, points, min_angle, max_angle, sector_name=""):
         """Analyse un secteur angulaire et retourne les statistiques"""
@@ -308,7 +119,7 @@ class AutoDriveState(State):
             angle -= 360
         return angle
 
-    def navigate(self, motor: Motor, front, left, right, largescans, gps_data=None):
+    def navigate(self, motor: Motor, front, left, right, largescans):
         """Logique principale de navigation"""
         
         # Obstacle très proche : marche arrière
@@ -317,7 +128,7 @@ class AutoDriveState(State):
             self.initiate_reverse(motor, largescans)
             return
         
-        best_direction = self.find_best_path(front, left, right, gps_data)
+        best_direction = self.find_best_path(front, left, right)
         speed = self.calculate_speed(front['min_dist'])
         target_steering = best_direction['steering']
         
@@ -326,7 +137,7 @@ class AutoDriveState(State):
         
 
 
-    def find_best_path(self, front, left, right, gps_data=None):
+    def find_best_path(self, front, left, right):
         """Trouve la meilleure direction à prendre avec braquage proportionnel"""
         
         # Calculer le braquage proportionnel basé sur l'espace disponible
@@ -334,47 +145,25 @@ class AutoDriveState(State):
         left_steering = self.calculate_proportional_steering(left, -1.0)    # Négatif = gauche
         front_steering = self.calculate_proportional_steering(front, 0.0) 
 
-        # Calculer le bonus de continuité basé sur la direction actuelle
-        def direction_weight(target_steering):
-            """Calcule un bonus pour favoriser la continuité de direction"""
-            angle_diff = abs(target_steering - self.last_steering)
-            # Plus la différence est petite, plus le bonus est élevé (max +20%)
-            return 1.0 + (1.0 - min(angle_diff / STEER_ANGLE, 1.0)) * 0.2
         
-        # Calculer le bonus GPS si disponible
-        def gps_weight(target_steering):
-            """Calcule un bonus basé sur l'alignement avec l'objectif GPS"""
-            if not gps_data or 'angle_to_goal' not in gps_data:
-                return 1.0
-            
-            # Convertir l'angle vers l'objectif en steering (-1 à 1)
-            angle_to_goal = gps_data['angle_to_goal']
-            goal_steering = max(-STEER_ANGLE, min(STEER_ANGLE, angle_to_goal / 90.0))
-            
-            # Calculer la différence entre le steering proposé et le steering idéal GPS
-            steering_diff = abs(target_steering - goal_steering)
-            
-            # Bonus jusqu'à +30% si aligné avec l'objectif GPS
-            return 1.0 + (1.0 - min(steering_diff / STEER_ANGLE, 1.0)) * 0.3
-        
-        # Calcul des scores pour chaque direction avec pondération
+        # Calcul des scores pour chaque direction
         paths = [
             {
                 'name': 'AVANT',
-                'steering': front_steering,
-                'score': front['avg_dist'] * direction_weight(front_steering) * gps_weight(front_steering),
+                'steering': front_steering,  # Pas d'ajustement constant, seulement si obstacles très proches
+                'score': front['avg_dist'],
                 'free': front['min_dist'] > SAFE_DISTANCE
             },
             {
                 'name': 'DROITE',
                 'steering': right_steering,
-                'score': right['avg_dist'] * 0.8 * direction_weight(right_steering) * gps_weight(right_steering),
+                'score': right['avg_dist'] * 0.8,  # Léger malus pour les virages
                 'free': right['min_dist'] > SLOW_DISTANCE
             },
             {
                 'name': 'GAUCHE',
                 'steering': left_steering,
-                'score': left['avg_dist'] * 0.8 * direction_weight(left_steering) * gps_weight(left_steering),
+                'score': left['avg_dist'] * 0.8,
                 'free': left['min_dist'] > SLOW_DISTANCE
             }
         ]
