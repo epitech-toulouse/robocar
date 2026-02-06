@@ -197,7 +197,7 @@ class AutoDriveState(State):
             # Déterminer si on se rapproche du goal
             if self._last_goal_distance is not None:
                 distance_change = distance - self._last_goal_distance
-                self._distance_improving = distance_change < -0.5  # On se rapproche de 0.5m+
+                self._distance_improving = distance_change <= 0  # On se rapproche de 0.5m+
                 
                 if self._distance_improving:
                     print(f"📏 [GPS] Distance: {distance:.1f}m ✅ (se rapproche: {-distance_change:.1f}m)")
