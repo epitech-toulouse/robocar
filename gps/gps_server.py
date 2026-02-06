@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Serveur GPS - Lit depuis le port 25000 et expose les données en JSON sur le port 25001
+Serveur GPS - Lit depuis le port 25000 et expose les données brutes sur le port 25001
 """
 
 import os
@@ -19,48 +19,11 @@ from fusion_engine_client.messages.core import PoseMessage
 from fusion_engine_client.parsers import FusionEngineDecoder
 
 
-def calculate_bearing(lat1, lon1, lat2, lon2):
-    """Calculate the bearing from point 1 to point 2 in degrees (0-360)."""
-    lat1_rad = math.radians(lat1)
-    lat2_rad = math.radians(lat2)
-    lon_diff_rad = math.radians(lon2 - lon1)
-    
-    x = math.sin(lon_diff_rad) * math.cos(lat2_rad)
-    y = math.cos(lat1_rad) * math.sin(lat2_rad) - math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(lon_diff_rad)
-    
-    bearing_rad = math.atan2(x, y)
-    bearing_deg = math.degrees(bearing_rad)
-    
-    return (bearing_deg + 360) % 360
-
-
-def calculate_distance(lat1, lon1, lat2, lon2):
-    """Calculate the distance between two points in meters using Haversine formula."""
-    R = 6371000  # Earth's radius in meters
-    
-    lat1_rad = math.radians(lat1)
-    lat2_rad = math.radians(lat2)
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    
-    a = math.sin(dlat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    
-    return R * c
-
-
-def smallest_angle_diff_deg(from_deg, to_deg):
-    """Return signed smallest angle difference from from_deg to to_deg in degrees (-180..180]."""
-    return (to_deg - from_deg + 180.0) % 360.0 - 180.0
-
-
 class GPSServer:
-    def __init__(self, source_host='localhost', source_port=25000, listen_port=25001, goal_lat=None, goal_lon=None):
+    def __init__(self, source_host='localhost', source_port=25000, listen_port=25001):
         self.source_host = source_host
         self.source_port = source_port
         self.listen_port = listen_port
-        self.goal_lat = goal_lat
-        self.goal_lon = goal_lon
         
         # Données GPS actuelles
         self.current_data = {
@@ -167,53 +130,58 @@ class GPSServer:
                 if age is None or age >= 2.0:
                     continue
                 
-                lat = data['lat']
-                lon = data['lon']
-                alt = data['alt']
-                heading = data['heading']
-                solution_type = data.get('solution_type', 'N/A')
+                # Construire le message avec les données brutes GPS
+                message = f"=== GPS RAW DATA ===\n"
+                message += f"Position (lla_deg):\n"
+                message += f"  Latitude:  {data['lat']:.8f}°\n"
+                message += f"  Longitude: {data['lon']:.8f}°\n"
+                message += f"  Altitude:  {data['alt']:.2f}m\n"
+                message += f"\n"
                 
-                # Construire le message au format gps_goal.py
-                message = f"Current: {lat:.6f}°, {lon:.6f}° [{alt:.2f}m]\n"
-                
-                # Afficher les infos vers l'objectif
-                if self.goal_lat and self.goal_lon:
-                    bearing = calculate_bearing(lat, lon, self.goal_lat, self.goal_lon)
-                    distance = calculate_distance(lat, lon, self.goal_lat, self.goal_lon)
-                    
-                    # Direction cardinale
-                    directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 
-                                'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
-                    direction_idx = round(bearing / 22.5) % 16
-                    direction = directions[direction_idx]
-                    
-                    message += f"Distance to goal: {distance:.2f}m\n"
-                    message += f"Bearing to goal: {bearing:.1f}° ({direction})\n"
-                    
-                    if heading is not None:
-                        heading_direction_idx = round(heading / 22.5) % 16
-                        heading_direction = directions[heading_direction_idx]
-                        message += f"Vehicle heading: {heading:.1f}° ({heading_direction})\n"
-                        
-                        # Instruction de virage
-                        angle_diff = smallest_angle_diff_deg(heading, bearing)
-                        abs_diff = abs(angle_diff)
-                        if abs_diff < 5.0:
-                            turn = "On course"
-                        else:
-                            turn_dir = "Right" if angle_diff > 0 else "Left"
-                            turn = f"Turn {turn_dir} {abs_diff:.1f}°"
-                        message += f"Turn: {turn}\n"
-                    else:
-                        message += f"Vehicle heading: N/A (stationary or no IMU data)\n"
-                        message += f"Turn: Heading not available\n"
+                message += f"Attitude (ypr_deg):\n"
+                if data['heading'] is not None:
+                    message += f"  Yaw (Heading): {data['heading']:.2f}°\n"
                 else:
-                    if heading is not None:
-                        message += f"Vehicle heading: {heading:.1f}°\n"
-                    else:
-                        message += f"Vehicle heading: N/A (stationary or no IMU data)\n"
+                    message += f"  Yaw (Heading): N/A\n"
+                if data['pitch'] is not None:
+                    message += f"  Pitch:         {data['pitch']:.2f}°\n"
+                else:
+                    message += f"  Pitch:         N/A\n"
+                if data['roll'] is not None:
+                    message += f"  Roll:          {data['roll']:.2f}°\n"
+                else:
+                    message += f"  Roll:          N/A\n"
+                message += f"\n"
                 
-                message += f"Solution: {solution_type}\n"
+                if data['position_std_enu_m']:
+                    message += f"Position Std Dev (ENU) [m]:\n"
+                    message += f"  East:  {data['position_std_enu_m'][0]:.3f}m\n"
+                    message += f"  North: {data['position_std_enu_m'][1]:.3f}m\n"
+                    message += f"  Up:    {data['position_std_enu_m'][2]:.3f}m\n"
+                    message += f"\n"
+                
+                if data['ypr_std_deg']:
+                    message += f"Attitude Std Dev [deg]:\n"
+                    message += f"  Yaw:   {data['ypr_std_deg'][0]:.3f}°\n"
+                    message += f"  Pitch: {data['ypr_std_deg'][1]:.3f}°\n"
+                    message += f"  Roll:  {data['ypr_std_deg'][2]:.3f}°\n"
+                    message += f"\n"
+                
+                if data['velocity_body_mps']:
+                    message += f"Velocity (Body Frame) [m/s]:\n"
+                    message += f"  X: {data['velocity_body_mps'][0]:.3f}m/s\n"
+                    message += f"  Y: {data['velocity_body_mps'][1]:.3f}m/s\n"
+                    message += f"  Z: {data['velocity_body_mps'][2]:.3f}m/s\n"
+                    message += f"\n"
+                
+                if data['velocity_std_body_mps']:
+                    message += f"Velocity Std Dev [m/s]:\n"
+                    message += f"  X: {data['velocity_std_body_mps'][0]:.3f}m/s\n"
+                    message += f"  Y: {data['velocity_std_body_mps'][1]:.3f}m/s\n"
+                    message += f"  Z: {data['velocity_std_body_mps'][2]:.3f}m/s\n"
+                    message += f"\n"
+                
+                message += f"Solution Type: {data['solution_type']}\n"
                 message += "-" * 60 + "\n"
                 
                 # Envoyer le message
@@ -261,8 +229,6 @@ class GPSServer:
         server_thread.start()
         
         print("✅ Serveur GPS démarré")
-        if self.goal_lat and self.goal_lon:
-            print(f"Goal position: {self.goal_lat:.6f}°, {self.goal_lon:.6f}°")
         print("Waiting for GPS data...\n")
         
         try:
@@ -272,53 +238,33 @@ class GPSServer:
                     if self.current_data['timestamp'] > 0:
                         age = time.time() - self.current_data['timestamp']
                         if age < 2.0:
-                            lat = self.current_data['lat']
-                            lon = self.current_data['lon']
-                            alt = self.current_data['alt']
-                            heading = self.current_data['heading']
-                            solution_type = self.current_data.get('solution_type', 'N/A')
+                            data = self.current_data
                             
-                            # Format identique à gps_goal.py
-                            print(f"Current: {lat:.6f}°, {lon:.6f}° [{alt:.2f}m]")
+                            print(f"=== GPS RAW DATA ===")
+                            print(f"Position: {data['lat']:.8f}°, {data['lon']:.8f}° [{data['alt']:.2f}m]")
                             
-                            # Afficher les infos vers l'objectif
-                            if self.goal_lat and self.goal_lon:
-                                bearing = calculate_bearing(lat, lon, self.goal_lat, self.goal_lon)
-                                distance = calculate_distance(lat, lon, self.goal_lat, self.goal_lon)
-                                
-                                # Direction cardinale
-                                directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 
-                                            'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
-                                direction_idx = round(bearing / 22.5) % 16
-                                direction = directions[direction_idx]
-                                
-                                print(f"Distance to goal: {distance:.2f}m")
-                                print(f"Bearing to goal: {bearing:.1f}° ({direction})")
-                                
-                                if heading is not None:
-                                    heading_direction_idx = round(heading / 22.5) % 16
-                                    heading_direction = directions[heading_direction_idx]
-                                    print(f"Vehicle heading: {heading:.1f}° ({heading_direction})")
-                                    
-                                    # Instruction de virage
-                                    angle_diff = smallest_angle_diff_deg(heading, bearing)
-                                    abs_diff = abs(angle_diff)
-                                    if abs_diff < 5.0:
-                                        turn = "On course"
-                                    else:
-                                        turn_dir = "Right" if angle_diff > 0 else "Left"
-                                        turn = f"Turn {turn_dir} {abs_diff:.1f}°"
-                                    print(f"Turn: {turn}")
-                                else:
-                                    print(f"Vehicle heading: N/A (stationary or no IMU data)")
-                                    print(f"Turn: Heading not available")
+                            if data['heading'] is not None:
+                                print(f"Yaw (Heading): {data['heading']:.2f}°", end="")
                             else:
-                                if heading is not None:
-                                    print(f"Vehicle heading: {heading:.1f}°")
-                                else:
-                                    print(f"Vehicle heading: N/A (stationary or no IMU data)")
+                                print(f"Yaw (Heading): N/A", end="")
                             
-                            print(f"Solution: {solution_type}")
+                            if data['pitch'] is not None:
+                                print(f" | Pitch: {data['pitch']:.2f}°", end="")
+                            else:
+                                print(f" | Pitch: N/A", end="")
+                            
+                            if data['roll'] is not None:
+                                print(f" | Roll: {data['roll']:.2f}°")
+                            else:
+                                print(f" | Roll: N/A")
+                            
+                            if data['position_std_enu_m']:
+                                print(f"Pos Std: E={data['position_std_enu_m'][0]:.3f}m N={data['position_std_enu_m'][1]:.3f}m U={data['position_std_enu_m'][2]:.3f}m")
+                            
+                            if data['velocity_body_mps']:
+                                print(f"Velocity: X={data['velocity_body_mps'][0]:.2f}m/s Y={data['velocity_body_mps'][1]:.2f}m/s Z={data['velocity_body_mps'][2]:.2f}m/s")
+                            
+                            print(f"Solution: {data['solution_type']}")
                             print("-" * 60)
         except KeyboardInterrupt:
             print("\n🛑 Arrêt du serveur...")
@@ -326,15 +272,5 @@ class GPSServer:
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Serveur GPS avec objectif optionnel')
-    parser.add_argument('--goal-lat', type=float, default=None,
-                        help='Latitude de l\'objectif en degrés')
-    parser.add_argument('--goal-lon', type=float, default=None,
-                        help='Longitude de l\'objectif en degrés')
-    
-    args = parser.parse_args()
-    
-    server = GPSServer(goal_lat=args.goal_lat, goal_lon=args.goal_lon)
+    server = GPSServer()
     server.start()
