@@ -40,8 +40,6 @@ class AutoDriveState(State):
         self.gps = None
         self.use_gps = use_gps
         self._last_gps_print = 0  # Initialiser le compteur
-        self._last_goal_distance = None  # Distance précédente au goal
-        self._distance_improving = True  # Est-ce qu'on se rapproche?
         
         if self.use_gps:
             print(f"🛰️  [DEBUG] Activation du GPS ({gps_host}:{gps_port})...")
@@ -135,15 +133,6 @@ class AutoDriveState(State):
     def navigate(self, motor: Motor, front, left, right, largescans, gps_data=None):
         """Logique principale de navigation avec intégration GPS"""
         
-        # Vérifier si on est arrivé à destination (GPS uniquement sur distance)
-        if gps_data and gps_data.get('goal_distance') is not None:
-            goal_distance = gps_data['goal_distance']
-            if goal_distance <= 2.0:
-                print(f"🎯 OBJECTIF ATTEINT! Distance: {goal_distance:.2f}m - ARRÊT")
-                motor.set_steering_objective(0.0)
-                motor.set_speed_objective(0.0)
-                return
-        
         # Obstacle très proche : marche arrière
         if front['min_dist'] < STOP_DISTANCE:
             # print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
@@ -190,50 +179,47 @@ class AutoDriveState(State):
             }
         ]
         
-        # GPS : utiliser la distance pour guider la navigation
-        if gps_data and gps_data.get('goal_distance') is not None:
+        # Intégration GPS : ajouter un bonus au score selon la direction du goal
+        if gps_data and gps_data.get('turn_angle') is not None and gps_data.get('goal_distance') is not None:
+            turn_angle = gps_data['turn_angle']
             distance = gps_data['goal_distance']
             
-            # Déterminer si on se rapproche du goal
-            if self._last_goal_distance is not None:
-                distance_change = distance - self._last_goal_distance
-                self._distance_improving = distance_change < -0.5  # On se rapproche de 0.5m+
-                
-                if self._distance_improving:
-                    print(f"📏 [GPS] Distance: {distance:.1f}m ✅ (se rapproche: {-distance_change:.1f}m)")
-                else:
-                    print(f"📏 [GPS] Distance: {distance:.1f}m ⚠️ (s'éloigne: {distance_change:.1f}m)")
-            else:
-                print(f"📏 [GPS] Distance: {distance:.1f}m")
+            print(f"🧭 [GPS-NAV] Turn angle: {turn_angle:.1f}°, Distance: {distance:.1f}m")
             
-            self._last_goal_distance = distance
-            
-            # Influence GPS selon la distance et si on se rapproche
+            # Bonus GPS décroissant selon la distance (plus d'influence quand on est loin)
             if distance > 50.0:
-                gps_weight = 2.0
+                gps_weight = 0.5  # Influence forte quand on est loin
             elif distance > 20.0:
-                gps_weight = 1.5
+                gps_weight = 0.3  # Influence moyenne
             elif distance > 10.0:
-                gps_weight = 1.0
-            elif distance > 5.0:
-                gps_weight = 0.6
+                gps_weight = 0.25  # Influence faible
             else:
-                gps_weight = 0.3
+                gps_weight = 0.15  # Très faible quand proche (priorité aux obstacles)
             
-            # Si on se rapproche du goal: favoriser AVANT (continuer)
-            # Si on s'éloigne: favoriser les côtés (chercher une autre direction)
-            if self._distance_improving:
-                # On se rapproche: continuer tout droit!
-                for path in paths:
+            print(f"🎯 [GPS-NAV] GPS weight: {gps_weight}")
+            
+            # Calculer le bonus pour chaque direction selon l'angle de virage GPS
+            for path in paths:
+                old_score = path['score']
+                if turn_angle < -10:  # Tourner à gauche
+                    if path['name'] == 'GAUCHE':
+                        path['score'] += gps_weight * 2.0
+                    elif path['name'] == 'AVANT':
+                        path['score'] += gps_weight * 0.5
+                elif turn_angle > 10:  # Tourner à droite
+                    if path['name'] == 'DROITE':
+                        path['score'] += gps_weight * 2.0
+                    elif path['name'] == 'AVANT':
+                        path['score'] += gps_weight * 0.5
+                else:  # Tout droit (on course)
                     if path['name'] == 'AVANT':
-                        path['score'] += gps_weight * 2.5
-                        print(f"   🎯 [AVANT] Bonus GPS: +{gps_weight * 2.5:.2f} (on se rapproche!)")
-            else:
-                # On s'éloigne: essayer de tourner pour trouver le goal
-                for path in paths:
-                    if path['name'] in ['GAUCHE', 'DROITE']:
-                        path['score'] += gps_weight * 1.5
-                        print(f"   🔄 [{path['name']}] Bonus GPS: +{gps_weight * 1.5:.2f} (chercher le goal)")
+                        path['score'] += gps_weight * 2.0
+                
+                if path['score'] != old_score:
+                    print(f"   [{path['name']}] Score: {old_score:.2f} → {path['score']:.2f} (bonus: +{path['score']-old_score:.2f})")
+        else:
+            if gps_data:
+                print(f"⚠️  [GPS-NAV] GPS data incomplete: turn_angle={gps_data.get('turn_angle')}, distance={gps_data.get('goal_distance')}")
 
         free_paths = [p for p in paths if p['free']]
         
