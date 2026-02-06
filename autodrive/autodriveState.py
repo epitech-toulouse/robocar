@@ -40,8 +40,10 @@ class AutoDriveState(State):
         self.gps = None
         self.use_gps = use_gps
         self._last_gps_print = 0  # Initialiser le compteur
-        self._last_goal_distance = None  # Distance précédente au goal
+        self._last_gps_update = 0  # Dernier update GPS
+        self._last_goal_distances = []  # Les 5 dernières distances au goal
         self._distance_improving = True  # Est-ce qu'on se rapproche?
+        self._cached_gps_data = None  # Données GPS en cache
         
         if self.use_gps:
             print(f"🛰️  [DEBUG] Activation du GPS ({gps_host}:{gps_port})...")
@@ -66,10 +68,16 @@ class AutoDriveState(State):
             time.sleep(0.05)
             return
         
-        # Récupérer les données GPS si disponibles
+        # Récupérer les données GPS si disponibles (toutes les 0.5s)
         gps_data = None
         if self.use_gps and self.gps:
-            gps_data = self.gps.get_position()
+            current_time = time.time()
+            if current_time - self._last_gps_update >= 0.5:
+                gps_data = self.gps.get_position()
+                self._cached_gps_data = gps_data
+                self._last_gps_update = current_time
+            else:
+                gps_data = self._cached_gps_data
             
             # Debug GPS
             if gps_data:
@@ -194,46 +202,54 @@ class AutoDriveState(State):
         if gps_data and gps_data.get('goal_distance') is not None:
             distance = gps_data['goal_distance']
             
-            # Déterminer si on se rapproche du goal
-            if self._last_goal_distance is not None:
-                distance_change = distance - self._last_goal_distance
-                self._distance_improving = distance_change <= 0  # On se rapproche de 0.5m+
+            # Ajouter la distance à l'historique (garder les 5 dernières)
+            self._last_goal_distances.append(distance)
+            if len(self._last_goal_distances) > 5:
+                self._last_goal_distances.pop(0)
+            
+            # Déterminer la tendance sur les 5 derniers points
+            if len(self._last_goal_distances) >= 3:
+                # Calculer la moyenne des 2 premières et 2 dernières distances
+                old_avg = sum(self._last_goal_distances[:2]) / 2
+                new_avg = sum(self._last_goal_distances[-2:]) / 2
+                distance_change = new_avg - old_avg
+                
+                self._distance_improving = distance_change < -0.3  # Seuil réduit pour plus de sensibilité
                 
                 if self._distance_improving:
-                    print(f"📏 [GPS] Distance: {distance:.1f}m ✅ (se rapproche: {-distance_change:.1f}m)")
+                    print(f"📉 [GPS] Distance: {distance:.1f}m ✅ (tendance: {-distance_change:.1f}m | historique: {len(self._last_goal_distances)} pts)")
                 else:
-                    print(f"📏 [GPS] Distance: {distance:.1f}m ⚠️ (s'éloigne: {distance_change:.1f}m)")
+                    print(f"📈 [GPS] Distance: {distance:.1f}m ⚠️ (tendance: +{distance_change:.1f}m | historique: {len(self._last_goal_distances)} pts)")
             else:
-                print(f"📏 [GPS] Distance: {distance:.1f}m")
+                print(f"📏 [GPS] Distance: {distance:.1f}m (collecte: {len(self._last_goal_distances)}/5 pts)")
             
-            self._last_goal_distance = distance
-            
-            # Influence GPS selon la distance et si on se rapproche
-            if distance > 50.0:
-                gps_weight = 2.0
-            elif distance > 20.0:
-                gps_weight = 1.5
-            elif distance > 10.0:
-                gps_weight = 1.0
-            elif distance > 5.0:
-                gps_weight = 0.6
-            else:
-                gps_weight = 0.3
-            
-            # Si on se rapproche du goal: favoriser AVANT (continuer)
-            # Si on s'éloigne: favoriser les côtés (chercher une autre direction)
-            if self._distance_improving:
-                # On se rapproche: continuer tout droit!
-                for path in paths:
-                    if path['name'] == 'AVANT':
-                        path['score'] += gps_weight * 2.5
-                        print(f"   🎯 [AVANT] Bonus GPS: +{gps_weight * 2.5:.2f} (on se rapproche!)")
-            else:
-                # On s'éloigne: essayer de tourner pour trouver le goal
-                for path in paths:
-                    if path['name'] in ['GAUCHE', 'DROITE']:
-                        path['score'] += gps_weight * 1.5
-                        print(f"   🔄 [{path['name']}] Bonus GPS: +{gps_weight * 1.5:.2f} (chercher le goal)")
+            # Influence GPS selon la distance et la tendance
+            if len(self._last_goal_distances) >= 3:
+                if distance > 50.0:
+                    gps_weight = 2.0
+                elif distance > 20.0:
+                    gps_weight = 1.5
+                elif distance > 10.0:
+                    gps_weight = 1.0
+                elif distance > 5.0:
+                    gps_weight = 0.6
+                else:
+                    gps_weight = 0.3
+                
+                # Si on se rapproche: favoriser AVANT (continuer)
+                # Si on s'éloigne: favoriser les côtés (chercher une autre direction)
+                if self._distance_improving:
+                    # On se rapproche: continuer tout droit!
+                    for path in paths:
+                        if path['name'] == 'AVANT':
+                            path['score'] += gps_weight * 2.5
+                            print(f"   🎯 [AVANT] Bonus GPS: +{gps_weight * 2.5:.2f} (tendance positive!)")
+                else:
+                    # On s'éloigne: essayer de tourner pour trouver le goal
+                    for path in paths:
+                        if path['name'] in ['GAUCHE', 'DROITE']:
+                            path['score'] += gps_weight * 1.5
+                            print(f"   🔄 [{path['name']}] Bonus GPS: +{gps_weight * 1.5:.2f} (chercher nouvelle direction)")
 
         free_paths = [p for p in paths if p['free']]
         
