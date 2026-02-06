@@ -40,8 +40,10 @@ class AutoDriveState(State):
         self.gps = None
         self.use_gps = use_gps
         self._last_gps_print = 0  # Initialiser le compteur
-        self._last_goal_distance = None  # Distance précédente au goal
+        self._last_gps_update = 0  # Dernier update GPS
+        self._last_goal_distances = []  # Les 5 dernières distances au goal
         self._distance_improving = True  # Est-ce qu'on se rapproche?
+        self._cached_gps_data = None  # Données GPS en cache
         
         if self.use_gps:
             print(f"🛰️  [DEBUG] Activation du GPS ({gps_host}:{gps_port})...")
@@ -66,10 +68,16 @@ class AutoDriveState(State):
             time.sleep(0.05)
             return
         
-        # Récupérer les données GPS si disponibles
+        # Récupérer les données GPS si disponibles (toutes les 0.5s)
         gps_data = None
         if self.use_gps and self.gps:
-            gps_data = self.gps.get_position()
+            current_time = time.time()
+            if current_time - self._last_gps_update >= 0.5:
+                gps_data = self.gps.get_position()
+                self._cached_gps_data = gps_data
+                self._last_gps_update = current_time
+            else:
+                gps_data = self._cached_gps_data
             
             # Debug GPS
             if gps_data:
