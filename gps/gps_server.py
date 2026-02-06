@@ -16,7 +16,6 @@ root_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, root_dir)
 
 from fusion_engine_client.messages.core import PoseMessage
-from fusion_engine_client.messages.defs import yaw_to_heading
 from fusion_engine_client.parsers import FusionEngineDecoder
 
 
@@ -68,8 +67,14 @@ class GPSServer:
             'lat': None,
             'lon': None,
             'alt': None,
-            'heading': None,
+            'heading': None,  # yaw en degrés (0-360)
+            'pitch': None,
+            'roll': None,
             'solution_type': None,
+            'position_std_enu_m': None,  # [east, north, up]
+            'ypr_std_deg': None,  # [yaw, pitch, roll]
+            'velocity_body_mps': None,  # [x, y, z]
+            'velocity_std_body_mps': None,  # [x, y, z]
             'timestamp': 0
         }
         self.data_lock = threading.Lock()
@@ -96,19 +101,35 @@ class GPSServer:
                     
                     for header, message in messages:
                         if isinstance(message, PoseMessage):
+                            # lla_deg -> latitude, longitude, altitude en degré
                             lat = message.lla_deg[0]
                             lon = message.lla_deg[1]
                             alt = message.lla_deg[2]
                             
-                            # Calculer le heading
+                            # ypr_deg -> yaw pitch roll en degrés
                             yaw_deg = message.ypr_deg[0]
+                            pitch_deg = message.ypr_deg[1]
+                            roll_deg = message.ypr_deg[2]
+                            
+                            # Le yaw est déjà en degrés (0-360), pas besoin de conversion
                             if not math.isnan(yaw_deg):
-                                heading = yaw_to_heading(yaw_deg)
+                                heading = yaw_deg
                             else:
                                 heading = None
                             
+                            pitch = pitch_deg if not math.isnan(pitch_deg) else None
+                            roll = roll_deg if not math.isnan(roll_deg) else None
+                            
                             # Solution type (DGPS, RTK, etc.)
                             solution_type = str(message.solution_type)
+                            
+                            # Standard deviations
+                            position_std = list(message.position_std_enu_m) if hasattr(message, 'position_std_enu_m') else None
+                            ypr_std = list(message.ypr_std_deg) if hasattr(message, 'ypr_std_deg') else None
+                            
+                            # Velocity
+                            velocity = list(message.velocity_body_mps) if hasattr(message, 'velocity_body_mps') else None
+                            velocity_std = list(message.velocity_std_body_mps) if hasattr(message, 'velocity_std_body_mps') else None
                             
                             # Mettre à jour les données
                             with self.data_lock:
@@ -117,7 +138,13 @@ class GPSServer:
                                     'lon': lon,
                                     'alt': alt,
                                     'heading': heading,
+                                    'pitch': pitch,
+                                    'roll': roll,
                                     'solution_type': solution_type,
+                                    'position_std_enu_m': position_std,
+                                    'ypr_std_deg': ypr_std,
+                                    'velocity_body_mps': velocity,
+                                    'velocity_std_body_mps': velocity_std,
                                     'timestamp': time.time()
                                 }
                             break
