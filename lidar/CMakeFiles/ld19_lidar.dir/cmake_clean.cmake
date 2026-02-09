@@ -1,8 +1,7 @@
 file(REMOVE_RECURSE
   "CMakeFiles/ld19_lidar.dir/main.cpp.o"
-  "CMakeFiles/ld19_lidar.dir/main.cpp.o.d"
-  "ld19_lidar"
   "ld19_lidar.pdb"
+  "ld19_lidar"
 )
 
 # Per-language clean rules from dependency scanning.
