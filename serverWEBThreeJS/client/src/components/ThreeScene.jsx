@@ -26,7 +26,7 @@ export default function ThreeScene({ children, onSceneReady }) {
 
         // Camera setup - 2D top-down view with orthographic camera
         const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
-        const frustumSize = 30; // Increased to see lidar points up to 15m away
+        const frustumSize = 2; // Smaller to see close lidar points (within ~1m)
         const camera = new THREE.OrthographicCamera(
             frustumSize * aspect / -2,
             frustumSize * aspect / 2,
@@ -70,7 +70,7 @@ export default function ThreeScene({ children, onSceneReady }) {
         scene.add(directionalLight);
 
         // Grid helper only (no axes)
-        const gridHelper = new THREE.GridHelper(30, 30, 0x444444, 0x222222);
+        const gridHelper = new THREE.GridHelper(2, 20, 0x444444, 0x222222);
         scene.add(gridHelper);
 
         // Removed axes helper for cleaner view
@@ -95,7 +95,7 @@ export default function ThreeScene({ children, onSceneReady }) {
             if (!containerRef.current) return;
 
             const aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
-            const frustumSize = 30; // Match the initial frustumSize
+            const frustumSize = 2; // Match the initial frustumSize
             camera.left = frustumSize * aspect / -2;
             camera.right = frustumSize * aspect / 2;
             camera.top = frustumSize / 2;

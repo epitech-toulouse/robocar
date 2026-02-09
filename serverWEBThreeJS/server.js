@@ -1,10 +1,10 @@
 const express = require('express');
 const path = require('path');
+const http = require('http');
+const dgram = require('dgram');
+const { Server } = require('socket.io');
 const { WebSocketServer } = require('ws');
 const { Client } = require('ssh2');
-const http = require('http');
-const { Server } = require('socket.io');
-const { SerialPort } = require('serialport');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,12 +16,49 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
-const LIDAR_BAUD_RATE = parseInt(process.env.LIDAR_BAUD_RATE) || 230400; // LD19 uses 230400
-const LIDAR_TYPE = process.env.LIDAR_TYPE || 'ld19'; // 'ld19', 'rplidar', 'ydlidar', 'auto'
+const UDP_PORT = process.env.UDP_PORT || 7070;
 
-// Try to find and connect to lidar on USB0 or USB1
-let serialPort = null;
+// Robot configuration - the robot's UDP server address
+const ROBOT_IP = process.env.ROBOT_IP || '192.168.12.1';
+const ROBOT_UDP_PORT = process.env.ROBOT_UDP_PORT || 7070;
+
+// UDP socket for communicating with robot
+const udpServer = dgram.createSocket('udp4');
 let lidarConnected = false;
+let lastUdpReceiveTime = 0;
+let registrationInterval = null;
+
+// Lidar data processing
+let dataBuffer = Buffer.alloc(0);
+let scanPoints = [];
+let lastAngle = 0;
+let lastEmitTime = 0;
+const EMIT_INTERVAL = 100; // Emit every 100ms
+let isRegistered = false;
+
+/**
+ * Register with the robot's UDP server
+ * Sends a message to the robot so it adds us to its client list
+ * The robot doesn't send a confirmation - it just starts sending data
+ */
+function registerWithRobot() {
+    const message = Buffer.from('REGISTER\n');
+    udpServer.send(message, ROBOT_UDP_PORT, ROBOT_IP, (err) => {
+        if (err) {
+            console.error(`❌ Failed to send registration: ${err.message}`);
+            isRegistered = false;
+            io.emit('lidar-status', { connected: false, error: err.message });
+        } else {
+            if (!isRegistered) {
+                console.log(`✅ Registered with robot at ${ROBOT_IP}:${ROBOT_UDP_PORT}`);
+                isRegistered = true;
+                // Consider connected as soon as we register (robot doesn't send confirmation)
+                lidarConnected = true;
+                io.emit('lidar-status', { connected: true, source: `${ROBOT_IP}:${ROBOT_UDP_PORT}` });
+            }
+        }
+    });
+}
 
 /**
  * Parse LDRobot LD19/STL-19P protocol
@@ -60,7 +97,7 @@ function parseLD19Data(buffer) {
 
         // Parse packet
         const speed = buffer.readUInt16LE(offset + 2);
-        const startAngle = buffer.readUInt16LE(offset + 4) / 100.0; // Convert to degrees
+        const startAngle = buffer.readUInt16LE(offset + 4) / 100.0;
         const endAngle = buffer.readUInt16LE(offset + 42) / 100.0;
 
         // Calculate angle step
@@ -78,7 +115,7 @@ function parseLD19Data(buffer) {
             let angle = startAngle + (i * angleStep);
             if (angle >= 360) angle -= 360;
 
-            // Filter valid points (distance > 0 and < 12m, intensity > 0)
+            // Filter valid points
             if (distance > 10 && distance < 12000 && intensity > 0) {
                 const angleRad = (angle * Math.PI) / 180;
                 const distanceM = distance / 1000.0;
@@ -100,444 +137,259 @@ function parseLD19Data(buffer) {
     return { points, remaining: buffer.slice(offset) };
 }
 
-async function findLidarPort() {
-    const possiblePorts = ['/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyACM0', '/dev/ttyACM1'];
-
-    for (const portPath of possiblePorts) {
-        try {
-            console.log(`🔍 Trying to connect to lidar on ${portPath}...`);
-            const port = new SerialPort({
-                path: portPath,
-                baudRate: LIDAR_BAUD_RATE,
-                autoOpen: false
-            });
-
-            const result = await new Promise((resolve) => {
-                port.open((err) => {
-                    if (err) {
-                        console.log(`❌ Could not open ${portPath}: ${err.message}`);
-                        resolve(null);
-                    } else {
-                        console.log(`✅ Connected to lidar on ${portPath}`);
-                        resolve(port);
-                    }
-                });
-            });
-
-            if (result) return result;
-        } catch (err) {
-            console.log(`❌ Error with ${portPath}: ${err.message}`);
+/**
+ * Parse CSV text lidar data format
+ * Expected format: angle,distance,intensity\n (one point per line)
+ * Example: 354.71,0.108,148
+ * - angle in degrees
+ * - distance in meters
+ * - intensity (0-255)
+ */
+function parseCSVLidarData(data) {
+    try {
+        const text = data.toString('utf8');
+        const lines = text.split('\n').filter(line => line.trim().length > 0);
+        
+        const points = [];
+        for (const line of lines) {
+            const parts = line.split(',');
+            if (parts.length >= 2) {
+                const angle = parseFloat(parts[0]);
+                const distance = parseFloat(parts[1]); // Already in meters
+                const intensity = parts[2] ? parseInt(parts[2]) : 100;
+                
+                if (!isNaN(angle) && !isNaN(distance) && distance > 0.01 && distance < 30) {
+                    const angleRad = (angle * Math.PI) / 180;
+                    points.push({
+                        x: Math.cos(angleRad) * distance,
+                        y: 0.1,
+                        z: Math.sin(angleRad) * distance,
+                        angle: angle,
+                        distance: distance,
+                        intensity: intensity
+                    });
+                }
+            }
         }
+        
+        return { points, remaining: Buffer.alloc(0) };
+    } catch (e) {
+        return null;
     }
-    return null;
 }
 
 /**
- * Parse RPLidar binary protocol (Express Scan mode)
- * Each measurement packet is 5 bytes:
- * Byte 0: quality (6 bits) + start flag (1 bit) + ~start flag (1 bit)
- * Byte 1-2: angle in q6 format
- * Byte 3-4: distance in mm
+ * Parse JSON lidar data format
+ * Expected format: { "points": [{ "angle": 0, "distance": 1000 }, ...] }
+ * or: [{ "angle": 0, "distance": 1000 }, ...]
  */
-function parseRPLidarExpressScan(buffer) {
-    const points = [];
-    let offset = 0;
+function parseJSONLidarData(data) {
+    try {
+        const json = JSON.parse(data.toString());
+        let rawPoints = [];
 
-    while (offset + 5 <= buffer.length) {
-        const byte0 = buffer[offset];
-        const byte1 = buffer[offset + 1];
-        const byte2 = buffer[offset + 2];
-        const byte3 = buffer[offset + 3];
-        const byte4 = buffer[offset + 4];
-
-        // Check for valid sync bits (bit 0 and bit 1 should be inverted)
-        const S = byte0 & 0x01;
-        const notS = (byte0 >> 1) & 0x01;
-
-        if (S === notS) {
-            // Invalid sync, skip one byte
-            offset++;
-            continue;
+        if (Array.isArray(json)) {
+            rawPoints = json;
+        } else if (json.points && Array.isArray(json.points)) {
+            rawPoints = json.points;
+        } else {
+            return { points: [], remaining: Buffer.alloc(0) };
         }
 
-        // Quality (0-63)
-        const quality = byte0 >> 2;
-
-        // Check bit for angle (should be 1)
-        const C = byte1 & 0x01;
-        if (C !== 1) {
-            offset++;
-            continue;
-        }
-
-        // Angle in degrees (15-bit, value / 64)
-        const angleRaw = ((byte2 << 8) | byte1) >> 1;
-        const angle = angleRaw / 64.0;
-
-        // Distance in mm (16-bit)
-        const distance = (byte4 << 8) | byte3;
-
-        // Only add valid points
-        if (quality > 0 && distance > 0 && distance < 12000) {
+        const points = rawPoints.map(p => {
+            const angle = p.angle || 0;
+            const distance = p.distance || 0; // mm
+            const distanceM = distance / 1000.0;
             const angleRad = (angle * Math.PI) / 180;
-            const distanceM = distance / 1000;
 
-            points.push({
+            return {
                 x: Math.cos(angleRad) * distanceM,
                 y: 0.1,
                 z: Math.sin(angleRad) * distanceM,
                 angle: angle,
                 distance: distanceM,
-                quality: quality
-            });
-        }
+                intensity: p.intensity || 100
+            };
+        }).filter(p => p.distance > 0.01 && p.distance < 12);
 
-        offset += 5;
+        return { points, remaining: Buffer.alloc(0) };
+    } catch (e) {
+        return null; // Not JSON, try binary parser
     }
-
-    return { points, remaining: buffer.slice(offset) };
 }
 
-/**
- * Parse YDLIDAR binary protocol
- * Package header: 0xAA 0x55
- */
-function parseYDLidarData(buffer) {
-    const points = [];
-    let offset = 0;
-
-    while (offset + 10 <= buffer.length) {
-        // Look for package header
-        if (buffer[offset] !== 0xAA || buffer[offset + 1] !== 0x55) {
-            offset++;
-            continue;
-        }
-
-        const packageType = buffer[offset + 2];
-        const sampleCount = buffer[offset + 3];
-
-        // Check if we have enough data
-        const packetLength = 10 + sampleCount * 2;
-        if (offset + packetLength > buffer.length) {
-            break; // Need more data
-        }
-
-        const startAngle = ((buffer[offset + 5] << 8) | buffer[offset + 4]) / 128.0;
-        const endAngle = ((buffer[offset + 7] << 8) | buffer[offset + 6]) / 128.0;
-
-        // Calculate angle increment
-        let angleDiff = endAngle - startAngle;
-        if (angleDiff < 0) angleDiff += 360;
-        const angleStep = sampleCount > 1 ? angleDiff / (sampleCount - 1) : 0;
-
-        const dataStart = offset + 10;
-
-        for (let i = 0; i < sampleCount; i++) {
-            const idx = dataStart + i * 2;
-            if (idx + 1 >= buffer.length) break;
-
-            const distanceRaw = (buffer[idx + 1] << 8) | buffer[idx];
-            const distance = distanceRaw / 4.0; // mm
-            const angle = (startAngle + i * angleStep) % 360;
-
-            if (distance > 10 && distance < 12000) {
-                const angleRad = (angle * Math.PI) / 180;
-                const distanceM = distance / 1000;
-
-                points.push({
-                    x: Math.cos(angleRad) * distanceM,
-                    y: 0.1,
-                    z: Math.sin(angleRad) * distanceM,
-                    angle: angle,
-                    distance: distanceM
-                });
+// Process incoming lidar data
+function processLidarData(data) {
+    try {
+        // First try CSV text format (angle,distance,intensity\n)
+        const csvResult = parseCSVLidarData(data);
+        if (csvResult && csvResult.points.length > 0) {
+            // CSV data - emit directly
+            if (messageCount <= 10) {
+                console.log(`📍 Parsed CSV: ${csvResult.points.length} points`);
             }
+            io.emit('lidar-data', csvResult.points);
+            return;
+        }
+        
+        // Then try JSON format
+        const jsonResult = parseJSONLidarData(data);
+        if (jsonResult && jsonResult.points.length > 0) {
+            // JSON data - emit directly
+            console.log(`📍 Received JSON scan: ${jsonResult.points.length} points`);
+            io.emit('lidar-data', jsonResult.points);
+            return;
         }
 
-        offset += packetLength;
-    }
+        // Binary format - accumulate in buffer
+        dataBuffer = Buffer.concat([dataBuffer, data]);
 
-    return { points, remaining: buffer.slice(offset) };
-}
+        // Parse LD19 binary data
+        const result = parseLD19Data(dataBuffer);
 
-/**
- * Simple binary parser that looks for any recognizable pattern
- * and extracts angle/distance pairs
- */
-function parseGenericLidar(buffer) {
-    const points = [];
-    let offset = 0;
-
-    // Try to find patterns: look for 2-byte angle followed by 2-byte distance
-    while (offset + 4 <= buffer.length) {
-        // Interpret as little-endian values
-        const val1 = (buffer[offset + 1] << 8) | buffer[offset];
-        const val2 = (buffer[offset + 3] << 8) | buffer[offset + 2];
-
-        // Heuristic: if first value looks like angle (0-36000 for 0.01 degree resolution)
-        // and second value looks like distance (100-12000 mm)
-        if (val1 <= 36000 && val2 >= 100 && val2 <= 12000) {
-            const angle = val1 / 100.0; // Assume 0.01 degree resolution
-            const distance = val2;
-
-            const angleRad = (angle * Math.PI) / 180;
-            const distanceM = distance / 1000;
-
-            points.push({
-                x: Math.cos(angleRad) * distanceM,
-                y: 0.1,
-                z: Math.sin(angleRad) * distanceM,
-                angle: angle,
-                distance: distanceM
-            });
-
-            offset += 4;
-        } else {
-            offset++;
-        }
-    }
-
-    return { points, remaining: buffer.slice(offset) };
-}
-
-let dataBuffer = Buffer.alloc(0);
-let detectedProtocol = null;
-let pointsAccumulator = [];
-let lastEmitTime = 0;
-let scanPoints = []; // Full scan accumulator
-let lastAngle = 0;
-const EMIT_INTERVAL = 100; // Emit every 100ms
-
-async function initLidar() {
-    serialPort = await findLidarPort();
-
-    if (serialPort) {
-        lidarConnected = true;
-        dataBuffer = Buffer.alloc(0);
-        pointsAccumulator = [];
-        scanPoints = [];
-
-        console.log('📡 Lidar connected, listening for data...');
-        console.log('Lidar connected, listening for data...');
-
-        // Debug: log first few packets to understand protocol
-        let debugPacketCount = 0;
-        const MAX_DEBUG_PACKETS = 10;
-
-        // Handle binary data directly
-        serialPort.on('data', (data) => {
-            try {
-                // Debug: show raw data format with more details
-                if (debugPacketCount < MAX_DEBUG_PACKETS) {
-                    const hexStr = data.slice(0, Math.min(64, data.length)).toString('hex').match(/.{1,2}/g).join(' ');
-                    console.log(`Raw[${debugPacketCount}] (${data.length} bytes): ${hexStr}`);
-                    // Show as ASCII too (for text-based protocols)
-                    const asciiStr = data.slice(0, Math.min(32, data.length)).toString('ascii').replace(/[^\x20-\x7E]/g, '.');
-                    console.log(`   ASCII: ${asciiStr}`);
-                    debugPacketCount++;
-                }
-
-                // Append new data to buffer
-                dataBuffer = Buffer.concat([dataBuffer, data]);
-
-                // Try different parsers
-                let result;
-
-                if (detectedProtocol === 'ld19') {
-                    result = parseLD19Data(dataBuffer);
-                } else if (detectedProtocol === 'ydlidar') {
-                    result = parseYDLidarData(dataBuffer);
-                } else if (detectedProtocol === 'rplidar') {
-                    result = parseRPLidarExpressScan(dataBuffer);
-                } else {
-                    // Auto-detect - try LD19 first (STL-19P)
-                    // Check for LD19 header (0x54 0x2C)
-                    for (let i = 0; i < Math.min(100, dataBuffer.length - 1); i++) {
-                        if (dataBuffer[i] === 0x54 && dataBuffer[i + 1] === 0x2C) {
-                            console.log('Detected LD19/STL-19P protocol');
-                            detectedProtocol = 'ld19';
-                            result = parseLD19Data(dataBuffer);
-                            break;
-                        }
-                    }
-
-                    if (!result) {
-                        // Check for YDLIDAR header
-                        for (let i = 0; i < Math.min(50, dataBuffer.length - 1); i++) {
-                            if (dataBuffer[i] === 0xAA && dataBuffer[i + 1] === 0x55) {
-                                console.log('🔍 Detected YDLIDAR protocol');
-                                detectedProtocol = 'ydlidar';
-                                result = parseYDLidarData(dataBuffer);
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!result) {
-                        // Try RPLidar
-                        result = parseRPLidarExpressScan(dataBuffer);
-                        if (result.points.length > 5) {
-                            console.log('🔍 Detected RPLidar protocol');
-                            detectedProtocol = 'rplidar';
-                        }
-                    }
-
-                    if (!result || result.points.length === 0) {
-                        // Try generic parser
-                        result = parseGenericLidar(dataBuffer);
-                        if (result.points.length > 0) {
-                            console.log('🔍 Using generic lidar parser');
-                            detectedProtocol = 'generic';
-                        }
-                    }
-                }
-
-                if (result && result.points.length > 0) {
-                    // Accumulate points for a full scan
-                    for (const point of result.points) {
-                        // Detect new scan (angle wraps around)
-                        if (point.angle < lastAngle - 180) {
-                            // New scan started, emit accumulated points
-                            if (scanPoints.length > 10) {
-                                console.log(`📍 Complete scan: ${scanPoints.length} points`);
-                                // Log sample point for debugging
-                                if (scanPoints.length > 0) {
-                                    console.log(`   Sample point: x=${scanPoints[0].x.toFixed(2)}, z=${scanPoints[0].z.toFixed(2)}, dist=${scanPoints[0].distance.toFixed(2)}m`);
-                                }
-                                io.emit('lidar-data', scanPoints);
-                            }
-                            scanPoints = [];
-                        }
-                        scanPoints.push(point);
-                        lastAngle = point.angle;
-                    }
-
-                    // Also emit periodically for real-time updates
-                    const now = Date.now();
-                    if (now - lastEmitTime >= EMIT_INTERVAL && scanPoints.length > 0) {
+        if (result && result.points.length > 0) {
+            // Accumulate points for a full scan
+            for (const point of result.points) {
+                // Detect new scan (angle wraps around)
+                if (point.angle < lastAngle - 180) {
+                    // New scan started, emit accumulated points
+                    if (scanPoints.length > 10) {
+                        console.log(`📍 Complete scan: ${scanPoints.length} points`);
                         io.emit('lidar-data', scanPoints);
-                        lastEmitTime = now;
                     }
+                    scanPoints = [];
                 }
-
-                // Keep remaining unparsed data
-                if (result) {
-                    dataBuffer = result.remaining;
-                }
-
-                // Prevent buffer from growing too large
-                if (dataBuffer.length > 20000) {
-                    console.log('⚠️ Buffer overflow, trimming...');
-                    dataBuffer = dataBuffer.slice(-5000);
-                }
-
-            } catch (err) {
-                console.error('Error parsing lidar data:', err.message);
+                scanPoints.push(point);
+                lastAngle = point.angle;
             }
-        });
 
-        serialPort.on('error', (err) => {
-            console.error('Serial port error:', err.message);
-            lidarConnected = false;
-        });
+            // Also emit periodically for real-time updates
+            const now = Date.now();
+            if (now - lastEmitTime >= EMIT_INTERVAL && scanPoints.length > 0) {
+                io.emit('lidar-data', scanPoints);
+                lastEmitTime = now;
+            }
+        }
 
-        serialPort.on('close', () => {
-            console.log('📴 Lidar connection closed');
-            lidarConnected = false;
-            setTimeout(initLidar, 5000);
-        });
+        // Keep remaining unparsed data
+        if (result) {
+            dataBuffer = result.remaining;
+        }
 
-        // Send start scan command for RPLidar (0xA5 0x20)
-        console.log('📤 Sending RPLidar start scan command...');
-        serialPort.write(Buffer.from([0xA5, 0x20]));
+        // Prevent buffer from growing too large
+        if (dataBuffer.length > 20000) {
+            console.log('⚠️ Buffer overflow, trimming...');
+            dataBuffer = dataBuffer.slice(-5000);
+        }
 
-    } else {
-        console.log('⚠️ No lidar found. Retrying in 5 seconds...');
-        setTimeout(initLidar, 5000);
+    } catch (err) {
+        console.error('Error processing lidar data:', err.message);
     }
 }
 
-// Serve static files from React build
-app.use(express.static('dist'));
+// UDP Server for receiving lidar data
+udpServer.on('error', (err) => {
+    console.error(`UDP server error:\n${err.stack}`);
+    udpServer.close();
+});
 
-// API endpoint for health check
+let messageCount = 0;
+udpServer.on('message', (msg, rinfo) => {
+    // Update last receive time
+    lastUdpReceiveTime = Date.now();
+    messageCount++;
+    
+    // Log first few messages in detail for debugging
+    if (messageCount <= 5) {
+        console.log(`📡 UDP message #${messageCount} from ${rinfo.address}:${rinfo.port}`);
+        console.log(`   Size: ${msg.length} bytes`);
+        console.log(`   First 50 bytes (hex): ${msg.slice(0, 50).toString('hex')}`);
+        console.log(`   As string: ${msg.slice(0, 100).toString('utf8').replace(/[\x00-\x1f]/g, '.')}`);
+    }
+    
+    // Log first data reception
+    if (!lidarConnected || rinfo.address !== ROBOT_IP) {
+        console.log(`📡 Receiving lidar data from ${rinfo.address}:${rinfo.port}`);
+        lidarConnected = true;
+        io.emit('lidar-status', { connected: true, source: `${rinfo.address}:${rinfo.port}` });
+    }
+
+    // Process the incoming lidar data
+    processLidarData(msg);
+});
+
+udpServer.on('listening', () => {
+    const address = udpServer.address();
+    console.log(`📡 UDP socket listening on ${address.address}:${address.port}`);
+    console.log(`   Robot address: ${ROBOT_IP}:${ROBOT_UDP_PORT}`);
+    
+    // Register with robot's UDP server
+    registerWithRobot();
+    
+    // Keep sending registration messages periodically to maintain connection
+    registrationInterval = setInterval(() => {
+        if (!lidarConnected || Date.now() - lastUdpReceiveTime > 2000) {
+            registerWithRobot();
+        }
+    }, 1000);
+});
+
+// Check for lidar connection timeout
+setInterval(() => {
+    if (lidarConnected && Date.now() - lastUdpReceiveTime > 3000) {
+        console.log('📴 Lidar data source disconnected (timeout)');
+        lidarConnected = false;
+        io.emit('lidar-status', { connected: false });
+    }
+}, 1000);
+
+// Serve static files from the dist directory (for production)
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// API endpoints
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
-        timestamp: new Date().toISOString(),
-        lidar: lidarConnected ? 'connected' : 'disconnected'
+        lidar: lidarConnected,
+        uptime: process.uptime()
     });
 });
 
-// API endpoint to get lidar status
 app.get('/api/lidar/status', (req, res) => {
     res.json({
         connected: lidarConnected,
-        baudRate: LIDAR_BAUD_RATE,
-        protocol: detectedProtocol || 'detecting',
-        pointCount: scanPoints.length
+        lastReceive: lastUdpReceiveTime,
+        pointsInBuffer: scanPoints.length
     });
 });
 
-// Serve React app for all other routes
+// Serve the React app for any other route
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-// WebSocket connection handling
+// Socket.IO connection handling
 io.on('connection', (socket) => {
-    console.log('🔌 Client connected:', socket.id);
+    console.log(`🔌 Client connected: ${socket.id}`);
 
     // Send current lidar status
-    socket.emit('lidar-status', {
-        connected: lidarConnected,
-        protocol: detectedProtocol
-    });
+    socket.emit('lidar-status', { connected: lidarConnected });
 
-    // Send current scan if available
+    // If we have recent scan data, send it immediately
     if (scanPoints.length > 0) {
         socket.emit('lidar-data', scanPoints);
     }
 
     socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
+        console.log(`🔌 Client disconnected: ${socket.id}`);
     });
 });
 
-// Start server and initialize lidar
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-    console.log(`React + Three.js server ready`);
-    console.log(`Lidar baud rate: ${LIDAR_BAUD_RATE}`);
-    console.log(`Lidar type: ${LIDAR_TYPE}`);
-
-    // Initialize lidar connection
-    initLidar();
-});
-
-
-
-// WebSocket server for SSH proxy (using noServer to avoid conflicts with Socket.IO)
-const wss = new WebSocketServer({ noServer: true });
-
-// Handle HTTP upgrade manually to route to correct WebSocket server
-server.on('upgrade', (request, socket, head) => {
-    const pathname = new URL(request.url, 'http://localhost').pathname;
-    
-    if (pathname === '/ssh') {
-        wss.handleUpgrade(request, socket, head, (ws) => {
-            wss.emit('connection', ws, request);
-        });
-    }
-    // Socket.IO handles its own /socket.io/ path internally
-});
-
-console.log('WebSocket SSH proxy ready on port', PORT);
-
+// WebSocket server for SSH terminal
+const wss = new WebSocketServer({ server, path: '/ssh' });
 
 wss.on('connection', (ws) => {
-    console.log('New WebSocket connection');
-
+    console.log('📡 SSH WebSocket connected');
     let sshClient = null;
     let sshStream = null;
 
@@ -545,19 +397,16 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
 
-            if (data.type === 'auth') {
-                // Create SSH connection
+            if (data.type === 'connect') {
                 sshClient = new Client();
 
                 sshClient.on('ready', () => {
                     console.log(`SSH connected to ${data.host}`);
-
                     ws.send(JSON.stringify({
                         type: 'connected',
                         message: 'SSH connection established'
                     }));
 
-                    // Open shell
                     sshClient.shell((err, stream) => {
                         if (err) {
                             ws.send(JSON.stringify({
@@ -569,7 +418,6 @@ wss.on('connection', (ws) => {
 
                         sshStream = stream;
 
-                        // Send SSH output to WebSocket
                         stream.on('data', (data) => {
                             ws.send(JSON.stringify({
                                 type: 'data',
@@ -603,7 +451,6 @@ wss.on('connection', (ws) => {
                     console.log('SSH connection closed');
                 });
 
-                // Connect to SSH
                 sshClient.connect({
                     host: data.host,
                     port: data.port || 22,
@@ -613,7 +460,6 @@ wss.on('connection', (ws) => {
                 });
 
             } else if (data.type === 'input') {
-                // Forward input to SSH
                 if (sshStream) {
                     sshStream.write(data.data);
                 }
@@ -624,7 +470,7 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        console.log('📡 WebSocket closed');
+        console.log('📡 SSH WebSocket closed');
         if (sshClient) {
             sshClient.end();
         }
@@ -634,3 +480,22 @@ wss.on('connection', (ws) => {
         console.error('WebSocket error:', error);
     });
 });
+
+// Start servers
+server.listen(PORT, () => {
+    console.log(`🚀 HTTP/WebSocket server running on port ${PORT}`);
+    console.log(`📦 Open http://localhost:${PORT} in your browser`);
+});
+
+udpServer.bind(UDP_PORT, '0.0.0.0');
+
+console.log('');
+console.log('='.repeat(50));
+console.log('  Lidar UDP Client/Server');
+console.log('='.repeat(50));
+console.log(`  Web interface: http://localhost:${PORT}`);
+console.log(`  Local UDP port: ${UDP_PORT}`);
+console.log(`  Robot address: ${ROBOT_IP}:${ROBOT_UDP_PORT}`);
+console.log('');
+console.log('  Will register with robot and receive lidar data');
+console.log('='.repeat(50));
