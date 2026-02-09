@@ -4,7 +4,7 @@ import os
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
-from .LidarParserUDP import LidarParserUDP
+from .LidarParserCpp import LidarParser
 
 # Ajouter le chemin pour importer gps_simple_reader
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -33,7 +33,7 @@ class AutoDriveState(State):
     def __init__(self, use_gps=False, gps_host='localhost', gps_port=25001):
         print("Initializing AutoDrive...")
         # self.lidar = LidarParser()
-        self.lidar = LidarParserUDP(host='127.0.0.1', port=8888)
+        self.lidar = LidarParser()
         self.last_steering = 0.0  # Pour le lissage
         self.reverse_timer = 0    # Compteur pour la marche arrière
         
