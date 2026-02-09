@@ -106,7 +106,6 @@ public:
         points.push_back({angle, dist_m, intensity});
       }
     }
-
     return points;
   }
 
