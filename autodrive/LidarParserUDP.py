@@ -86,13 +86,9 @@ class LidarParserUDP:
 
     def get_points(self):
         with self.lock:
-            # Return copy of points
+            # Return copy of points and CLEAR buffer for fresh data
             current_points = list(self.points)
-            # Optional: Clear old points to avoid processing same data multiple times?
-            # autodriveState seems to poll continuously. 
-            # If we don't clear, we might process old data if no new data comes in.
-            # But usually we want a "view" of the latest scan.
-            # Let's keep the buffer logic from original LidarParser (rolling buffer).
+            self.points = []  # Effacer le buffer pour avoir des données fraîches au prochain appel
             return current_points
 
     def stop(self):
