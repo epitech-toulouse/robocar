@@ -6,7 +6,8 @@
 #include <unistd.h>
 #include <vector>
 
-const float MAX_RANGE = 12.0f; // meters
+const float MAX_RANGE = 12.0f;    // meters
+const float ANGLE_OFFSET = 15.0f; // degrees
 
 struct LidarPoint {
   float angle;    // degrees
@@ -92,9 +93,11 @@ public:
       uint16_t distance = packet[offset] | (packet[offset + 1] << 8);
       uint8_t intensity = packet[offset + 2];
 
-      float angle = start_angle + i * angle_step;
+      float angle = start_angle + i * angle_step + ANGLE_OFFSET;
       if (angle >= 360.0f)
         angle -= 360.0f;
+      else if (angle < 0.0f)
+        angle += 360.0f;
 
       float dist_m = distance / 1000.0f;
 
