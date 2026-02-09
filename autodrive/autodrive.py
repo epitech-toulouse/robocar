@@ -6,9 +6,6 @@ from control.Motor import Motor
 from control.Gamepad import Gamepad
 from .LidarParserUDP import LidarParserUDP
 
-# Ajouter le chemin pour importer gps_simple_reader
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from gps.gps_simple_reader import SimpleGPSReader
 
 
 vitesse_factor = 1.5;
@@ -69,7 +66,7 @@ class AutoDriveState(State):
             self.handle_reverse(motor, largescans)
             self.reverse_timer -= 1
         else:
-            self.navigate(motor, front_scan, left_scan, right_scan, largescans, gps_data)
+            self.navigate(motor, front_scan, left_scan, right_scan, largescans)
 
     def scan_sector(self, points, min_angle, max_angle, sector_name=""):
         """Analyse un secteur angulaire et retourne les statistiques"""
@@ -105,17 +102,9 @@ class AutoDriveState(State):
             angle -= 360
         return angle
 
-    def navigate(self, motor: Motor, front, left, right, largescans, gps_data=None):
+    def navigate(self, motor: Motor, front, left, right, largescans):
         """Logique principale de navigation avec intégration GPS"""
         
-        # Vérifier si on est arrivé à destination (GPS uniquement sur distance)
-        if gps_data and gps_data.get('goal_distance') is not None:
-            goal_distance = gps_data['goal_distance']
-            if goal_distance <= 2.0:
-                print(f"🎯 OBJECTIF ATTEINT! Distance: {goal_distance:.2f}m - ARRÊT")
-                motor.set_steering_objective(0.0)
-                motor.set_speed_objective(0.0)
-                return
         
         # Obstacle très proche : marche arrière
         if front['min_dist'] < STOP_DISTANCE:
@@ -123,7 +112,7 @@ class AutoDriveState(State):
             self.initiate_reverse(motor, largescans)
             return
         
-        best_direction = self.find_best_path(front, left, right, gps_data)
+        best_direction = self.find_best_path(front, left, right)
         speed = self.calculate_speed(front['min_dist'])
         target_steering = best_direction['steering']
         
@@ -132,7 +121,7 @@ class AutoDriveState(State):
         
 
 
-    def find_best_path(self, front, left, right, gps_data=None):
+    def find_best_path(self, front, left, right):
         """Trouve la meilleure direction à prendre avec braquage proportionnel et GPS"""
         
         # Calculer le braquage proportionnel basé sur l'espace disponible
@@ -163,17 +152,6 @@ class AutoDriveState(State):
             }
         ]
         
-        # GPS : utiliser la distance pour guider la navigation
-        if gps_data and gps_data.get('goal_distance') is not None:
-            distance = gps_data['goal_distance']
-            
-            # Ajouter la distance à l'historique (garder les 5 dernières)
-            self._last_goal_distances.append(distance)
-            if len(self._last_goal_distances) > 5:
-                self._last_goal_distances.pop(0)
-            
-
-
         free_paths = [p for p in paths if p['free']]
         
         if not free_paths:
