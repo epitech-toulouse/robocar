@@ -4,7 +4,6 @@ import os
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
-from .LidarParserCpp import LidarParser
 from .LidarParserUDP import LidarParserUDP
 
 # Ajouter le chemin pour importer gps_simple_reader
