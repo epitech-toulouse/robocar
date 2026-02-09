@@ -32,6 +32,7 @@ class AutoDriveState(State):
         self.lidar = LidarParser();
         self.last_steering = 0.0  # Pour le lissage
         self.reverse_timer = 0    # Compteur pour la marche arrière
+        self.reverse_steering = 0.0  # Direction pendant la marche arrière
         
         # GPS Reader
         self.gps = None
@@ -111,8 +112,15 @@ class AutoDriveState(State):
             self.initiate_reverse(motor, largescans)
             return
         
-        best_direction = self.find_best_path(front, left, right)
         speed = self.calculate_speed(front['min_dist'])
+        
+        # Si l'avant est bien dégagé, aller tout droit sans chercher d'alternative
+        if front['min_dist'] > SAFE_DISTANCE * 1.2:
+            motor.set_steering_objective(0.0)
+            motor.set_speed_objective(speed)
+            return
+        
+        best_direction = self.find_best_path(front, left, right)
         target_steering = best_direction['steering']
         
         motor.set_steering_objective(target_steering)
@@ -194,7 +202,16 @@ class AutoDriveState(State):
             return 0.0
         
         closest = min(obstacles, key=lambda o: o['distance'])
+        
+        # Si l'obstacle le plus proche est loin, pas besoin de corriger → tout droit
+        if closest['distance'] > SAFE_DISTANCE:
+            return 0.0
+        
         angle = self.normalize_angle(closest['angle'])
+        
+        # Zone morte : si l'obstacle est quasi centré (±5°), ne pas corriger
+        if abs(angle) < 5:
+            return 0.0
         
         correction = -angle / SCAN_FRONT_DEG * 0.7
         return max(-STEER_ANGLE, min(STEER_ANGLE, correction))
@@ -221,19 +238,26 @@ class AutoDriveState(State):
             left_min = min([o['distance'] for o in left_sector]) if left_sector else float('inf')
             right_min = min([o['distance'] for o in right_sector]) if right_sector else float('inf')
             
-            
             if left_min > right_min:
-                steering = -STEER_ANGLE
+                self.reverse_steering = -STEER_ANGLE
             else:
-                steering = STEER_ANGLE 
+                self.reverse_steering = STEER_ANGLE
         else:
-            steering = 0.0 
+            self.reverse_steering = 0.0
         
-        motor.set_steering_objective(steering)
+        motor.set_steering_objective(self.reverse_steering)
         motor.set_speed_objective(BACKWARD_SPEED)
 
     def handle_reverse(self, motor: Motor, largescans):
         """Gère la marche arrière"""
         print(f"🔄 MARCHE ARRIÈRE ({self.reverse_timer} cycles restants)")
-        if (self.reverse_timer < 10):
-            motor.set_steering_objective(0.0);
+        
+        # Re-appliquer la vitesse à chaque cycle (sinon le motor loop la remet à 0)
+        motor.set_speed_objective(BACKWARD_SPEED)
+        
+        if self.reverse_timer < 10:
+            # Derniers cycles : roues droites pour sortir droit
+            motor.set_steering_objective(0.0)
+        else:
+            # Maintenir le braquage choisi au début
+            motor.set_steering_objective(self.reverse_steering)
