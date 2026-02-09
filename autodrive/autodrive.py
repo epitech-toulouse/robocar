@@ -1,264 +1,245 @@
 import time
-import math
+import sys
+import os
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
 from .LidarParserUDP import LidarParserUDP
 
-# =============================================================================
-# Follow-the-Gap AutoDrive
-#
-# Principe : on discrétise le champ de vision avant (-90° à +90°) en N bins
-# angulaires.  Pour chaque bin on retient la distance minimale.  On applique
-# une "bulle de sécurité" autour des obstacles proches, puis on cherche la
-# séquence consécutive de bins libres la plus large (= le plus grand gap).
-# On braque vers le centre de ce gap.  Le tout est lissé pour être fluide.
-# =============================================================================
 
-# -- Scan --
-NUM_BINS = 72              # Résolution angulaire (180° / 72 = 2.5° par bin)
-SCAN_HALF_FOV = 90.0       # Demi-champ de vision avant (°)
-BUBBLE_RADIUS = 0.45       # Rayon de la bulle de sécurité autour des obstacles (m)
-BUBBLE_ANGLE_DEG = 15.0    # Demi-angle effacé autour d'un obstacle proche (°)
 
-# -- Distances --
-SAFE_DISTANCE = 3.5        # Au-delà = pleine vitesse
-SLOW_DISTANCE = 1.5        # En-dessous = vitesse réduite
-STOP_DISTANCE = 0.55       # En-dessous = marche arrière
-MAX_RANGE = 10.0           # Distance max considérée (clip)
+vitesse_factor = 1.5;
 
-# -- Vitesses --
-FORWARD_SPEED = 0.06
-SLOW_SPEED = 0.04
-BACKWARD_SPEED = -0.04
+# DIRECTION DRIVE PARAMETERS
+SCAN_FRONT_DEG = 25   # Élargi pour mieux détecter les ouvertures
+SAFE_DISTANCE = 4.0   # Distance de sécurité pour ralentir
+SLOW_DISTANCE = 1.5   # Distance de ralentissement
+STOP_DISTANCE = 0.6   # Distance d'arrêt
 
-# -- Steering --
-STEER_SMOOTHING = 0.35     # 0 = pas de lissage, 1 = figé (exponentiel)
-STRAIGHT_BIAS = 0.15       # Bonus de score pour les gaps proches de 0° (favorise tout droit)
+FORWARD_SPEED = 0.06   # Vitesse maximale augmentée
+BACKWARD_SPEED = -0.04 # Vitesse de recul
+SLOW_SPEED = 0.04   # Vitesse minimale
 
-# -- Reverse --
-REVERSE_CYCLES = 25
+# STEERING AVOIDANCE PARAMETERS
+STEERING_SCAN_ANGLE = 65  # Angle de scan pour trouver les ouvertures
+STEER_ANGLE = 1         # Angle de braquage max
+STEER_SMOOTHING = 0.7     # Lissage du braquage
 
 
 class AutoDriveState(State):
     def __init__(self, use_gps=False, gps_host='localhost'):
-        print("Initializing AutoDrive (Follow-the-Gap)...")
+        print("Initializing AutoDrive...")
+        # self.lidar = LidarParser()
         self.lidar = LidarParserUDP(host='127.0.0.1', port=8888)
-
-        self.last_steering = 0.0
-        self.reverse_timer = 0
-
-        # GPS (conservé pour compatibilité)
+        self.last_steering = 0.0  # Pour le lissage
+        self.reverse_timer = 0    # Compteur pour la marche arrière
+        
+        # GPS Reader
         self.gps = None
         self.use_gps = use_gps
-
-        # Pré-calcul des angles centraux de chaque bin
-        self.bin_angles = [
-            -SCAN_HALF_FOV + (i + 0.5) * (2 * SCAN_HALF_FOV / NUM_BINS)
-            for i in range(NUM_BINS)
-        ]
-        self.bin_width = 2 * SCAN_HALF_FOV / NUM_BINS
-
-    # -----------------------------------------------------------------
-    # Lifecycle
-    # -----------------------------------------------------------------
+        self._last_gps_print = 0  # Initialiser le compteur
+        self._last_gps_update = 0  # Dernier update GPS
+        self._last_goal_distances = []  # Les 5 dernières distances au goal
+        self._distance_improving = True  # Est-ce qu'on se rapproche?
+        self._cached_gps_data = None  # Données GPS en cache
+        
+    
     def stop(self):
         self.lidar.stop()
         if self.gps:
             self.gps.stop()
 
-    # -----------------------------------------------------------------
-    # Main loop (appelé par le Manager)
-    # -----------------------------------------------------------------
     def run_single(self, motor: Motor, gamepad: Gamepad):
+        """Exécute un cycle de contrôle"""
         points = self.lidar.get_points()
         if not points:
             time.sleep(0.05)
             return
+                
+        front_scan = self.scan_sector(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG, "AVANT")
+        left_scan = self.scan_sector(points,-STEERING_SCAN_ANGLE, -(SCAN_FRONT_DEG - 10), "GAUCHE")
+        right_scan = self.scan_sector(points, (SCAN_FRONT_DEG - 10), STEERING_SCAN_ANGLE, "DROITE")
+        largescans = self.scan_sector(points, -180, 180, "ALL")
 
-        # 1. Construire le tableau de distances par bin
-        bins = self._build_distance_bins(points)
-
-        # 2. Marche arrière en cours ?
+        
         if self.reverse_timer > 0:
-            self._handle_reverse(motor, bins)
+            self.handle_reverse(motor, largescans)
             self.reverse_timer -= 1
-            return
+        else:
+            self.navigate(motor, front_scan, left_scan, right_scan, largescans)
 
-        # 3. Obstacle critique devant → marche arrière
-        front_min = self._front_min_distance(bins)
-        if front_min < STOP_DISTANCE:
-            self._initiate_reverse(motor, bins)
-            return
-
-        # 4. Appliquer la bulle de sécurité
-        safe_bins = self._apply_safety_bubble(list(bins))
-
-        # 5. Trouver le meilleur gap
-        target_angle = self._find_best_gap(safe_bins)
-
-        # 6. Convertir en steering [-1, 1] avec lissage
-        raw_steering = max(-1.0, min(1.0, target_angle / SCAN_HALF_FOV))
-        smoothed = (STEER_SMOOTHING * self.last_steering
-                    + (1 - STEER_SMOOTHING) * raw_steering)
-        smoothed = max(-1.0, min(1.0, smoothed))
-        self.last_steering = smoothed
-
-        # 7. Vitesse adaptative (basée sur la distance min dans la direction choisie)
-        look_min = self._distance_in_direction(bins, target_angle, 20)
-        speed = self._calculate_speed(look_min)
-
-        motor.set_steering_objective(smoothed)
-        motor.set_speed_objective(speed)
-
-    # =================================================================
-    #  BINNING  – on projette les points lidar dans des bins angulaires
-    # =================================================================
-    def _build_distance_bins(self, points):
-        """Retourne un tableau de NUM_BINS distances (la plus proche par bin)."""
-        bins = [MAX_RANGE] * NUM_BINS
+    def scan_sector(self, points, min_angle, max_angle, sector_name=""):
+        """Analyse un secteur angulaire et retourne les statistiques"""
+        obstacles = []
         for p in points:
-            angle = self._normalize_angle(p['angle'])
-            if -SCAN_HALF_FOV <= angle <= SCAN_HALF_FOV:
-                idx = int((angle + SCAN_HALF_FOV) / (2 * SCAN_HALF_FOV) * NUM_BINS)
-                idx = max(0, min(NUM_BINS - 1, idx))
-                dist = min(p['distance'], MAX_RANGE)
-                if dist < bins[idx]:
-                    bins[idx] = dist
-        return bins
+            angle = self.normalize_angle(p['angle'])
+            if min_angle <= angle <= max_angle:
+                obstacles.append(p)
+        
+        if not obstacles:
+            # if sector_name:
+            #     print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): ⚫ NO DATA")
+            return {'min_dist': float('inf'), 'avg_dist': float('inf'), 'count': 0, 'obstacles': []}
+        
+        distances = [o['distance'] for o in obstacles]
+        result = {
+            'min_dist': min(distances),
+            'avg_dist': sum(distances) / len(distances),
+            'count': len(distances),
+            'obstacles': obstacles
+        }
+        # if sector_name:
+        #     status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
+        #     print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
+        
+        
+        return result
 
-    # =================================================================
-    #  SAFETY BUBBLE  – on efface les bins autour des obstacles proches
-    # =================================================================
-    def _apply_safety_bubble(self, bins):
-        """Met à 0 les bins dans un rayon angulaire autour de chaque obstacle
-        plus proche que BUBBLE_RADIUS."""
-        bubble_half_bins = max(1, int(BUBBLE_ANGLE_DEG / self.bin_width))
-        for i, d in enumerate(bins):
-            if d < BUBBLE_RADIUS:
-                lo = max(0, i - bubble_half_bins)
-                hi = min(NUM_BINS - 1, i + bubble_half_bins)
-                for j in range(lo, hi + 1):
-                    bins[j] = 0.0
-        return bins
+    def normalize_angle(self, angle):
+        """Normalise un angle entre -180 et 180"""
+        angle = angle % 360
+        if angle > 180:
+            angle -= 360
+        return angle
 
-    # =================================================================
-    #  FIND BEST GAP  – plus grande séquence consécutive de bins libres
-    # =================================================================
-    def _find_best_gap(self, bins):
-        """Retourne l'angle (°) vers le centre du meilleur gap."""
-        free_threshold = SLOW_DISTANCE * 0.8  # bin considéré libre au-dessus de ça
+    def navigate(self, motor: Motor, front, left, right, largescans):
+        """Logique principale de navigation avec intégration GPS"""
+        
+        
+        # Obstacle très proche : marche arrière
+        if front['min_dist'] < STOP_DISTANCE:
+            # print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
+            self.initiate_reverse(motor, largescans)
+            return
+        
+        best_direction = self.find_best_path(front, left, right)
+        speed = self.calculate_speed(front['min_dist'])
+        target_steering = best_direction['steering']
+        
+        motor.set_steering_objective(target_steering)
+        motor.set_speed_objective(speed)
+        
 
-        # Trouver tous les runs consécutifs de bins libres
-        gaps = []
-        start = None
-        for i in range(NUM_BINS):
-            if bins[i] > free_threshold:
-                if start is None:
-                    start = i
-            else:
-                if start is not None:
-                    gaps.append((start, i - 1))
-                    start = None
-        if start is not None:
-            gaps.append((start, NUM_BINS - 1))
 
-        if not gaps:
-            # Aucun espace libre → viser le bin le plus lointain
-            best_idx = max(range(NUM_BINS), key=lambda i: bins[i])
-            return self.bin_angles[best_idx]
+    def find_best_path(self, front, left, right):
+        """Trouve la meilleure direction à prendre avec braquage proportionnel et GPS"""
+        
+        # Calculer le braquage proportionnel basé sur l'espace disponible
+        right_steering = self.calculate_proportional_steering(right, 1.0)   # Positif = droite
+        left_steering = self.calculate_proportional_steering(left, -1.0)    # Négatif = gauche
+        front_steering = self.calculate_proportional_steering(front, 0.0) 
 
-        # Scorer chaque gap : largeur × profondeur moyenne + bonus tout-droit
-        best_score = -1
-        best_angle = 0.0
-        for (s, e) in gaps:
-            width = e - s + 1
-            avg_depth = sum(bins[s:e + 1]) / width
-            center_idx = (s + e) // 2
-            center_angle = self.bin_angles[center_idx]
+        
+        # Calcul des scores pour chaque direction
+        paths = [
+            {
+                'name': 'AVANT',
+                'steering': front_steering,
+                'score': front['avg_dist'],
+                'free': front['min_dist'] > SAFE_DISTANCE
+            },
+            {
+                'name': 'DROITE',
+                'steering': right_steering,
+                'score': right['avg_dist'] * 0.8,  # Léger malus pour les virages
+                'free': right['min_dist'] > SLOW_DISTANCE
+            },
+            {
+                'name': 'GAUCHE',
+                'steering': left_steering,
+                'score': left['avg_dist'] * 0.8,
+                'free': left['min_dist'] > SLOW_DISTANCE
+            }
+        ]
+        
+        free_paths = [p for p in paths if p['free']]
+        
+        if not free_paths:
+            best = max(paths, key=lambda p: p['score'])
+            return best
+        
+        best = max(free_paths, key=lambda p: p['score'])
+        
+        if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE * 0.7:
+            best['steering'] = self.fine_tune_steering(front['obstacles'])
+        
+        return best
+    
+    def calculate_proportional_steering(self, sector_scan, direction):
+        """Calcule un braquage proportionnel basé sur la distance et densité d'obstacles"""
 
-            # Le score favorise les gaps larges, profonds, et proches de 0°
-            straightness = 1.0 - abs(center_angle) / SCAN_HALF_FOV  # 1 si droit, 0 si ±90°
-            score = width * avg_depth + STRAIGHT_BIAS * straightness * avg_depth
+        # MAX STEER_ANGLE == 45° => 1 = 45°     
 
-            if score > best_score:
-                best_score = score
-                best_angle = center_angle
+        min_dist = sector_scan['min_dist']
+        avg_dist = sector_scan['avg_dist']
+        
+        # Plus l'espace est grand, moins on tourne fort
+        # Utiliser la distance moyenne pour un meilleur jugement
+        if avg_dist > 3.5 * vitesse_factor:
+            # Beaucoup d'espace : virage très doux
+            factor = 0.3
+        elif avg_dist > 2.5 * vitesse_factor:
+            # Espace confortable : virage doux
+            factor = 0.5
+        elif avg_dist > 1.8 * vitesse_factor:
+            # Espace moyen : virage modéré
+            factor = 0.7
+        else:
+            # Peu d'espace : virage prononcé
+            factor = 0.9 
+        
+        # Ajuster selon la distance minimale (sécurité)
+        if min_dist < SLOW_DISTANCE:
+            factor = min(1.0, factor + 0.2)  # Tourner plus fort si danger proche
+        
+        return direction * STEER_ANGLE * factor
 
-        # Dans le gap choisi, on peut affiner en visant le point le plus profond
-        # plutôt que le centre géométrique (meilleur résultat dans les couloirs)
-        for (s, e) in gaps:
-            center_idx = (s + e) // 2
-            if abs(self.bin_angles[center_idx] - best_angle) < self.bin_width:
-                deepest_idx = max(range(s, e + 1), key=lambda i: bins[i])
-                # Pondérer entre centre géométrique et point le plus profond
-                geo_angle = self.bin_angles[center_idx]
-                deep_angle = self.bin_angles[deepest_idx]
-                best_angle = 0.6 * geo_angle + 0.4 * deep_angle
-                break
+    def fine_tune_steering(self, obstacles):
+        """Ajustement fin du braquage pour rester au centre"""
+        if not obstacles:
+            return 0.0
+        
+        closest = min(obstacles, key=lambda o: o['distance'])
+        angle = self.normalize_angle(closest['angle'])
+        
+        correction = -angle / SCAN_FRONT_DEG * 0.3 
+        return max(-STEER_ANGLE, min(STEER_ANGLE, correction))
 
-        return best_angle
-
-    # =================================================================
-    #  SPEED
-    # =================================================================
-    def _calculate_speed(self, min_distance):
+    def calculate_speed(self, min_distance):
+        """Calcul adaptatif de la vitesse selon la distance"""
         if min_distance >= SAFE_DISTANCE:
             return FORWARD_SPEED
         elif min_distance <= STOP_DISTANCE:
             return 0.0
         else:
-            t = (min_distance - STOP_DISTANCE) / (SAFE_DISTANCE - STOP_DISTANCE)
-            return SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * t
+            factor = (min_distance - STOP_DISTANCE) / (SAFE_DISTANCE - STOP_DISTANCE)
+            return SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * factor
 
-    def _distance_in_direction(self, bins, angle_deg, half_window_deg=15):
-        """Distance minimale dans un cône autour de angle_deg."""
-        lo = angle_deg - half_window_deg
-        hi = angle_deg + half_window_deg
-        min_d = MAX_RANGE
-        for i, a in enumerate(self.bin_angles):
-            if lo <= a <= hi:
-                if bins[i] < min_d:
-                    min_d = bins[i]
-        return min_d
 
-    def _front_min_distance(self, bins, half_angle=20):
-        """Distance minimale dans le secteur avant ±half_angle°."""
-        return self._distance_in_direction(bins, 0, half_angle)
-
-    # =================================================================
-    #  REVERSE
-    # =================================================================
-    def _initiate_reverse(self, motor: Motor, bins):
-        self.reverse_timer = REVERSE_CYCLES
-
-        # Trouver de quel côté il y a plus d'espace pour braquer en reculant
-        mid = NUM_BINS // 2
-        left_space = sum(bins[:mid]) / mid if mid > 0 else 0
-        right_space = sum(bins[mid:]) / (NUM_BINS - mid) if (NUM_BINS - mid) > 0 else 0
-
-        if left_space > right_space:
-            steering = -0.8   # braquer à gauche en reculant → le nez ira à gauche
-        elif right_space > left_space:
-            steering = 0.8
+    def initiate_reverse(self, motor: Motor, largescans):
+        """Démarre une séquence de marche arrière"""
+        self.reverse_timer = 30  # Nombre de cycles en marche arrière
+        
+        if largescans['obstacles']:
+            left_sector = [o for o in largescans['obstacles'] if 30 <= self.normalize_angle(o['angle']) <= 150]
+            right_sector = [o for o in largescans['obstacles'] if -150 <= self.normalize_angle(o['angle']) <= -30]
+            
+            left_min = min([o['distance'] for o in left_sector]) if left_sector else float('inf')
+            right_min = min([o['distance'] for o in right_sector]) if right_sector else float('inf')
+            
+            
+            if left_min > right_min:
+                steering = -STEER_ANGLE
+            else:
+                steering = STEER_ANGLE 
         else:
-            steering = 0.0
-
+            steering = 0.0 
+        
         motor.set_steering_objective(steering)
         motor.set_speed_objective(BACKWARD_SPEED)
 
-    def _handle_reverse(self, motor: Motor, bins):
-        """Continue la marche arrière, redresse vers la fin."""
-        if self.reverse_timer < 8:
-            motor.set_steering_objective(0.0)
-
-    # =================================================================
-    #  UTILS
-    # =================================================================
-    @staticmethod
-    def _normalize_angle(angle):
-        """Normalise un angle entre -180 et 180."""
-        angle = angle % 360
-        if angle > 180:
-            angle -= 360
-        return angle
+    def handle_reverse(self, motor: Motor, largescans):
+        """Gère la marche arrière"""
+        print(f"🔄 MARCHE ARRIÈRE ({self.reverse_timer} cycles restants)")
+        if (self.reverse_timer < 10):
+            motor.set_steering_objective(0.0);
