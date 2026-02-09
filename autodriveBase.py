@@ -1,8 +1,8 @@
 from control.Manager import Manager
-from autodrive.autodriveStateBase import AutoDriveStateBase
+from autodrive.autodriveStateBase import AutoDriveState
 
 if __name__ == "__main__":
-    manager = Manager(AutoDriveStateBase())
+    manager = Manager(AutoDriveState())
     try:
         manager.loop()
     except KeyboardInterrupt:
