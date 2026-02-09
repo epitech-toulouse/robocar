@@ -31,8 +31,11 @@ class AutoDriveState(State):
         # self.lidar = LidarParser()
         self.lidar = LidarParser();
         self.last_steering = 0.0  # Pour le lissage
-        self.reverse_timer = 0    # Compteur pour la marche arrière
+        self.reverse_start = 0      # Timestamp début marche arrière
+        self.reversing = False       # En marche arrière ?
         self.reverse_steering = 0.0  # Direction pendant la marche arrière
+        self.REVERSE_STEER_DURATION = 1.5  # Secondes avec braquage
+        self.REVERSE_STRAIGHT_DURATION = 0.5  # Secondes tout droit après
         
         # GPS Reader
         self.gps = None
@@ -62,9 +65,8 @@ class AutoDriveState(State):
         largescans = self.scan_sector(points, -180, 180, "ALL")
 
         
-        if self.reverse_timer > 0:
+        if self.reversing:
             self.handle_reverse(motor, largescans)
-            self.reverse_timer -= 1
         else:
             self.navigate(motor, front_scan, left_scan, right_scan, largescans)
 
@@ -228,8 +230,9 @@ class AutoDriveState(State):
 
 
     def initiate_reverse(self, motor: Motor, largescans):
-        """Démarre une séquence de marche arrière"""
-        self.reverse_timer = 30  # Nombre de cycles en marche arrière
+        """Démarre une séquence de marche arrière (1.5s braquage + 0.5s tout droit)"""
+        self.reverse_start = time.time()
+        self.reversing = True
         
         if largescans['obstacles']:
             left_sector = [o for o in largescans['obstacles'] if 30 <= self.normalize_angle(o['angle']) <= 150]
@@ -249,15 +252,25 @@ class AutoDriveState(State):
         motor.set_speed_objective(BACKWARD_SPEED)
 
     def handle_reverse(self, motor: Motor, largescans):
-        """Gère la marche arrière"""
-        print(f"🔄 MARCHE ARRIÈRE ({self.reverse_timer} cycles restants)")
+        """Gère la marche arrière : 1.5s avec braquage puis 0.5s tout droit"""
+        elapsed = time.time() - self.reverse_start
+        total_duration = self.REVERSE_STEER_DURATION + self.REVERSE_STRAIGHT_DURATION
+        remaining = total_duration - elapsed
+        print(f"🔄 MARCHE ARRIÈRE ({remaining:.1f}s restantes)")
         
-        # Re-appliquer la vitesse à chaque cycle (sinon le motor loop la remet à 0)
+        # Fin de la marche arrière
+        if elapsed >= total_duration:
+            self.reversing = False
+            motor.set_speed_objective(0.0)
+            motor.set_steering_objective(0.0)
+            return
+        
+        # Re-appliquer la vitesse à chaque cycle
         motor.set_speed_objective(BACKWARD_SPEED)
         
-        if self.reverse_timer < 10:
-            # Derniers cycles : roues droites pour sortir droit
-            motor.set_steering_objective(0.0)
-        else:
-            # Maintenir le braquage choisi au début
+        if elapsed < self.REVERSE_STEER_DURATION:
+            # Phase 1 : reculer avec braquage (1.5s)
             motor.set_steering_objective(self.reverse_steering)
+        else:
+            # Phase 2 : reculer tout droit (0.5s)
+            motor.set_steering_objective(0.0)
