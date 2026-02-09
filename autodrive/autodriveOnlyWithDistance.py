@@ -27,7 +27,8 @@ SLOW_SPEED = 0.04   # Vitesse minimale
 # STEERING AVOIDANCE PARAMETERS
 STEERING_SCAN_ANGLE = 65  # Angle de scan pour trouver les ouvertures
 STEER_ANGLE = 1         # Angle de braquage max
-STEER_SMOOTHING = 0.7     # Lissage du braquage
+
+REVERSE_DURATION = 1.5    # Durée de la marche arrière en secondes
 
 
 class AutoDriveState(State):
@@ -36,8 +37,7 @@ class AutoDriveState(State):
         self.lidar = LidarParser()
         # self.lidar = LidarParserUDP(host='127.0.0.1', port=8888)
         self.sender = LidarSender(host='127.0.0.1', port=8888)
-        self.last_steering = 0.0  # Pour le lissage
-        self.reverse_timer = 0    # Compteur pour la marche arrière
+        self.reverse_end_time = 0  # Fin de la marche arrière (timestamp)
         
         # GPS Reader
         self.gps = None
@@ -107,9 +107,8 @@ class AutoDriveState(State):
         largescans = self.scan_sector(points, -180, 180, "ALL")
 
         
-        if self.reverse_timer > 0:
+        if time.time() < self.reverse_end_time:
             self.handle_reverse(motor, largescans)
-            self.reverse_timer -= 1
         else:
             self.navigate(motor, front_scan, left_scan, right_scan, largescans, gps_data)
 
@@ -321,16 +320,9 @@ class AutoDriveState(State):
             factor = (min_distance - STOP_DISTANCE) / (SAFE_DISTANCE - STOP_DISTANCE)
             return SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * factor
 
-    def smooth_steering(self, target_steering):
-        """Lisse le braquage pour éviter les changements brusques"""
-        smooth = (STEER_SMOOTHING * self.last_steering + 
-                  (1 - STEER_SMOOTHING) * target_steering)
-        self.last_steering = smooth
-        return smooth
-
     def initiate_reverse(self, motor: Motor, largescans):
         """Démarre une séquence de marche arrière"""
-        self.reverse_timer = 30  # Nombre de cycles en marche arrière
+        self.reverse_end_time = time.time() + REVERSE_DURATION
         
         if largescans['obstacles']:
             left_sector = [o for o in largescans['obstacles'] if 30 <= self.normalize_angle(o['angle']) <= 150]
@@ -352,7 +344,7 @@ class AutoDriveState(State):
 
     def handle_reverse(self, motor: Motor, largescans):
         """Gère la marche arrière"""
-        print(f"🔄 MARCHE ARRIÈRE ({self.reverse_timer} cycles restants)")
-        if (self.reverse_timer < 10):
-            # print("🔙 FIN DE MARCHE ARRIÈRE dans 10 cycle restet steering")
-            motor.set_steering_objective(0.0);
+        remaining = self.reverse_end_time - time.time()
+        print(f"🔄 MARCHE ARRIÈRE ({remaining:.1f}s restantes)")
+        if remaining < 0.3:
+            motor.set_steering_objective(0.0)
