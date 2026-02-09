@@ -5,15 +5,16 @@ import time
 import re
 
 class LidarParserUDP:
-    def __init__(self, host='127.0.0.1', port=8888):
+    def __init__(self, host='127.0.0.1', port=8888, angle_offset=15.0):
         self.host = host
         self.port = port
+        self.angle_offset = angle_offset
         self.running = True
         self.points = []
         self.lock = threading.Lock()
         self.sock = None
         
-        print(f"📡 Initializing UDP LIDAR Parser on {host}:{port}")
+        print(f"📡 Initializing UDP LIDAR Parser on {host}:{port} with offset {angle_offset}°")
         
         self.thread = threading.Thread(target=self.__loop__, daemon=True)
         self.thread.start()
@@ -64,9 +65,16 @@ class LidarParserUDP:
             try:
                 parts = line.split(',')
                 if len(parts) >= 2:
-                    angle = float(parts[0])
+                    raw_angle = float(parts[0])
                     distance = float(parts[1])
                     intensity = int(parts[2]) if len(parts) > 2 else 0
+                    
+                    # Apply offset
+                    angle = raw_angle + self.angle_offset
+                    if angle >= 360.0:
+                        angle -= 360.0
+                    elif angle < 0:
+                        angle += 360.0
                     
                     # Filter invalid points
                     if distance > 0.05 and distance < 12.0:
