@@ -4,7 +4,7 @@ import os
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
-from .LidarParserUDP import LidarParserUDP
+from .LidarParserCpp import LidarParser
 
 
 
@@ -22,15 +22,14 @@ SLOW_SPEED = 0.04   # Vitesse minimale
 
 # STEERING AVOIDANCE PARAMETERS
 STEERING_SCAN_ANGLE = 65  # Angle de scan pour trouver les ouvertures
-STEER_ANGLE = 1         # Angle de braquage max
-STEER_SMOOTHING = 0.7     # Lissage du braquage
+STEER_ANGLE = 1         # Angle de braquage max (1 = 45° réel)
 
 
 class AutoDriveState(State):
     def __init__(self, use_gps=False, gps_host='localhost'):
         print("Initializing AutoDrive...")
         # self.lidar = LidarParser()
-        self.lidar = LidarParserUDP(host='127.0.0.1', port=8888)
+        self.lidar = LidarParser(host='127.0.0.1', port=8888)
         self.last_steering = 0.0  # Pour le lissage
         self.reverse_timer = 0    # Compteur pour la marche arrière
         
@@ -57,8 +56,8 @@ class AutoDriveState(State):
             return
                 
         front_scan = self.scan_sector(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG, "AVANT")
-        left_scan = self.scan_sector(points,-STEERING_SCAN_ANGLE, -(SCAN_FRONT_DEG - 10), "GAUCHE")
-        right_scan = self.scan_sector(points, (SCAN_FRONT_DEG - 10), STEERING_SCAN_ANGLE, "DROITE")
+        left_scan = self.scan_sector(points, -STEERING_SCAN_ANGLE, -SCAN_FRONT_DEG, "GAUCHE")
+        right_scan = self.scan_sector(points, SCAN_FRONT_DEG, STEERING_SCAN_ANGLE, "DROITE")
         largescans = self.scan_sector(points, -180, 180, "ALL")
 
         
@@ -127,9 +126,9 @@ class AutoDriveState(State):
         # Calculer le braquage proportionnel basé sur l'espace disponible
         right_steering = self.calculate_proportional_steering(right, 1.0)   # Positif = droite
         left_steering = self.calculate_proportional_steering(left, -1.0)    # Négatif = gauche
-        front_steering = self.calculate_proportional_steering(front, 0.0) 
+        # Front steering : correction fine pour rester centré
+        front_steering = self.fine_tune_steering(front['obstacles'])
 
-        
         # Calcul des scores pour chaque direction
         paths = [
             {
@@ -141,13 +140,13 @@ class AutoDriveState(State):
             {
                 'name': 'DROITE',
                 'steering': right_steering,
-                'score': right['avg_dist'] * 0.8,  # Léger malus pour les virages
+                'score': right['avg_dist'] * 0.9,
                 'free': right['min_dist'] > SLOW_DISTANCE
             },
             {
                 'name': 'GAUCHE',
                 'steering': left_steering,
-                'score': left['avg_dist'] * 0.8,
+                'score': left['avg_dist'] * 0.9,
                 'free': left['min_dist'] > SLOW_DISTANCE
             }
         ]
@@ -159,10 +158,6 @@ class AutoDriveState(State):
             return best
         
         best = max(free_paths, key=lambda p: p['score'])
-        
-        if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE * 0.7:
-            best['steering'] = self.fine_tune_steering(front['obstacles'])
-        
         return best
     
     def calculate_proportional_steering(self, sector_scan, direction):
@@ -173,24 +168,23 @@ class AutoDriveState(State):
         min_dist = sector_scan['min_dist']
         avg_dist = sector_scan['avg_dist']
         
-        # Plus l'espace est grand, moins on tourne fort
-        # Utiliser la distance moyenne pour un meilleur jugement
+        # Plus l'obstacle est proche, plus on tourne fort
         if avg_dist > 3.5 * vitesse_factor:
-            # Beaucoup d'espace : virage très doux
-            factor = 0.3
+            # Beaucoup d'espace : virage modéré
+            factor = 0.6
         elif avg_dist > 2.5 * vitesse_factor:
-            # Espace confortable : virage doux
-            factor = 0.5
+            # Espace confortable : virage franc
+            factor = 0.75
         elif avg_dist > 1.8 * vitesse_factor:
-            # Espace moyen : virage modéré
-            factor = 0.7
+            # Espace moyen : virage fort
+            factor = 0.9
         else:
-            # Peu d'espace : virage prononcé
-            factor = 0.9 
+            # Peu d'espace : braquage max
+            factor = 1.0
         
         # Ajuster selon la distance minimale (sécurité)
         if min_dist < SLOW_DISTANCE:
-            factor = min(1.0, factor + 0.2)  # Tourner plus fort si danger proche
+            factor = 1.0  # Braquage max si danger proche
         
         return direction * STEER_ANGLE * factor
 
@@ -202,7 +196,7 @@ class AutoDriveState(State):
         closest = min(obstacles, key=lambda o: o['distance'])
         angle = self.normalize_angle(closest['angle'])
         
-        correction = -angle / SCAN_FRONT_DEG * 0.3 
+        correction = -angle / SCAN_FRONT_DEG * 0.7
         return max(-STEER_ANGLE, min(STEER_ANGLE, correction))
 
     def calculate_speed(self, min_distance):
