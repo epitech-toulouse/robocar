@@ -29,7 +29,7 @@ class AutoDriveState(State):
     def __init__(self, use_gps=False, gps_host='localhost'):
         print("Initializing AutoDrive...")
         # self.lidar = LidarParser()
-        self.lidar = LidarParser(host='127.0.0.1', port=8888)
+        self.lidar = LidarParser();
         self.last_steering = 0.0  # Pour le lissage
         self.reverse_timer = 0    # Compteur pour la marche arrière
         
