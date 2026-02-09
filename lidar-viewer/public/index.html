@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIDAR Viewer - Robocar</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Left Sidebar - Connection Panel -->
+        <aside class="sidebar">
+            <h1>🚗 Robocar</h1>
+            <h2>LIDAR Viewer</h2>
+            
+            <div class="connection-panel">
+                <h3>Connexion Serveur</h3>
+                
+                <div class="form-group">
+                    <label for="ip-address">Adresse IP</label>
+                    <input type="text" id="ip-address" value="127.0.0.1" placeholder="192.168.1.x">
+                </div>
+                
+                <div class="form-group">
+                    <label for="port">Port</label>
+                    <input type="number" id="port" value="8888" placeholder="8888">
+                </div>
+                
+                <button id="connect-btn" class="btn btn-primary">Connecter</button>
+                <button id="disconnect-btn" class="btn btn-secondary" disabled>Déconnecter</button>
+                
+                <div class="status-indicator">
+                    <span class="status-dot" id="status-dot"></span>
+                    <span id="status-text">Déconnecté</span>
+                </div>
+            </div>
+            
+            <div class="stats-panel">
+                <h3>Statistiques</h3>
+                <div class="stat">
+                    <span class="stat-label">Points:</span>
+                    <span class="stat-value" id="point-count">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">FPS:</span>
+                    <span class="stat-value" id="fps">0</span>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Area - LIDAR Visualization -->
+        <main class="visualization">
+            <div id="lidar-container"></div>
+        </main>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="js/lidar-renderer.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
