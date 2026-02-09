@@ -13,7 +13,7 @@ class LidarParserUDP:
         self.lock = threading.Lock()
         self.sock = None
         
-        print(f"📡 Initializing UDP LIDAR Parser on {host}:{port}")
+        print(f"Initializing UDP LIDAR Parser on {host}:{port}")
         
         self.thread = threading.Thread(target=self.__loop__, daemon=True)
         self.thread.start()

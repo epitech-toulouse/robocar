@@ -10,7 +10,7 @@ Usage:
 import argparse
 import sys
 from control.Manager import Manager
-from autodrive.autodriveState import AutoDriveState
+from autodrive.autodriveOnlyWithDistance import AutoDriveState
 
 
 def main():
