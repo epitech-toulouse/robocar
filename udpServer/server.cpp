@@ -95,6 +95,19 @@ int main(int argc, char *argv[]) {
         std::cout << "Received from [" << inet_ntoa(client_addr.sin_addr) << ":"
                   << ntohs(client_addr.sin_port) << "]: " << buffer
                   << std::endl;
+
+        // Relay message to other clients (except sender)
+        // This allows clients (like autodriveState) to send data to observers
+        // (like web viewer)
+        if (strncmp(buffer, "CONNECT", 7) != 0) {
+          for (const auto &other_client : clients) {
+            if (other_client.sin_addr.s_addr != client_addr.sin_addr.s_addr ||
+                other_client.sin_port != client_addr.sin_port) {
+              sendto(sockfd, buffer, n, 0, (struct sockaddr *)&other_client,
+                     sizeof(other_client));
+            }
+          }
+        }
       }
     }
 

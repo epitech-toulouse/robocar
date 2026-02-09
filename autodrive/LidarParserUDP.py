@@ -95,7 +95,19 @@ class LidarParserUDP:
             # Let's keep the buffer logic from original LidarParser (rolling buffer).
             return current_points
 
+    def send(self, message):
+        """Envoyer un message UDP au serveur (relayé aux autres clients)"""
+        if self.sock:
+            try:
+                # Assurer que le message est en bytes
+                if isinstance(message, str):
+                    message = message.encode('utf-8')
+                self.sock.sendto(message, (self.host, self.port))
+            except Exception as e:
+                print(f"❌ UDP Send Error: {e}")
+
     def stop(self):
+
         self.running = False
         if self.sock:
             self.sock.close()
