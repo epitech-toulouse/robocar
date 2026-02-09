@@ -1,8 +1,14 @@
 import time
+import sys
+import os
 from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
 from .LidarParserCpp import LidarParser
+
+# Ajouter le chemin pour importer gps_simple_reader
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from gps.gps_simple_reader import SimpleGPSReader
 
 
 vitesse_factor = 1.5;
@@ -24,14 +30,36 @@ STEER_SMOOTHING = 0.7     # Lissage du braquage
 
 
 class AutoDriveState(State):
-    def __init__(self):
+    def __init__(self, use_gps=False, gps_host='localhost', gps_port=25001):
         print("Initializing AutoDrive...")
         self.lidar = LidarParser()
         self.last_steering = 0.0  # Pour le lissage
         self.reverse_timer = 0    # Compteur pour la marche arrière
+        
+        # GPS Reader
+        self.gps = None
+        self.use_gps = use_gps
+        self._last_gps_print = 0  # Initialiser le compteur
+        self._last_gps_update = 0  # Dernier update GPS
+        self._last_goal_distances = []  # Les 5 dernières distances au goal
+        self._distance_improving = True  # Est-ce qu'on se rapproche?
+        self._cached_gps_data = None  # Données GPS en cache
+        
+        if self.use_gps:
+            print(f"🛰️  [DEBUG] Activation du GPS ({gps_host}:{gps_port})...")
+            self.gps = SimpleGPSReader(gps_host, gps_port)
+            if not self.gps.start():
+                print("⚠️  [DEBUG] Mode LIDAR seul (GPS non disponible)")
+                self.use_gps = False
+            else:
+                print("✅ [DEBUG] GPS connecté avec succès")
+        else:
+            print("ℹ️  [DEBUG] Mode LIDAR seul (GPS désactivé)")
     
     def stop(self):
         self.lidar.stop()
+        if self.gps:
+            self.gps.stop()
 
     def run_single(self, motor: Motor, gamepad: Gamepad):
         """Exécute un cycle de contrôle"""
@@ -39,6 +67,32 @@ class AutoDriveState(State):
         if not points:
             time.sleep(0.05)
             return
+        
+        # Récupérer les données GPS si disponibles (toutes les 0.5s)
+        gps_data = None
+        if self.use_gps and self.gps:
+            current_time = time.time()
+            if current_time - self._last_gps_update >= 0.5:
+                gps_data = self.gps.get_position()
+                self._cached_gps_data = gps_data
+                self._last_gps_update = current_time
+            else:
+                gps_data = self._cached_gps_data
+            
+            # Debug GPS
+            if gps_data:
+                # Afficher les données GPS toutes les 2 secondes
+                if time.time() - self._last_gps_print >= 2.0:
+                    if gps_data.get('goal_distance') is not None and gps_data.get('turn_angle') is not None:
+                        print(f"📍 [GPS] Pos: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Goal: {gps_data['goal_distance']:.1f}m @ {gps_data['goal_bearing']:.0f}° | Turn: {gps_data['turn_angle']:.0f}°")
+                    else:
+                        heading_str = f"{gps_data['heading']:.0f}°" if gps_data.get('heading') else "N/A"
+                        print(f"📍 [GPS] Pos: {gps_data['lat']:.6f}°, {gps_data['lon']:.6f}° | Heading: {heading_str} | Goal data: distance={gps_data.get('goal_distance')}, bearing={gps_data.get('goal_bearing')}, turn={gps_data.get('turn_angle')}")
+                    self._last_gps_print = time.time()
+            else:
+                if time.time() - self._last_gps_print >= 2.0:
+                    print("⚠️  [GPS] Aucune donnée GPS reçue")
+                    self._last_gps_print = time.time()
         
         front_scan = self.scan_sector(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG, "AVANT")
         left_scan = self.scan_sector(points,-STEERING_SCAN_ANGLE, -(SCAN_FRONT_DEG - 10), "GAUCHE")
@@ -50,7 +104,7 @@ class AutoDriveState(State):
             self.handle_reverse(motor, largescans)
             self.reverse_timer -= 1
         else:
-            self.navigate(motor, front_scan, left_scan, right_scan, largescans)
+            self.navigate(motor, front_scan, left_scan, right_scan, largescans, gps_data)
 
     def scan_sector(self, points, min_angle, max_angle, sector_name=""):
         """Analyse un secteur angulaire et retourne les statistiques"""
@@ -72,9 +126,9 @@ class AutoDriveState(State):
             'count': len(distances),
             'obstacles': obstacles
         }
-        if sector_name:
-            status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
-            print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
+        # if sector_name:
+        #     status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
+        #     print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
         
         
         return result
@@ -86,16 +140,25 @@ class AutoDriveState(State):
             angle -= 360
         return angle
 
-    def navigate(self, motor: Motor, front, left, right, largescans):
-        """Logique principale de navigation"""
+    def navigate(self, motor: Motor, front, left, right, largescans, gps_data=None):
+        """Logique principale de navigation avec intégration GPS"""
+        
+        # Vérifier si on est arrivé à destination (GPS uniquement sur distance)
+        if gps_data and gps_data.get('goal_distance') is not None:
+            goal_distance = gps_data['goal_distance']
+            if goal_distance <= 2.0:
+                print(f"🎯 OBJECTIF ATTEINT! Distance: {goal_distance:.2f}m - ARRÊT")
+                motor.set_steering_objective(0.0)
+                motor.set_speed_objective(0.0)
+                return
         
         # Obstacle très proche : marche arrière
         if front['min_dist'] < STOP_DISTANCE:
-            print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
+            # print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
             self.initiate_reverse(motor, largescans)
             return
         
-        best_direction = self.find_best_path(front, left, right)
+        best_direction = self.find_best_path(front, left, right, gps_data)
         speed = self.calculate_speed(front['min_dist'])
         target_steering = best_direction['steering']
         
@@ -104,8 +167,8 @@ class AutoDriveState(State):
         
 
 
-    def find_best_path(self, front, left, right):
-        """Trouve la meilleure direction à prendre avec braquage proportionnel"""
+    def find_best_path(self, front, left, right, gps_data=None):
+        """Trouve la meilleure direction à prendre avec braquage proportionnel et GPS"""
         
         # Calculer le braquage proportionnel basé sur l'espace disponible
         right_steering = self.calculate_proportional_steering(right, 1.0)   # Positif = droite
@@ -117,7 +180,7 @@ class AutoDriveState(State):
         paths = [
             {
                 'name': 'AVANT',
-                'steering': front_steering,  # Pas d'ajustement constant, seulement si obstacles très proches
+                'steering': front_steering,
                 'score': front['avg_dist'],
                 'free': front['min_dist'] > SAFE_DISTANCE
             },
@@ -134,12 +197,65 @@ class AutoDriveState(State):
                 'free': left['min_dist'] > SLOW_DISTANCE
             }
         ]
+        
+        # GPS : utiliser la distance pour guider la navigation
+        if gps_data and gps_data.get('goal_distance') is not None:
+            distance = gps_data['goal_distance']
+            
+            # Ajouter la distance à l'historique (garder les 5 dernières)
+            self._last_goal_distances.append(distance)
+            if len(self._last_goal_distances) > 5:
+                self._last_goal_distances.pop(0)
+            
+            # Déterminer la tendance sur les 5 derniers points
+            if len(self._last_goal_distances) >= 3:
+                # Calculer la moyenne des 2 premières et 2 dernières distances
+                old_avg = sum(self._last_goal_distances[:2]) / 2
+                new_avg = sum(self._last_goal_distances[-2:]) / 2
+                distance_change = new_avg - old_avg
+                
+                self._distance_improving = distance_change < -0.3  # Seuil réduit pour plus de sensibilité
+                
+                if self._distance_improving:
+                    print(f"📉 [GPS] Distance: {distance:.1f}m ✅ (tendance: {-distance_change:.1f}m | historique: {len(self._last_goal_distances)} pts)")
+                else:
+                    print(f"📈 [GPS] Distance: {distance:.1f}m ⚠️ (tendance: +{distance_change:.1f}m | historique: {len(self._last_goal_distances)} pts)")
+            else:
+                print(f"📏 [GPS] Distance: {distance:.1f}m (collecte: {len(self._last_goal_distances)}/5 pts)")
+            
+            # Influence GPS selon la distance et la tendance
+            if len(self._last_goal_distances) >= 3:
+                if distance > 50.0:
+                    gps_weight = 2.0
+                elif distance > 20.0:
+                    gps_weight = 1.5
+                elif distance > 10.0:
+                    gps_weight = 1.0
+                elif distance > 5.0:
+                    gps_weight = 0.6
+                else:
+                    gps_weight = 0.3
+                
+                # Si on se rapproche: favoriser AVANT (continuer)
+                # Si on s'éloigne: favoriser les côtés (chercher une autre direction)
+                if self._distance_improving:
+                    # On se rapproche: continuer tout droit!
+                    for path in paths:
+                        if path['name'] == 'AVANT':
+                            path['score'] += gps_weight * 2.5
+                            print(f"   🎯 [AVANT] Bonus GPS: +{gps_weight * 2.5:.2f} (tendance positive!)")
+                else:
+                    # On s'éloigne: essayer de tourner pour trouver le goal
+                    for path in paths:
+                        if path['name'] in ['GAUCHE', 'DROITE']:
+                            path['score'] += gps_weight * 1.5
+                            print(f"   🔄 [{path['name']}] Bonus GPS: +{gps_weight * 1.5:.2f} (chercher nouvelle direction)")
 
         free_paths = [p for p in paths if p['free']]
         
         if not free_paths:
             best = max(paths, key=lambda p: p['score'])
-            print(f"⚠️ Aucun chemin libre! Meilleur choix: {best['name']} (steering={best['steering']:+.2f})")
+            # print(f"⚠️ Aucun chemin libre! Meilleur choix: {best['name']} (steering={best['steering']:+.2f})")
             return best
         
         best = max(free_paths, key=lambda p: p['score'])
@@ -148,7 +264,7 @@ class AutoDriveState(State):
         if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE * 0.7:
             best['steering'] = self.fine_tune_steering(front['obstacles'])
         
-        print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
+        # print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
         return best
     
     def calculate_proportional_steering(self, sector_scan, direction):
@@ -231,5 +347,5 @@ class AutoDriveState(State):
         """Gère la marche arrière"""
         print(f"🔄 MARCHE ARRIÈRE ({self.reverse_timer} cycles restants)")
         if (self.reverse_timer < 10):
-            print("🔙 FIN DE MARCHE ARRIÈRE dans 10 cycle restet steering")
+            # print("🔙 FIN DE MARCHE ARRIÈRE dans 10 cycle restet steering")
             motor.set_steering_objective(0.0);
