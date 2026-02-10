@@ -168,6 +168,22 @@ class AutoDriveState(State):
         speed = self.calculate_speed(front['min_dist'])
         target_steering = best_direction['steering']
         
+        # Correction proactive : si un mur est très proche sur un côté,
+        # forcer le braquage pour s'en éloigner avant de devoir reculer
+        SIDE_DANGER_DIST = STOP_DISTANCE * 2.5
+        if left['min_dist'] < SIDE_DANGER_DIST or right['min_dist'] < SIDE_DANGER_DIST:
+            if left['min_dist'] < right['min_dist']:
+                # Mur proche à gauche → braquer à droite
+                urgency = 1.0 - (left['min_dist'] / SIDE_DANGER_DIST)
+                side_correction = STEER_ANGLE * urgency * 0.7
+                target_steering = max(target_steering, side_correction)
+            else:
+                # Mur proche à droite → braquer à gauche
+                urgency = 1.0 - (right['min_dist'] / SIDE_DANGER_DIST)
+                side_correction = -STEER_ANGLE * urgency * 0.7
+                target_steering = min(target_steering, side_correction)
+            speed = min(speed, SLOW_SPEED)  # Ralentir aussi
+        
         motor.set_steering_objective(target_steering)
         motor.set_speed_objective(speed)
         
@@ -294,8 +310,12 @@ class AutoDriveState(State):
             factor = 0.95 
         
         # Ajuster selon la distance minimale (sécurité)
-        if min_dist < SLOW_DISTANCE:
-            factor = min(1.0, factor + 0.2)  # Tourner plus fort si danger proche
+        if min_dist < STOP_DISTANCE * 2:
+            factor = 1.0  # Très proche : braquage max
+        elif min_dist < SLOW_DISTANCE:
+            factor = min(1.0, factor + 0.4)  # Proche : tourner nettement plus fort
+        elif min_dist < SAFE_DISTANCE * 0.5:
+            factor = min(1.0, factor + 0.2)  # Moyen : correction modérée
         
         return direction * STEER_ANGLE * factor
 
@@ -307,7 +327,9 @@ class AutoDriveState(State):
         closest = min(obstacles, key=lambda o: o['distance'])
         angle = self.normalize_angle(closest['angle'])
         
-        correction = -angle / SCAN_FRONT_DEG * 0.3 
+        # Plus l'obstacle est proche, plus la correction est forte
+        proximity_boost = max(1.0, SAFE_DISTANCE / max(closest['distance'], 0.1))
+        correction = -angle / SCAN_FRONT_DEG * 0.5 * proximity_boost
         return max(-STEER_ANGLE, min(STEER_ANGLE, correction))
 
     def calculate_speed(self, min_distance):
