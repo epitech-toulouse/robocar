@@ -30,7 +30,7 @@ class LidarUdpServer:
                 if data:
                     msg = data.decode('utf-8', errors='ignore').strip()
                     # Log receive debug
-                    print(f"📥 [DEBUG] Packet from {addr}: {msg}")
+                    # print(f"📥 [DEBUG] Packet from {addr}: {msg}")
                     
                     # Si c'est un message de connexion (ou n'importe quoi d'un nouveau client)
                     with self.lock:
@@ -53,7 +53,6 @@ class LidarUdpServer:
             
         with self.lock:
             if not self.clients:
-                # print("⚠️ [DEBUG] No clients connected - Drop points")
                 return
 
         # Format: angle,distance,intensity

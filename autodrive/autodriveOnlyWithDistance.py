@@ -64,6 +64,12 @@ class AutoDriveState(State):
         if self.gps:
             self.gps.stop()
 
+    def process_lidar_passive(self):
+        """Lit et envoie les données LIDAR sans agir sur les moteurs (Monitoring)"""
+        points = self.lidar.get_points()
+        if points and hasattr(self, 'sender'):
+            self.sender.send_points(points)
+
     def run_single(self, motor: Motor, gamepad: Gamepad):
         """Exécute un cycle de contrôle"""
         points = self.lidar.get_points()

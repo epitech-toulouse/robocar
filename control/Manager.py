@@ -48,6 +48,10 @@ class Manager:
         self.logger.log("Waiting for Start call.")
         self.gamepad.updateEvents()
         while not self.gamepad.getButton("Start"):
+            # Passive LIDAR monitoring (if available)
+            if self.other_state and hasattr(self.other_state, 'process_lidar_passive'):
+                self.other_state.process_lidar_passive()
+                
             time.sleep(0.1)
             self.gamepad.updateEvents()
         self.logger.log("Starting !")
@@ -69,6 +73,12 @@ class Manager:
             if self.gamepad.getButton("A"):
                 self.take_manual_control()
                 continue
+            
+            # Passive LIDAR monitoring (if not in Auto mode)
+            if self.state != self.other_state:
+                if self.other_state and hasattr(self.other_state, 'process_lidar_passive'):
+                    self.other_state.process_lidar_passive()
+
             self.state.run_single(self.motor, self.gamepad)
         self.logger.log("End of loop.")
         self.safe_stop()
