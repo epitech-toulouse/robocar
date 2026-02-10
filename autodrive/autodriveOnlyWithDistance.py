@@ -16,17 +16,16 @@ vitesse_factor = 1.5;
 
 # DIRECTION DRIVE PARAMETERS
 SCAN_FRONT_DEG = 25   # Élargi pour mieux détecter les ouvertures
-SAFE_DISTANCE = 5.5   # Distance de sécurité pour ralentir (augmentée pour anticiper)
-SLOW_DISTANCE = 2.0   # Distance de ralentissement
+SAFE_DISTANCE = 4.0   # Distance de sécurité pour ralentir
+SLOW_DISTANCE = 1.5   # Distance de ralentissement
 STOP_DISTANCE = 0.6   # Distance d'arrêt
-ANTICIPATION_DISTANCE = 7.0  # Distance à laquelle on commence un léger virage préventif
 
 FORWARD_SPEED = 0.06   # Vitesse maximale augmentée
 BACKWARD_SPEED = -0.04 # Vitesse de recul
 SLOW_SPEED = 0.04   # Vitesse minimale
 
 # STEERING AVOIDANCE PARAMETERS
-STEERING_SCAN_ANGLE = 70  # Angle de scan pour trouver les ouvertures (élargi)
+STEERING_SCAN_ANGLE = 65  # Angle de scan pour trouver les ouvertures
 STEER_ANGLE = 1         # Angle de braquage max
 
 REVERSE_DURATION = 1.5    # Durée de la marche arrière en secondes
@@ -267,13 +266,9 @@ class AutoDriveState(State):
         
         best = max(free_paths, key=lambda p: p['score'])
         
-        # Ajustement fin si on va droit ET qu'il y a un obstacle décentré
-        if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE:
+        # Ajustement fin SEULEMENT si on va droit ET qu'il y a un obstacle très proche et décentré
+        if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE * 0.7:
             best['steering'] = self.fine_tune_steering(front['obstacles'])
-        # Anticipation douce : léger ajustement même quand l'obstacle est encore loin
-        elif best['name'] == 'AVANT' and front['min_dist'] < ANTICIPATION_DISTANCE:
-            anticipation = self.fine_tune_steering(front['obstacles']) * 0.4
-            best['steering'] = anticipation
         
         # print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
         return best
@@ -284,11 +279,8 @@ class AutoDriveState(State):
         avg_dist = sector_scan['avg_dist']
         
         # Plus l'espace est grand, moins on tourne fort
-        # Seuils relevés pour anticiper les virages plus tôt
-        if avg_dist > 5.0 * vitesse_factor:
-            # Très loin : virage ultra-doux (anticipation)
-            factor = 0.15
-        elif avg_dist > 3.5 * vitesse_factor:
+        # Utiliser la distance moyenne pour un meilleur jugement
+        if avg_dist > 3.5 * vitesse_factor:
             # Beaucoup d'espace : virage très doux
             factor = 0.3
         elif avg_dist > 2.5 * vitesse_factor:
