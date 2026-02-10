@@ -20,9 +20,7 @@ SAFE_DISTANCE = 4.0   # Distance de sécurité pour ralentir
 SLOW_DISTANCE = 1.5   # Distance de ralentissement
 STOP_DISTANCE = 0.6   # Distance d'arrêt
 
-MAX_SPEED_LIMIT = 0.4  # Ne jamais dépasser cette vitesse
-
-FORWARD_SPEED = 0.06   # Vitesse maximale souhaitée
+FORWARD_SPEED = 0.06   # Vitesse maximale augmentée
 BACKWARD_SPEED = -0.04 # Vitesse de recul
 SLOW_SPEED = 0.04   # Vitesse minimale
 
@@ -31,20 +29,6 @@ STEERING_SCAN_ANGLE = 65  # Angle de scan pour trouver les ouvertures
 STEER_ANGLE = 1         # Angle de braquage max
 
 REVERSE_DURATION = 1.5    # Durée de la marche arrière en secondes
-
-# STEERING SMOOTHING
-STEERING_DEADBAND = 0.03
-STEERING_SMOOTH_ALPHA = 0.35
-STEERING_SMOOTH_ALPHA_FAST = 0.6
-STEERING_RATE_LIMIT = 0.12
-STEERING_RATE_LIMIT_FAST = 0.25
-
-# STUCK / ESCAPE
-STUCK_TIME_THRESHOLD = 1.2
-ESCAPE_REVERSE_DURATION = 1.0
-ESCAPE_FORWARD_DURATION = 1.0
-ESCAPE_COOLDOWN = 3.0
-PATH_SWITCH_HYSTERESIS = 0.35
 
 
 class AutoDriveState(State):
@@ -63,13 +47,6 @@ class AutoDriveState(State):
         self._last_goal_distances = []  # Les 5 dernières distances au goal
         self._distance_improving = True  # Est-ce qu'on se rapproche?
         self._cached_gps_data = None  # Données GPS en cache
-        self._steering_filtered = 0.0
-        self._last_choice = 'AVANT'
-        self._blocked_since = None
-        self._escape_end_time = 0.0
-        self._escape_switch_time = 0.0
-        self._escape_dir = 1
-        self._last_escape_time = 0.0
         
         if self.use_gps:
             print(f"🛰️  [DEBUG] Activation du GPS ({gps_host}:{gps_port})...")
@@ -130,19 +107,7 @@ class AutoDriveState(State):
         largescans = self.scan_sector(points, -180, 180, "ALL")
 
         
-        now = time.time()
-        should_escape = self.update_blocked_state(front_scan, left_scan, right_scan, now)
-
-        if self.is_escape_active(now):
-            self.handle_escape(motor, front_scan, left_scan, right_scan)
-            return
-
-        if should_escape:
-            self.initiate_escape(left_scan, right_scan)
-            self.handle_escape(motor, front_scan, left_scan, right_scan)
-            return
-
-        if now < self.reverse_end_time:
+        if time.time() < self.reverse_end_time:
             self.handle_reverse(motor, largescans)
         else:
             self.navigate(motor, front_scan, left_scan, right_scan, largescans, gps_data)
@@ -189,8 +154,8 @@ class AutoDriveState(State):
             goal_distance = gps_data['goal_distance']
             if goal_distance <= 2.0:
                 print(f"🎯 OBJECTIF ATTEINT! Distance: {goal_distance:.2f}m - ARRÊT")
-                self.apply_steering(motor, 0.0, aggressive=True)
-                self.apply_speed(motor, 0.0)
+                motor.set_steering_objective(0.0)
+                motor.set_speed_objective(0.0)
                 return
         
         # Obstacle très proche : marche arrière
@@ -203,8 +168,8 @@ class AutoDriveState(State):
         speed = self.calculate_speed(front['min_dist'])
         target_steering = best_direction['steering']
         
-        self.apply_steering(motor, target_steering)
-        self.apply_speed(motor, speed)
+        motor.set_steering_objective(target_steering)
+        motor.set_speed_objective(speed)
         
 
 
@@ -214,7 +179,7 @@ class AutoDriveState(State):
         # Calculer le braquage proportionnel basé sur l'espace disponible
         right_steering = self.calculate_proportional_steering(right, 1.0)   # Positif = droite
         left_steering = self.calculate_proportional_steering(left, -1.0)    # Négatif = gauche
-        front_steering = self.compute_corridor_steering(left, right)
+        front_steering = self.calculate_proportional_steering(front, 0.0) 
 
         
         # Calcul des scores pour chaque direction
@@ -222,26 +187,22 @@ class AutoDriveState(State):
             {
                 'name': 'AVANT',
                 'steering': front_steering,
-                'score': self.compute_path_score(front, front_steering),
-                'free': front['min_dist'] > SLOW_DISTANCE
+                'score': front['avg_dist'],
+                'free': front['min_dist'] > SAFE_DISTANCE
             },
             {
                 'name': 'DROITE',
                 'steering': right_steering,
-                'score': self.compute_path_score(right, right_steering) - 0.2,  # Léger malus pour les virages
+                'score': right['avg_dist'] * 0.8,  # Léger malus pour les virages
                 'free': right['min_dist'] > SLOW_DISTANCE
             },
             {
                 'name': 'GAUCHE',
                 'steering': left_steering,
-                'score': self.compute_path_score(left, left_steering) - 0.2,
+                'score': left['avg_dist'] * 0.8,
                 'free': left['min_dist'] > SLOW_DISTANCE
             }
         ]
-
-        # Biais vers l'avant si c'est vraiment dégagé (réduit l'oscillation)
-        if front['min_dist'] > SAFE_DISTANCE:
-            paths[0]['score'] += 0.6
         
         # GPS : utiliser la distance pour guider la navigation
         if gps_data and gps_data.get('goal_distance') is not None:
@@ -304,19 +265,12 @@ class AutoDriveState(State):
             return best
         
         best = max(free_paths, key=lambda p: p['score'])
-
-        # Hystérésis: éviter de changer de direction pour un gain trop faible
-        last = next((p for p in free_paths if p['name'] == self._last_choice), None)
-        if last and (best['score'] - last['score']) < PATH_SWITCH_HYSTERESIS:
-            best = last
         
         # Ajustement fin SEULEMENT si on va droit ET qu'il y a un obstacle très proche et décentré
         if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE * 0.7:
-            fine = self.fine_tune_steering(front['obstacles'])
-            best['steering'] = self.clamp(best['steering'] + fine, -STEER_ANGLE, STEER_ANGLE)
-
+            best['steering'] = self.fine_tune_steering(front['obstacles'])
+        
         # print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
-        self._last_choice = best['name']
         return best
     
     def calculate_proportional_steering(self, sector_scan, direction):
@@ -358,17 +312,13 @@ class AutoDriveState(State):
 
     def calculate_speed(self, min_distance):
         """Calcul adaptatif de la vitesse selon la distance"""
-        max_forward = min(FORWARD_SPEED, MAX_SPEED_LIMIT)
         if min_distance >= SAFE_DISTANCE:
-            return max_forward
+            return FORWARD_SPEED
         elif min_distance <= STOP_DISTANCE:
             return 0.0
         else:
             factor = (min_distance - STOP_DISTANCE) / (SAFE_DISTANCE - STOP_DISTANCE)
-            return min(
-                max_forward,
-                SLOW_SPEED + (max_forward - SLOW_SPEED) * factor
-            )
+            return SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * factor
 
     def initiate_reverse(self, motor: Motor, largescans):
         """Démarre une séquence de marche arrière"""
@@ -389,124 +339,12 @@ class AutoDriveState(State):
         else:
             steering = 0.0 
         
-        self.apply_steering(motor, steering, aggressive=True)
-        self.apply_speed(motor, BACKWARD_SPEED)
+        motor.set_steering_objective(steering)
+        motor.set_speed_objective(BACKWARD_SPEED)
 
     def handle_reverse(self, motor: Motor, largescans):
         """Gère la marche arrière"""
         remaining = self.reverse_end_time - time.time()
         print(f"🔄 MARCHE ARRIÈRE ({remaining:.1f}s restantes)")
         if remaining < 0.3:
-            self.apply_steering(motor, 0.0, aggressive=True)
-
-    def clamp(self, value, min_value, max_value):
-        return max(min_value, min(max_value, value))
-
-    def apply_steering(self, motor: Motor, target_steering: float, aggressive: bool = False):
-        if abs(target_steering) < STEERING_DEADBAND:
-            target_steering = 0.0
-
-        alpha = STEERING_SMOOTH_ALPHA_FAST if aggressive else STEERING_SMOOTH_ALPHA
-        rate_limit = STEERING_RATE_LIMIT_FAST if aggressive else STEERING_RATE_LIMIT
-
-        previous = self._steering_filtered
-        smoothed = previous + alpha * (target_steering - previous)
-        delta = smoothed - previous
-        if delta > rate_limit:
-            smoothed = previous + rate_limit
-        elif delta < -rate_limit:
-            smoothed = previous - rate_limit
-
-        smoothed = self.clamp(smoothed, -STEER_ANGLE, STEER_ANGLE)
-        self._steering_filtered = smoothed
-        motor.set_steering_objective(smoothed)
-
-    def apply_speed(self, motor: Motor, speed: float):
-        speed = self.clamp(speed, -MAX_SPEED_LIMIT, MAX_SPEED_LIMIT)
-        motor.set_speed_objective(speed)
-
-    def compute_corridor_steering(self, left, right):
-        denom = max(0.1, left['avg_dist'] + right['avg_dist'])
-        balance = (right['avg_dist'] - left['avg_dist']) / denom
-        balance = self.clamp(balance, -0.6, 0.6)
-        return balance * (STEER_ANGLE * 0.6)
-
-    def compute_path_score(self, sector_scan, steering):
-        avg_dist = min(sector_scan['avg_dist'], 6.0)
-        min_dist = min(sector_scan['min_dist'], 6.0)
-        density = sector_scan['count'] / max(1.0, avg_dist * 8.0)
-
-        score = avg_dist * 0.65 + min_dist * 0.35
-        score -= density * 0.5
-        score -= abs(steering) * 0.15
-        if sector_scan['min_dist'] < SLOW_DISTANCE:
-            score -= 0.8
-        return score
-
-    def update_blocked_state(self, front, left, right, now):
-        if self.is_escape_active(now):
-            return False
-
-        blocked = (
-            front['min_dist'] < STOP_DISTANCE and
-            left['min_dist'] < STOP_DISTANCE and
-            right['min_dist'] < STOP_DISTANCE
-        )
-        if blocked:
-            if self._blocked_since is None:
-                self._blocked_since = now
-        else:
-            self._blocked_since = None
-
-        if self._blocked_since is None:
-            return False
-
-        if (now - self._blocked_since) < STUCK_TIME_THRESHOLD:
-            return False
-
-        if (now - self._last_escape_time) < ESCAPE_COOLDOWN:
-            return False
-
-        return True
-
-    def is_escape_active(self, now=None):
-        if now is None:
-            now = time.time()
-        return now < self._escape_end_time
-
-    def initiate_escape(self, left, right):
-        now = time.time()
-        self._last_escape_time = now
-        self._escape_switch_time = now + ESCAPE_REVERSE_DURATION
-        self._escape_end_time = now + ESCAPE_REVERSE_DURATION + ESCAPE_FORWARD_DURATION
-        self._blocked_since = None
-        self.reverse_end_time = 0.0
-
-        if left['avg_dist'] > right['avg_dist'] + 0.1:
-            self._escape_dir = -1
-        elif right['avg_dist'] > left['avg_dist'] + 0.1:
-            self._escape_dir = 1
-        else:
-            self._escape_dir *= -1
-
-        print("🧭 [ESCAPE] Blocage détecté, tentative de sortie...")
-
-    def handle_escape(self, motor: Motor, front, left, right):
-        now = time.time()
-        steering = self._escape_dir * STEER_ANGLE
-
-        if now < self._escape_switch_time:
-            # Phase 1: reculer en braquant fort
-            self.apply_steering(motor, steering, aggressive=True)
-            self.apply_speed(motor, BACKWARD_SPEED)
-            return
-
-        # Phase 2: avancer doucement en braquant vers la sortie
-        forward_steer = -self._escape_dir * STEER_ANGLE * 0.8
-        if front['min_dist'] < SLOW_DISTANCE:
-            self.apply_steering(motor, steering, aggressive=True)
-            self.apply_speed(motor, BACKWARD_SPEED)
-            return
-
-        self.apply_steering(motor, forward_steer, aggressive=True)
-        self.apply_speed(motor, min(SLOW_SPEED, MAX_SPEED_LIMIT))
+            motor.set_steering_objective(0.0)
