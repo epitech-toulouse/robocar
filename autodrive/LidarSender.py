@@ -1,44 +1,87 @@
 import socket
-import json
+import threading
+import time
 
-class LidarSender:
-    def __init__(self, host='127.0.0.1', port=8888):
-        self.host = host
+class LidarUdpServer:
+    def __init__(self, port=8888):
         self.port = port
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        print(f"📡 LidarSender initialized on {host}:{port}")
+        self.running = True
+        self.clients = set() # Set of (ip, port) tuples
+        self.lock = threading.Lock()
+        
+        try:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sock.bind(('0.0.0.0', port))
+            self.sock.settimeout(0.5)
+            print(f"📡 UDP Server initialized on 0.0.0.0:{port}")
+            
+            self.thread = threading.Thread(target=self._listen_loop, daemon=True)
+            self.thread.start()
+        except Exception as e:
+            print(f"❌ Failed to start UDP Server: {e}")
+            self.sock = None
+
+    def _listen_loop(self):
+        print(f"👂 Listening for UDP connections on port {self.port}...")
+        while self.running and self.sock:
+            try:
+                data, addr = self.sock.recvfrom(1024)
+                if data:
+                    msg = data.decode('utf-8', errors='ignore').strip()
+                    # Si c'est un message de connexion (ou n'importe quoi d'un nouveau client)
+                    with self.lock:
+                        if addr not in self.clients:
+                            self.clients.add(addr)
+                            print(f"➕ New client connected: {addr[0]}:{addr[1]}")
+                        
+                    if msg == "CONNECT":
+                        # Optionnel: Répondre OK? Pas nécessaire pour le protocole actuel
+                        pass
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"⚠️ UDP Listen Error: {e}")
 
     def send_points(self, points):
-        """Envoie les points LIDAR au format attendu par le serveur (ligne par ligne)"""
-        # Format attendu: angle,distance,intensity
-        # On peut envoyer point par point ou grouper un peu
-        # UDP a une limite de taille (~1400 bytes safe), donc on envoie par paquets
-        
+        """Broadcast LIDAR points to all connected clients"""
+        if not self.sock or not self.clients:
+            return
+
+        # Format: angle,distance,intensity
         buffer = ""
         for p in points:
-            # p est un dict {'angle': float, 'distance': float, 'intensity': int} (si dispo) ou juste distance
-            # LidarParserCpp / LidarParser sort des dicts.
-            
             angle = p.get('angle', 0)
             distance = p.get('distance', 0)
-            intensity = p.get('intensity', 0) # Assumer 0 si pas là
+            intensity = p.get('intensity', 0)
             
             line = f"{angle:.2f},{distance:.3f},{intensity}\n"
             
             if len(buffer) + len(line) > 1024:
-                self._send_raw(buffer)
+                self._broadcast(buffer)
                 buffer = line
             else:
                 buffer += line
         
         if buffer:
-            self._send_raw(buffer)
+            self._broadcast(buffer)
 
-    def _send_raw(self, message):
-        try:
-            self.sock.sendto(message.encode('utf-8'), (self.host, self.port))
-        except Exception as e:
-            print(f"❌ UDP Send Error: {e}")
+    def _broadcast(self, message):
+        encoded = message.encode('utf-8')
+        with self.lock:
+            # Create a copy to iterate safely if set changes
+            targets = list(self.clients)
+            
+        for addr in targets:
+            try:
+                self.sock.sendto(encoded, addr)
+            except Exception as e:
+                print(f"❌ UDP Send Error to {addr}: {e}")
+                # Optionnel: supprimer le client s'il est inaccessible? 
+                # UDP ne throw pas souvent d'erreur d'envoi sauf si interface down.
 
     def close(self):
-        self.sock.close()
+        self.running = False
+        if self.sock:
+            self.sock.close()
+

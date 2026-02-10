@@ -5,14 +5,14 @@ from control.State import State
 from control.Motor import Motor
 from control.Gamepad import Gamepad
 from .LidarParserCpp import LidarParser
-from .LidarSender import LidarSender
+from .LidarSender import LidarUdpServer
 
 # Ajouter le chemin pour importer gps_simple_reader
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from gps.gps_simple_reader import SimpleGPSReader
 
 
-vitesse_factor = 1.5;
+vitesse_factor = 1.5
 
 # DIRECTION DRIVE PARAMETERS
 SCAN_FRONT_DEG = 25   # Élargi pour mieux détecter les ouvertures
@@ -36,7 +36,7 @@ class AutoDriveState(State):
         print("Initializing AutoDrive...")
         self.lidar = LidarParser()
         # self.lidar = LidarParserUDP(host='127.0.0.1', port=8888)
-        self.sender = LidarSender(host='127.0.0.1', port=8888)
+        self.sender = LidarUdpServer(port=8888)
         self.reverse_end_time = 0  # Fin de la marche arrière (timestamp)
         
         # GPS Reader
