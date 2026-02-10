@@ -18,7 +18,7 @@ vitesse_factor = 1.5;
 SCAN_FRONT_DEG = 25   # Élargi pour mieux détecter les ouvertures
 SAFE_DISTANCE = 4.5   # Distance de sécurité pour ralentir
 SLOW_DISTANCE = 1.8   # Distance de ralentissement
-STOP_DISTANCE = 0.75  # Distance d'arrêt
+STOP_DISTANCE = 0.5   # Distance d'arrêt
 
 FORWARD_SPEED = 0.06   # Vitesse maximale augmentée
 BACKWARD_SPEED = -0.04 # Vitesse de recul
