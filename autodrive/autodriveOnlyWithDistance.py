@@ -19,6 +19,9 @@ SCAN_FRONT_DEG = 25   # Élargi pour mieux détecter les ouvertures
 SAFE_DISTANCE = 4.0   # Distance de sécurité pour ralentir
 SLOW_DISTANCE = 1.5   # Distance de ralentissement
 STOP_DISTANCE = 0.6   # Distance d'arrêt
+TURN_CLEARANCE = 0.9  # Distance latérale mini pour tourner au lieu de reculer
+WALL_CLEARANCE = 0.8  # Commence à s'écarter des murs
+WALL_PUSH_GAIN = 0.45 # Influence max du "push" contre les murs
 
 MAX_SPEED_LIMIT = 0.4  # Ne jamais dépasser cette vitesse
 
@@ -27,7 +30,7 @@ BACKWARD_SPEED = -0.04 # Vitesse de recul
 SLOW_SPEED = 0.04   # Vitesse minimale
 
 # STEERING AVOIDANCE PARAMETERS
-STEERING_SCAN_ANGLE = 65  # Angle de scan pour trouver les ouvertures
+STEERING_SCAN_ANGLE = 90  # Angle de scan pour trouver les ouvertures
 STEER_ANGLE = 1         # Angle de braquage max
 
 REVERSE_DURATION = 1.5    # Durée de la marche arrière en secondes
@@ -193,8 +196,31 @@ class AutoDriveState(State):
                 self.apply_speed(motor, 0.0)
                 return
         
-        # Obstacle très proche : marche arrière
+        # Obstacle très proche : tourner si possible, sinon marche arrière
         if front['min_dist'] < STOP_DISTANCE:
+            left_ok = left['min_dist'] > TURN_CLEARANCE
+            right_ok = right['min_dist'] > TURN_CLEARANCE
+
+            if left_ok or right_ok:
+                if left_ok and right_ok:
+                    prefer_left = left['avg_dist'] >= right['avg_dist']
+                else:
+                    prefer_left = left_ok
+
+                if prefer_left:
+                    target_steering = self.calculate_proportional_steering(left, -1.0)
+                else:
+                    target_steering = self.calculate_proportional_steering(right, 1.0)
+
+                target_steering = self.clamp(
+                    target_steering + self.compute_wall_bias(left, right),
+                    -STEER_ANGLE,
+                    STEER_ANGLE,
+                )
+                self.apply_steering(motor, target_steering, aggressive=True)
+                self.apply_speed(motor, min(SLOW_SPEED, MAX_SPEED_LIMIT))
+                return
+
             # print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
             self.initiate_reverse(motor, largescans)
             return
@@ -314,6 +340,11 @@ class AutoDriveState(State):
         if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE * 0.7:
             fine = self.fine_tune_steering(front['obstacles'])
             best['steering'] = self.clamp(best['steering'] + fine, -STEER_ANGLE, STEER_ANGLE)
+
+        wall_bias = self.compute_wall_bias(left, right)
+        if best['name'] != 'AVANT':
+            wall_bias *= 0.5
+        best['steering'] = self.clamp(best['steering'] + wall_bias, -STEER_ANGLE, STEER_ANGLE)
         
         # print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
         self._last_choice = best['name']
@@ -430,6 +461,15 @@ class AutoDriveState(State):
         balance = (right['avg_dist'] - left['avg_dist']) / denom
         balance = self.clamp(balance, -0.6, 0.6)
         return balance * (STEER_ANGLE * 0.6)
+
+    def compute_wall_bias(self, left, right):
+        """Pousse le véhicule à s'éloigner des murs proches"""
+        push = 0.0
+        if left['min_dist'] < WALL_CLEARANCE:
+            push += (WALL_CLEARANCE - left['min_dist']) / max(WALL_CLEARANCE, 0.1)
+        if right['min_dist'] < WALL_CLEARANCE:
+            push -= (WALL_CLEARANCE - right['min_dist']) / max(WALL_CLEARANCE, 0.1)
+        return self.clamp(push * WALL_PUSH_GAIN, -WALL_PUSH_GAIN, WALL_PUSH_GAIN)
 
     def compute_path_score(self, sector_scan, steering):
         avg_dist = min(sector_scan['avg_dist'], 6.0)
