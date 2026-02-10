@@ -29,6 +29,9 @@ class LidarUdpServer:
                 data, addr = self.sock.recvfrom(1024)
                 if data:
                     msg = data.decode('utf-8', errors='ignore').strip()
+                    # Log receive debug
+                    print(f"📥 [DEBUG] Packet from {addr}: {msg}")
+                    
                     # Si c'est un message de connexion (ou n'importe quoi d'un nouveau client)
                     with self.lock:
                         if addr not in self.clients:
@@ -45,8 +48,13 @@ class LidarUdpServer:
 
     def send_points(self, points):
         """Broadcast LIDAR points to all connected clients"""
-        if not self.sock or not self.clients:
+        if not self.sock:
             return
+            
+        with self.lock:
+            if not self.clients:
+                # print("⚠️ [DEBUG] No clients connected - Drop points")
+                return
 
         # Format: angle,distance,intensity
         buffer = ""

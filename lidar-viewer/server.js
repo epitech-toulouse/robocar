@@ -30,8 +30,12 @@ io.on('connection', (socket) => {
 
         // Buffer for accumulating data
         let dataBuffer = '';
+        let packetCount = 0;
 
         udpClient.on('message', (msg) => {
+            packetCount++;
+            if (packetCount % 50 === 1) console.log('📥 Received UDP packet #', packetCount, 'Length:', msg.length);
+
             dataBuffer += msg.toString();
 
             // Process complete lines
@@ -53,7 +57,10 @@ io.on('connection', (socket) => {
             }
 
             if (points.length > 0) {
+                if (packetCount % 50 === 1) console.log('➡️ Emitting', points.length, 'points to frontend');
                 socket.emit('lidar-data', points);
+            } else {
+                if (lines.length > 0 && packetCount % 50 === 1) console.log('⚠️ Parsed 0 points from packet (lines:', lines.length, ')');
             }
         });
 
