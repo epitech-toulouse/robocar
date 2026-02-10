@@ -16,9 +16,9 @@ vitesse_factor = 1.5;
 
 # DIRECTION DRIVE PARAMETERS
 SCAN_FRONT_DEG = 25   # Élargi pour mieux détecter les ouvertures
-SAFE_DISTANCE = 4.0   # Distance de sécurité pour ralentir
-SLOW_DISTANCE = 1.5   # Distance de ralentissement
-STOP_DISTANCE = 0.6   # Distance d'arrêt
+SAFE_DISTANCE = 4.5   # Distance de sécurité pour ralentir
+SLOW_DISTANCE = 1.8   # Distance de ralentissement
+STOP_DISTANCE = 0.75  # Distance d'arrêt
 
 FORWARD_SPEED = 0.06   # Vitesse maximale augmentée
 BACKWARD_SPEED = -0.04 # Vitesse de recul
@@ -280,18 +280,18 @@ class AutoDriveState(State):
         
         # Plus l'espace est grand, moins on tourne fort
         # Utiliser la distance moyenne pour un meilleur jugement
-        if avg_dist > 3.5 * vitesse_factor:
+        if avg_dist > 4.0 * vitesse_factor:
             # Beaucoup d'espace : virage très doux
-            factor = 0.3
-        elif avg_dist > 2.5 * vitesse_factor:
+            factor = 0.35
+        elif avg_dist > 3.0 * vitesse_factor:
             # Espace confortable : virage doux
-            factor = 0.5
-        elif avg_dist > 1.8 * vitesse_factor:
+            factor = 0.55
+        elif avg_dist > 2.2 * vitesse_factor:
             # Espace moyen : virage modéré
-            factor = 0.7
+            factor = 0.75
         else:
             # Peu d'espace : virage prononcé
-            factor = 0.9 
+            factor = 0.95 
         
         # Ajuster selon la distance minimale (sécurité)
         if min_dist < SLOW_DISTANCE:
