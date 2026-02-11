@@ -15,20 +15,20 @@ from gps.gps_simple_reader import SimpleGPSReader
 vitesse_factor = 1.5
 
 # DIRECTION DRIVE PARAMETERS
-SCAN_FRONT_DEG = 15   # Élargi pour mieux détecter les ouvertures
+SCAN_FRONT_DEG = 30   # Élargi pour mieux détecter les ouvertures
 SAFE_DISTANCE = 3.5   # Distance de sécurité pour ralentir
 SLOW_DISTANCE = 1.2   # Distance de ralentissement
 STOP_DISTANCE = 0.45   # Distance d'arrêt
 
 FORWARD_SPEED = 0.04   # Vitesse maximale augmentée
-BACKWARD_SPEED = -0.04 # Vitesse de recul
-SLOW_SPEED = 0.02   # Vitesse minimale
+BACKWARD_SPEED = -0.02 # Vitesse de recul
+SLOW_SPEED = 0.04   # Vitesse minimale
 
 # STEERING AVOIDANCE PARAMETERS
 STEERING_SCAN_ANGLE = 60  # Angle de scan pour trouver les ouvertures
 STEER_ANGLE = 1        # Angle de braquage max
 
-REVERSE_DURATION = 1    # Durée de la marche arrière en secondes
+REVERSE_DURATION = 1.5    # Durée de la marche arrière en secondes
 
 # WALL CENTERING PARAMETERS
 WALL_SCAN_MIN_ANGLE = 70   # Angle min pour détecter les murs latéraux
@@ -138,8 +138,9 @@ class AutoDriveState(State):
                 obstacles.append(p)
         
         if not obstacles:
-            # if sector_name:
-            #     print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): ⚫ NO DATA")
+            
+            if sector_name:
+                print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): ⚫ NO DATA")
             return {'min_dist': float('inf'), 'avg_dist': float('inf'), 'count': 0, 'obstacles': []}
         
         distances = [o['distance'] for o in obstacles]
@@ -149,9 +150,9 @@ class AutoDriveState(State):
             'count': len(distances),
             'obstacles': obstacles
         }
-        # if sector_name:
-        #     status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
-        #     print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
+        if sector_name:
+             status = "🟢" if result['min_dist'] > SAFE_DISTANCE else "🟡" if result['min_dist'] > SLOW_DISTANCE else "🔴"
+             print(f"  [{sector_name}] ({min_angle:+4.0f}° to {max_angle:+4.0f}°): {status} {result['min_dist']:.2f}m (avg:{result['avg_dist']:.2f}m, pts:{result['count']})")
         
         
         return result
@@ -177,7 +178,7 @@ class AutoDriveState(State):
         
         # Obstacle très proche : marche arrière
         if front['min_dist'] < STOP_DISTANCE:
-            # print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
+            print(f"⚠️ OBSTACLE CRITIQUE à {front['min_dist']:.2f}m - MARCHE ARRIÈRE")
             self.initiate_reverse(motor, largescans)
             return
         
@@ -310,7 +311,7 @@ class AutoDriveState(State):
         if best['name'] == 'AVANT' and front['min_dist'] < SAFE_DISTANCE * 0.7:
             best['steering'] = self.fine_tune_steering(front['obstacles'])
         
-        # print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
+        print(f"✅ Chemin choisi: {best['name']} (steering={best['steering']:+.2f})")
         return best
     
     def calculate_proportional_steering(self, sector_scan, direction):
@@ -341,7 +342,7 @@ class AutoDriveState(State):
         elif min_dist < SAFE_DISTANCE * 0.5:
             factor = min(1.0, factor + 0.2)  # Moyen : correction modérée
         
-        return direction * STEER_ANGLE * factor
+        return direction * STEER_ANGLE * factor * 1.2
 
     def calculate_wall_centering(self, wall_left, wall_right, front_min_dist):
         """Calcule un braquage pour rester centré entre deux murs"""
@@ -363,7 +364,7 @@ class AutoDriveState(State):
         
         correction = error * CENTERING_GAIN * front_factor
         correction = max(-CENTERING_MAX, min(CENTERING_MAX, correction))
-        return correction * STEER_ANGLE
+        return correction * STEER_ANGLE * 1.2
 
     def _wall_distance(self, wall_scan):
         """Retourne une distance fiable du mur ou None si non détecté"""
@@ -387,7 +388,7 @@ class AutoDriveState(State):
         # Plus l'obstacle est proche, plus la correction est forte
         proximity_boost = max(1.0, SAFE_DISTANCE / max(closest['distance'], 0.1))
         correction = -angle / SCAN_FRONT_DEG * 0.5 * proximity_boost
-        return max(-STEER_ANGLE, min(STEER_ANGLE, correction))
+        return max(-STEER_ANGLE, min(STEER_ANGLE, correction)) * 1.3
 
     def calculate_speed(self, min_distance):
         """Calcul adaptatif de la vitesse selon la distance"""
@@ -398,7 +399,7 @@ class AutoDriveState(State):
         else:
             factor = (min_distance - STOP_DISTANCE) / (SAFE_DISTANCE - STOP_DISTANCE)
             return SLOW_SPEED + (FORWARD_SPEED - SLOW_SPEED) * factor
-
+    g_steering = 0.0
     def initiate_reverse(self, motor: Motor, largescans):
         """Démarre une séquence de marche arrière"""
         self.reverse_end_time = time.time() + REVERSE_DURATION
@@ -417,13 +418,19 @@ class AutoDriveState(State):
                 steering = STEER_ANGLE 
         else:
             steering = 0.0 
-        
-        motor.set_steering_objective(steering)
-        motor.set_speed_objective(BACKWARD_SPEED)
+
+        motor.set_steering_objective(-steering)
+        self.g_steering = -steering
+        # motor.set_steering_objective(steering)
+        motor.set_speed_objective(0)
 
     def handle_reverse(self, motor: Motor, largescans):
         """Gère la marche arrière"""
         remaining = self.reverse_end_time - time.time()
         print(f"🔄 MARCHE ARRIÈRE ({remaining:.1f}s restantes)")
+        if remaining < 1.2 and remaining > 0.3:
+            print("redirection marche arriere")
+            motor.set_steering_objective(-self.g_steering)
+            motor.set_speed_objective(BACKWARD_SPEED)
         if remaining < 0.3:
             motor.set_steering_objective(0.0)
