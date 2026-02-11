@@ -17,8 +17,8 @@ vitesse_factor = 1.5
 # DIRECTION DRIVE PARAMETERS
 SCAN_FRONT_DEG = 20   # Élargi pour mieux détecter les ouvertures
 SAFE_DISTANCE = 3.5   # Distance de sécurité pour ralentir
-SLOW_DISTANCE = 1.2   # Distance de ralentissement
-STOP_DISTANCE = 0.4   # Distance d'arrêt
+SLOW_DISTANCE = 1.5   # Distance de ralentissement
+STOP_DISTANCE = 0.45   # Distance d'arrêt
 
 FORWARD_SPEED = 0.06   # Vitesse maximale augmentée
 BACKWARD_SPEED = -0.04 # Vitesse de recul
