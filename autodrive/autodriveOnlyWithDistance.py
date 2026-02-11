@@ -15,7 +15,7 @@ from gps.gps_simple_reader import SimpleGPSReader
 vitesse_factor = 1.5
 
 # DIRECTION DRIVE PARAMETERS
-SCAN_FRONT_DEG = 23   # Élargi pour mieux détecter les ouvertures
+SCAN_FRONT_DEG = 15   # Élargi pour mieux détecter les ouvertures
 SAFE_DISTANCE = 3.5   # Distance de sécurité pour ralentir
 SLOW_DISTANCE = 1.2   # Distance de ralentissement
 STOP_DISTANCE = 0.45   # Distance d'arrêt
@@ -176,7 +176,7 @@ class AutoDriveState(State):
         
         # Correction proactive : si un mur est très proche sur un côté,
         # forcer le braquage pour s'en éloigner avant de devoir reculer
-        SIDE_DANGER_DIST = STOP_DISTANCE * 2.5
+        SIDE_DANGER_DIST = STOP_DISTANCE
         if left['min_dist'] < SIDE_DANGER_DIST or right['min_dist'] < SIDE_DANGER_DIST:
             if left['min_dist'] < right['min_dist']:
                 # Mur proche à gauche → braquer à droite
