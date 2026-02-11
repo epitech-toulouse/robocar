@@ -15,18 +15,18 @@ from gps.gps_simple_reader import SimpleGPSReader
 vitesse_factor = 1.5
 
 # DIRECTION DRIVE PARAMETERS
-SCAN_FRONT_DEG = 20   # Élargi pour mieux détecter les ouvertures
+SCAN_FRONT_DEG = 23   # Élargi pour mieux détecter les ouvertures
 SAFE_DISTANCE = 3.5   # Distance de sécurité pour ralentir
-SLOW_DISTANCE = 1.5   # Distance de ralentissement
+SLOW_DISTANCE = 1.2   # Distance de ralentissement
 STOP_DISTANCE = 0.45   # Distance d'arrêt
 
-FORWARD_SPEED = 0.06   # Vitesse maximale augmentée
+FORWARD_SPEED = 0.04   # Vitesse maximale augmentée
 BACKWARD_SPEED = -0.04 # Vitesse de recul
-SLOW_SPEED = 0.04   # Vitesse minimale
+SLOW_SPEED = 0.02   # Vitesse minimale
 
 # STEERING AVOIDANCE PARAMETERS
-STEERING_SCAN_ANGLE = 55  # Angle de scan pour trouver les ouvertures
-STEER_ANGLE = 1         # Angle de braquage max
+STEERING_SCAN_ANGLE =60  # Angle de scan pour trouver les ouvertures
+STEER_ANGLE = 1        # Angle de braquage max
 
 REVERSE_DURATION = 1    # Durée de la marche arrière en secondes
 
