@@ -25,10 +25,19 @@ BACKWARD_SPEED = -0.04 # Vitesse de recul
 SLOW_SPEED = 0.02   # Vitesse minimale
 
 # STEERING AVOIDANCE PARAMETERS
-STEERING_SCAN_ANGLE =60  # Angle de scan pour trouver les ouvertures
+STEERING_SCAN_ANGLE = 60  # Angle de scan pour trouver les ouvertures
 STEER_ANGLE = 1        # Angle de braquage max
 
 REVERSE_DURATION = 1    # Durée de la marche arrière en secondes
+
+# WALL CENTERING PARAMETERS
+WALL_SCAN_MIN_ANGLE = 70   # Angle min pour détecter les murs latéraux
+WALL_SCAN_MAX_ANGLE = 110  # Angle max pour détecter les murs latéraux
+WALL_MIN_POINTS = 6        # Minimum de points pour considérer un mur détecté
+WALL_DETECT_MAX = 6.0      # Distance max pour considérer un mur
+WALL_DETECT_MIN = 0.2      # Distance min pour ignorer le bruit
+CENTERING_GAIN = 0.6       # Gain de correction (0..1)
+CENTERING_MAX = 0.6        # Limite de correction (en fraction de STEER_ANGLE)
 
 
 class AutoDriveState(State):
@@ -108,15 +117,17 @@ class AutoDriveState(State):
                     self._last_gps_print = time.time()
         
         front_scan = self.scan_sector(points, -SCAN_FRONT_DEG, SCAN_FRONT_DEG, "AVANT")
-        left_scan = self.scan_sector(points,-STEERING_SCAN_ANGLE, -(SCAN_FRONT_DEG - 10), "GAUCHE")
+        left_scan = self.scan_sector(points, -STEERING_SCAN_ANGLE, -(SCAN_FRONT_DEG - 10), "GAUCHE")
         right_scan = self.scan_sector(points, (SCAN_FRONT_DEG - 10), STEERING_SCAN_ANGLE, "DROITE")
+        wall_left_scan = self.scan_sector(points, WALL_SCAN_MIN_ANGLE, WALL_SCAN_MAX_ANGLE, "MUR_GAUCHE")
+        wall_right_scan = self.scan_sector(points, -WALL_SCAN_MAX_ANGLE, -WALL_SCAN_MIN_ANGLE, "MUR_DROIT")
         largescans = self.scan_sector(points, -180, 180, "ALL")
 
         
         if time.time() < self.reverse_end_time:
             self.handle_reverse(motor, largescans)
         else:
-            self.navigate(motor, front_scan, left_scan, right_scan, largescans, gps_data)
+            self.navigate(motor, front_scan, left_scan, right_scan, wall_left_scan, wall_right_scan, largescans, gps_data)
 
     def scan_sector(self, points, min_angle, max_angle, sector_name=""):
         """Analyse un secteur angulaire et retourne les statistiques"""
@@ -152,7 +163,7 @@ class AutoDriveState(State):
             angle -= 360
         return angle
 
-    def navigate(self, motor: Motor, front, left, right, largescans, gps_data=None):
+    def navigate(self, motor: Motor, front, left, right, wall_left, wall_right, largescans, gps_data=None):
         """Logique principale de navigation avec intégration GPS"""
         
         # Vérifier si on est arrivé à destination (GPS uniquement sur distance)
@@ -173,6 +184,13 @@ class AutoDriveState(State):
         best_direction = self.find_best_path(front, left, right, gps_data)
         speed = self.calculate_speed(front['min_dist'])
         target_steering = best_direction['steering']
+
+        # Centrage par détection des murs gauche/droite (priorité faible)
+        if best_direction['name'] == 'AVANT' and front['min_dist'] > SLOW_DISTANCE:
+            centering = self.calculate_wall_centering(wall_left, wall_right, front['min_dist'])
+            if centering != 0.0:
+                target_steering += centering
+                target_steering = max(-STEER_ANGLE, min(STEER_ANGLE, target_steering))
         
         # Correction proactive : si un mur est très proche sur un côté,
         # forcer le braquage pour s'en éloigner avant de devoir reculer
@@ -324,6 +342,39 @@ class AutoDriveState(State):
             factor = min(1.0, factor + 0.2)  # Moyen : correction modérée
         
         return direction * STEER_ANGLE * factor
+
+    def calculate_wall_centering(self, wall_left, wall_right, front_min_dist):
+        """Calcule un braquage pour rester centré entre deux murs"""
+        left_dist = self._wall_distance(wall_left)
+        right_dist = self._wall_distance(wall_right)
+        
+        if left_dist is None or right_dist is None:
+            return 0.0
+        
+        # Normaliser l'écart pour rester stable même si les distances changent
+        denom = max(left_dist + right_dist, 0.001)
+        error = (right_dist - left_dist) / denom  # + => tourner à droite
+        
+        # Réduire la correction si un obstacle est plus proche devant
+        if front_min_dist < SAFE_DISTANCE:
+            front_factor = max(0.3, (front_min_dist - SLOW_DISTANCE) / (SAFE_DISTANCE - SLOW_DISTANCE))
+        else:
+            front_factor = 1.0
+        
+        correction = error * CENTERING_GAIN * front_factor
+        correction = max(-CENTERING_MAX, min(CENTERING_MAX, correction))
+        return correction * STEER_ANGLE
+
+    def _wall_distance(self, wall_scan):
+        """Retourne une distance fiable du mur ou None si non détecté"""
+        if wall_scan['count'] < WALL_MIN_POINTS:
+            return None
+        dist = wall_scan['avg_dist']
+        if dist == float('inf'):
+            return None
+        if dist < WALL_DETECT_MIN or dist > WALL_DETECT_MAX:
+            return None
+        return dist
 
     def fine_tune_steering(self, obstacles):
         """Ajustement fin du braquage pour rester au centre"""
