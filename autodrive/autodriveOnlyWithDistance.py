@@ -36,7 +36,7 @@ class AutoDriveState(State):
         print("Initializing AutoDrive...")
         self.lidar = LidarParser()
         # self.lidar = LidarParserUDP(host='127.0.0.1', port=8888)
-        self.sender = LidarUdpServer(port=8888)
+       # self.sender = LidarUdpServer(port=8888)
         self.reverse_end_time = 0  # Fin de la marche arrière (timestamp)
         
         # GPS Reader
@@ -78,8 +78,8 @@ class AutoDriveState(State):
             return
             
         # Send points via UDP
-        if hasattr(self, 'sender'):
-            self.sender.send_points(points)
+       # if hasattr(self, 'sender'):
+        #    self.sender.send_points(points)
         
         # Récupérer les données GPS si disponibles (toutes les 0.5s)
         gps_data = None
