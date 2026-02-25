@@ -2,11 +2,16 @@ import evdev
 import time
 from .Logger import Logger
 
+NORMAL_SPEED : float = 0.2
+MANI_SPEED : float = 0.4
+
 class Gamepad:
     def __init__(self):
         self.logger : Logger = Logger("Gamepad")
         self.logger.log("Starting initialisation.")
         self.device = None
+        self.max_speed_ratio : float = NORMAL_SPEED
+        self.logger.log("Speed is set to NORMAL speed.")
         while (self.device is None):
             devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
             for device in devices:
@@ -38,6 +43,16 @@ class Gamepad:
 
         self.logger.log("Init done.")
 
+    def setManiSpeed(self):
+        if self.max_speed_ratio != MANI_SPEED:
+            self.logger.log("Speed is set to RACE speed. BEWARE !!! \a\a\a.")
+        self.max_speed_ratio = MANI_SPEED
+
+    def setNormalSpeed(self):
+        if self.max_speed_ratio != NORMAL_SPEED:
+            self.logger.log("Speed is set to NORMAL speed.")
+        self.max_speed_ratio = NORMAL_SPEED
+
     def setLedsOn(self):
         for led in self.leds:
             self.device.set_led(led, 1)
@@ -63,9 +78,9 @@ class Gamepad:
                 if value.code == 0:
                     self.axis["steering"] = abs_event.event.value / 32767
                 elif value.code == 5:
-                    self.axis["forward"] = abs_event.event.value / 255 / 3
+                    self.axis["forward"] = abs_event.event.value / 255 * self.max_speed_ratio
                 elif value.code == 2:
-                    self.axis["backward"] = abs_event.event.value / 255 / 5
+                    self.axis["backward"] = abs_event.event.value / 255 * self.max_speed_ratio / 2
             # If button
             elif value.code == evdev.ecodes.BTN_A:
                 self.buttons["A"] = True
@@ -73,14 +88,25 @@ class Gamepad:
                 self.buttons["X"] = True
             elif value.code == evdev.ecodes.BTN_Y:
                 self.buttons["Y"] = True
+                self.setNormalSpeed()
             elif value.code == evdev.ecodes.BTN_B:
                 self.buttons["B"] = True
+                self.setNormalSpeed()
             elif value.code == evdev.ecodes.BTN_SELECT:
                 self.buttons["Select"] = True
             elif value.code == evdev.ecodes.BTN_START:
                 self.buttons["Start"] = True
+                self.setNormalSpeed()
             elif value.code == evdev.ecodes.BTN_TL:
                 self.buttons["LB"] = True
+                self.setNormalSpeed()
             elif value.code == evdev.ecodes.BTN_TR:
                 self.buttons["RB"] = True
+            elif value.code == evdev.ecodes.BTN_THUMBR:
+                self.setManiSpeed()
+            #for key, item in evdev.ecodes.__dict__.items():
+            #    if not "BTN_" in key:
+            #        continue
+            #    if item == value.code:
+            #        print("PRESSED: ", key)
             value = self.device.read_one()

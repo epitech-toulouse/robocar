@@ -1,0 +1,1 @@
+/usr/bin/c++     CMakeFiles/ld19_lidar.dir/main.cpp.o  -o ld19_lidar -lsfml-graphics -lsfml-window -lsfml-system 

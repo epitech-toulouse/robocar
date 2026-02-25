@@ -1,0 +1,40 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/robocartls/robocar/autodrive/cpp/lidar_parser.cpp
+lidar_parser.hpp
+/home/robocartls/robocar/autodrive/cpp/lidar_parser.hpp
+vector
+-
+deque
+-
+thread
+-
+mutex
+-
+atomic
+-
+cstring
+-
+fcntl.h
+-
+unistd.h
+-
+termios.h
+-
+iostream
+-
+algorithm
+-
+
+/home/robocartls/robocar/autodrive/cpp/lidar_parser.hpp
+cstdint
+-
+cstddef
+-
+
