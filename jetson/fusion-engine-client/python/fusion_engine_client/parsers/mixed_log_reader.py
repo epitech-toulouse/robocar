@@ -1,0 +1,670 @@
+from typing import Iterable, List, Set, Union, Optional
+
+import copy
+from datetime import datetime
+import io
+import os
+import sys
+
+import numpy as np
+
+from . import fast_indexer, file_index
+from ..messages import MessageType, MessageHeader, MessagePayload, Timestamp, message_type_to_class
+from ..utils import trace as logging
+from ..utils.time_range import TimeRange
+
+
+class MixedLogReader(object):
+    """!
+    @brief Generator class for decoding FusionEngine messages contained in a mixed-content binary file.
+
+    For real-time deserialization of an incoming binary data stream, see @ref FusionEngineDecoder.
+    """
+    logger = logging.getLogger('point_one.fusion_engine.parsers.mixed_log_reader')
+
+    def __init__(self, input_file, warn_on_gaps: bool = False, show_progress: bool = False,
+                 save_index: bool = True, ignore_index: bool = False, num_threads: int = None,
+                 max_bytes: int = None,
+                 time_range: TimeRange = None, message_types: Union[Iterable[MessageType], MessageType] = None,
+                 source_ids: Optional[Iterable[int]] = None, return_header: bool = True,
+                 return_payload: bool = True, return_bytes: bool = False, return_offset: bool = False,
+                 return_message_index: bool = False):
+        """!
+        @brief Construct a new generator instance.
+
+        Each call to @ref next() will return a tuple containing any/all of the message header, payload, serialized
+        `bytes`, and byte offset depending on the values of the `return_*` parameters.
+
+        @param input_file The path to an input file (`.p1log` or mixed-content binary file), or an open file-like
+               object.
+        @param warn_on_gaps If `True`, print warnings if gaps are detected in the FusionEngine message sequence numbers.
+        @param show_progress If `True`, print file read progress to the console periodically.
+        @param save_index If `True`, save an index file if one does not exist for faster reading in the future.
+               See @ref FileIndex for details. Ignored if `max_bytes` is specified.
+        @param ignore_index If `True`, ignore the existing index file and read from the binary file directly. If
+               `save_index == True`, this will delete the existing file and create a new one.
+        @param num_threads The number of parallel threads to spawn during indexing. If `None`, defaults to the number
+               of available CPUs.
+        @param max_bytes If specified, read up to the maximum number of bytes.
+        @param time_range An optional @ref TimeRange object specifying desired start and end time bounds of the data to
+               be read. See @ref TimeRange for more details.
+        @param message_types A list of one or more @ref fusion_engine_client.messages.defs.MessageType "MessageTypes" to
+               be returned. If `None` or an empty list, read all available messages.
+        @param source_ids An optional list message source identifiers to be returned. If `None`, read messages from
+               available source identifiers.
+        @param return_header If `True`, return the decoded @ref MessageHeader for each message.
+        @param return_payload If `True`, parse and return the payload for each message as a subclass of @ref
+               MessagePayload. Will return `None` if the payload cannot be parsed.
+        @param return_bytes If `True`, return a `bytes` object containing the serialized message header and payload.
+        @param return_offset If `True`, return the offset into the file (in bytes) at which the message began.
+        @param return_message_index If `True`, return the 0-based index of the message within the file.
+        """
+        self.warn_on_gaps = warn_on_gaps
+
+        self.return_header = return_header
+        self.return_payload = return_payload
+        self.return_bytes = return_bytes
+        self.return_offset = return_offset
+        self.return_message_index = return_message_index
+
+        self._original_time_range = copy.deepcopy(time_range)
+        self.time_range = copy.deepcopy(self._original_time_range)
+
+        self.remove_invalid_p1_time = False
+
+        if message_types is None:
+            self.message_types = None
+        elif isinstance(message_types, MessageType):
+            self.message_types = set((message_types,))
+        elif MessagePayload.is_subclass(message_types):
+            self.message_types = set((message_types.get_type(),))
+        else:
+            self.message_types = set([(t.get_type() if MessagePayload.is_subclass(t) else t) for t in message_types])
+            if len(self.message_types) == 0:
+                self.message_types = None
+
+        # The source IDs requested by the user. If none were requested, then use all of them.
+        if source_ids is None:
+            self.requested_source_ids = None
+        elif isinstance(source_ids, int):
+            self.requested_source_ids = {source_ids}
+        else:
+            self.requested_source_ids = set(source_ids)
+        # The source IDs that are available in the log. This will be populated below when
+        # _populate_available_source_ids is called.
+        self.available_source_ids = None
+
+        self._original_message_types = copy.deepcopy(self.message_types)
+
+        self.valid_count = 0
+        self.message_counts = {}
+        self.prev_sequence_number = None
+        self.total_bytes_read = 0
+        self.current_message_index = 0
+
+        self.show_progress = show_progress
+        self.last_print_bytes = 0
+        self.start_time = datetime.now()
+
+        # Open the file to be read.
+        if isinstance(input_file, io.IOBase):
+            self.input_file = input_file
+        else:
+            self.input_file = open(input_file, 'rb')
+
+        input_path = self.input_file.name
+        self.file_size_bytes = os.stat(input_path).st_size
+
+        if max_bytes is None:
+            self.max_bytes = sys.maxsize
+        else:
+            self.max_bytes = max_bytes
+
+        # Open the companion index file if one exists, otherwise index the file.
+        self._original_index = fast_indexer.fast_generate_index(input_path, force_reindex=ignore_index,
+                                                                save_index=save_index, max_bytes=max_bytes,
+                                                                num_threads=num_threads)
+        self.next_index_elem = 0
+        self.index = self._original_index
+        self.filtered_message_types = False
+        self._populate_available_source_ids()
+
+        self.filter_in_place(None, source_ids=self.requested_source_ids)
+        self.filter_in_place(self.message_types)
+        self.filter_in_place(self.time_range)
+
+        self.index = self._original_index[self.message_types][self.time_range]
+        self.filtered_message_types = len(np.unique(self._original_index.type)) != \
+                                        len(np.unique(self.index.type))
+
+    def rewind(self):
+        self.logger.debug('Rewinding to the start of the file.')
+
+        if self.time_range is not None:
+            self.time_range.restart()
+
+        if self._original_time_range is not None:
+            self._original_time_range.restart()
+
+        self.valid_count = 0
+        self.message_counts = {}
+        self.prev_sequence_number = None
+        self.total_bytes_read = 0
+
+        self.last_print_bytes = 0
+        self.start_time = datetime.now()
+
+        self.next_index_elem = 0
+        self.input_file.seek(0, os.SEEK_SET)
+
+    def seek_to_message(self, message_index: int, is_filtered_index: bool = False):
+        if self.index is None:
+            raise NotImplemented('A file index is required to seek by message index.')
+
+        max_index = len(self.index) if is_filtered_index else len(self._original_index)
+        if message_index < 0 or message_index >= max_index:
+            raise ValueError('Invalid message index.')
+
+        if not is_filtered_index:
+            self.clear_filters()
+        self.next_index_elem = message_index
+
+    def seek_to_eof(self):
+        self._read_next(force_eof=True)
+
+    def reached_eof(self):
+        if self.index is None:
+            return self.total_bytes_read == self.file_size_bytes
+        else:
+            return self.next_index_elem == len(self.index)
+
+    def have_index(self):
+        return self._original_index is not None
+
+    def get_index(self):
+        return self._original_index
+
+    def set_show_progress(self, show_progress):
+        self.show_progress = show_progress
+
+    def set_max_bytes(self, max_bytes):
+        if max_bytes is None:
+            self.max_bytes = sys.maxsize
+        else:
+            self.max_bytes = max_bytes
+
+    def get_bytes_read(self):
+        return self.total_bytes_read
+
+    def next(self):
+        return self.read_next()
+
+    def read_next(self, require_p1_time=False, require_system_time=False):
+        return self._read_next(require_p1_time=require_p1_time, require_system_time=require_system_time)
+
+    def _read_next(self, require_p1_time=False, require_system_time=False, force_eof=False):
+        if force_eof:
+            if not self.reached_eof():
+                self.logger.debug('Forcibly seeking to EOF.')
+                if self.index is None:
+                    self.input_file.seek(self.file_size_bytes, os.SEEK_SET)
+                    self.total_bytes_read = self.file_size_bytes
+                elif len(self.index) == 0:
+                    self.next_index_elem = 0
+                    self.total_bytes_read = 0
+                else:
+                    # Read the header of the last element so we can set total_bytes_read equal to the end of the index.
+                    # We're not actually going to return this message.
+                    offset_bytes = self.index.offset[-1]
+                    self.input_file.seek(offset_bytes, os.SEEK_SET)
+                    data = self.input_file.read(MessageHeader.calcsize())
+                    header = MessageHeader()
+                    header.unpack(data, warn_on_unrecognized=False)
+                    self.total_bytes_read = offset_bytes + header.get_message_size()
+                    self.next_index_elem = len(self.index)
+            else:
+                return
+
+        while True:
+            if not self._advance_to_next_sync():
+                # End of file.
+                self.logger.debug('EOF reached.')
+                break
+
+            start_offset_bytes = self.total_bytes_read
+            self._print_progress()
+
+            if start_offset_bytes + MessageHeader.calcsize() > self.max_bytes:
+                self.logger.debug('Max read length exceeded (%d B).' % self.max_bytes)
+                break
+
+            if self.logger.isEnabledFor(logging.getTraceLevel(depth=2)):
+                self.logger.trace('Reading candidate message @ %d (0x%x).' % (start_offset_bytes, start_offset_bytes),
+                                  depth=2)
+
+            # Read the next message header.
+            data = self.input_file.read(MessageHeader.calcsize())
+            read_len = len(data)
+            self.total_bytes_read += len(data)
+            if read_len < MessageHeader.calcsize():
+                # End of file.
+                self.logger.debug('EOF reached.')
+                break
+
+            try:
+                header = MessageHeader()
+                header.unpack(data, warn_on_unrecognized=False)
+
+                # Check if the payload is too big. If so, we most likely found an invalid header -- message sync bytes
+                # occurring randomly in non-FusionEngine binary data in the file.
+                if header.payload_size_bytes > MessageHeader._MAX_EXPECTED_SIZE_BYTES:
+                    raise ValueError('Payload size (%d) too large. [message_type=%s]' %
+                                     (header.payload_size_bytes, header.get_type_string()))
+
+                # Read and validate the payload.
+                #
+                # Note here that we can read < payload_size_bytes under 2 circumstances:
+                # 1. We reached EOF unexpectedly: we found a valid message header but the file doesn't contain the
+                #    complete message.
+                # 2. We found an invalid header but its (bogus) payload length, while not large enough to trigger the
+                #    "too big" check above, extends past the end of the file.
+                #
+                # In either case, we will skip past this header and see if there any further candidate headers later in
+                # the file.
+                #
+                # If the CRC fails, either because we found an invalid header or because a valid message got corrupted,
+                # validate_crc() will raise a ValueError and we will skip forward in the same manner.
+                payload_bytes = self.input_file.read(header.payload_size_bytes)
+                read_len += len(payload_bytes)
+                self.total_bytes_read += len(payload_bytes)
+                if len(payload_bytes) != header.payload_size_bytes:
+                    raise ValueError('Not enough data - likely not a valid FusionEngine header. [message_type=%s]' %
+                                     header.get_type_string())
+
+                data += payload_bytes
+                header.validate_crc(data)
+
+                # Verify that source ID is correct.
+                if self.requested_source_ids is not None and header.source_identifier not in self.requested_source_ids:
+                    continue
+
+                message_length_bytes = MessageHeader.calcsize() + header.payload_size_bytes
+                if self.logger.isEnabledFor(logging.getTraceLevel(depth=1)):
+                    self.logger.trace('Read %s message @ %d (0x%x). [length=%d B, sequence=%d, # messages=%d]' %
+                                      (header.get_type_string(), start_offset_bytes, start_offset_bytes,
+                                       message_length_bytes, header.sequence_number, self.valid_count + 1),
+                                      depth=1)
+
+                if start_offset_bytes + message_length_bytes > self.max_bytes:
+                    self.logger.debug('Max read length exceeded (%d B).' % self.max_bytes)
+                    break
+
+                current_message_index = self.current_message_index
+                self.current_message_index += 1
+
+                self.valid_count += 1
+                self.message_counts.setdefault(header.message_type, 0)
+                self.message_counts[header.message_type] += 1
+
+                # Check for sequence number gaps. If we're filtering to just specific message types, we'll likely have
+                # gaps since we're omitting messages, so we'll skip this check.
+                if not self.filtered_message_types and \
+                   self.prev_sequence_number is not None and \
+                   (header.sequence_number - self.prev_sequence_number) != 1 and \
+                   not (header.sequence_number == 0 and self.prev_sequence_number == 0xFFFFFFFF):
+                    func = self.logger.warning if self.warn_on_gaps else self.logger.debug
+                    func('Data gap detected @ %d (0x%x). [sequence=%d, gap_size=%d, total_messages=%d]' %
+                         (start_offset_bytes, start_offset_bytes, header.sequence_number,
+                          header.sequence_number - self.prev_sequence_number, self.valid_count + 1))
+                self.prev_sequence_number = header.sequence_number
+
+                # Deserialize the payload if we need it.
+                need_payload = self.return_payload or \
+                               self.time_range is not None or \
+                               require_p1_time or require_system_time
+
+                if need_payload:
+                    cls = message_type_to_class.get(header.message_type, None)
+                    if cls is not None:
+                        try:
+                            payload = cls()
+                            payload.unpack(buffer=payload_bytes, offset=0, message_version=header.message_version)
+                        except NotImplementedError as e:
+                            self.logger.debug("Error %s message: %s" % (header.get_type_string(), str(e)))
+                            payload = None
+                        except Exception as e:
+                            self.logger.error("Error parsing %s message: %s" % (header.get_type_string(), str(e)))
+                            payload = None
+                    else:
+                        payload = None
+
+                    if require_p1_time and (payload is None or payload.get_p1_time() is None):
+                        self.logger.trace("Skipping %s message. P1 time requested." % header.get_type_string())
+                        continue
+                    elif require_system_time and (payload is None or payload.get_system_time_ns() is None):
+                        self.logger.trace("Skipping %s message. System time requested." % header.get_type_string())
+                        continue
+
+                # Extract P1 time if available.
+                p1_time = payload.get_p1_time() if payload is not None else Timestamp()
+
+                # Now, if this message is not in the user-specified filter criteria, skip it.
+                #
+                # If we have an index available, this is implied by the index (we won't seek to messages that don't meet
+                # the criteria at all), so we do not need to do this check. Further, self.message_types and
+                # self.time_range are _only_ valid if we are _not_ using an index, so this may end up incorrectly
+                # filtering out some messages as unwanted.
+                if self.index is None:
+                    if self.message_types is not None and header.message_type not in self.message_types:
+                        self.logger.trace("Message type not requested. Skipping.", depth=1)
+                        continue
+                    elif self.remove_invalid_p1_time and not p1_time:
+                        self.logger.trace("Message does not have valid P1 time. Skipping.", depth=1)
+                        continue
+                    elif self.time_range is not None and not self.time_range.is_in_range(payload):
+                        if self.time_range.in_range_started():
+                            self.logger.debug("End of time range reached. Finished processing.")
+                            break
+                        else:
+                            self.logger.trace("Message not in time range. Skipping.", depth=1)
+                            continue
+
+                # Construct the result. If we're returning the payload, deserialize the payload.
+                result = []
+                if self.return_header:
+                    result.append(header)
+                if self.return_payload:
+                    result.append(payload)
+                if self.return_bytes:
+                    result.append(data)
+                if self.return_offset:
+                    result.append(start_offset_bytes)
+                if self.return_message_index:
+                    result.append(current_message_index)
+                return result
+            except ValueError as e:
+                start_offset_bytes += 1
+                if self.logger.isEnabledFor(logging.getTraceLevel(depth=2)):
+                    self.logger.trace('%s Rewinding to offset %d (0x%x).' %
+                                      (str(e), start_offset_bytes, start_offset_bytes),
+                                      depth=2)
+                self.input_file.seek(start_offset_bytes, os.SEEK_SET)
+                self.total_bytes_read = start_offset_bytes
+
+        # Out of the loop - EOF reached.
+        self._print_progress(self.total_bytes_read)
+        self.logger.debug("Read %d bytes total." % self.total_bytes_read)
+
+        # Finished iterating.
+        if force_eof:
+            return
+        else:
+            raise StopIteration()
+
+    def _advance_to_next_sync(self):
+        if self.next_index_elem == len(self.index):
+            return False
+        else:
+            offset_bytes = self.index.offset[self.next_index_elem]
+            self.current_message_index = self.index.message_index[self.next_index_elem]
+            self.next_index_elem += 1
+            self.input_file.seek(offset_bytes, os.SEEK_SET)
+            self.total_bytes_read = offset_bytes
+            return True
+
+    def _print_progress(self, file_size=None):
+        show_progress = self.show_progress
+
+        # If this function is being called when we're done reading (file_size not None), and we used an index file which
+        # did not have any entries for the requested set of data filters, don't print an info print stating "processed
+        # 0/0 bytes". It's more confusing than helpful.
+        if file_size is not None and self.index is not None and self.total_bytes_read == 0:
+            show_progress = False
+
+        if file_size is None:
+            file_size = min(self.file_size_bytes, self.max_bytes)
+
+        if self.total_bytes_read < self.last_print_bytes or \
+           self.total_bytes_read - self.last_print_bytes > 10e6 or \
+           self.total_bytes_read == file_size:
+            elapsed_sec = (datetime.now() - self.start_time).total_seconds()
+            self.logger.log(logging.INFO if show_progress else logging.DEBUG,
+                            'Processed %d/%d bytes (%.1f%%). [elapsed=%.1f sec, rate=%.1f MB/s]' %
+                            (self.total_bytes_read, file_size,
+                             100.0 if file_size == 0 else 100.0 * float(self.total_bytes_read) / file_size,
+                             elapsed_sec, (self.total_bytes_read / elapsed_sec / 1e6) if elapsed_sec > 0 else np.nan))
+            self.last_print_bytes = self.total_bytes_read
+
+    def parse_entry_at_index(self, index: file_index.FileIndexEntry):
+        """!
+        @brief Generate header and payload from index entry.
+
+        @param index The index entry at which to parse the class's input file.
+
+        @return header The @ref MessageHeader at the index entry.
+        @return payload The class located at the index entry.
+        """
+        # Jump to offset governed by index.
+        self.input_file.seek(index.offset, os.SEEK_SET)
+
+        # Generate header and payload.
+        data = self.input_file.read(MessageHeader.calcsize())
+        header = MessageHeader()
+        header.unpack(data, warn_on_unrecognized=False)
+        payload_bytes = self.input_file.read(header.payload_size_bytes)
+
+        try:
+            cls = message_type_to_class.get(header.message_type, None)
+            payload = cls()
+            payload.unpack(buffer=payload_bytes, offset=0, message_version=header.message_version)
+            return header, payload
+        # If class is not recognized, return payload_bytes.
+        except Exception as e:
+            return header, payload_bytes
+
+    def clear_filters(self):
+        self.filter_in_place(key=None, clear_existing=True)
+
+    def filter_in_place(self, key, clear_existing: Union[bool, str] = False,
+                        source_ids: Optional[Iterable[int]] = None):
+        """!
+        @brief Limit the returned messages by type or time.
+
+        @warning
+        This operator modifies this class in-place.
+
+        @param key One of the following:
+               - An individual @ref MessageType to be returned
+               - An iterable listing one or more @ref MessageType%s to be returned
+               - A `slice` specifying the start/end of the desired absolute (P1) or relative time range
+               - A @ref TimeRange object
+        @param clear_existing One of the following:
+               - `True` - Clear any previous filter criteria
+               - `False` - Add the new criteria to existing filters
+               - `'message_type'` - Clear previous message type filtering
+               - `'time_range'` - Clear previous time range filtering
+               - `'source_id'` - Clear previous source identifier filtering
+        @param source_ids If set, limit results to messages using one of the specified source identifier values.
+
+        @return A reference to this class.
+        """
+        # If we're reading using an index, determine the offset within the data file of the most recent message we have
+        # read. Then below, after we filter the index down (or clear existing filtering), we'll locate the next entry to
+        # be read in the file that meets the new criteria. That way we continue where we left off.
+        #
+        # If we're reading directly from the file without an index, we'll just pick up where the current seek is, so no
+        # need to do anything special.
+        if self.index is not None:
+            if self.next_index_elem == 0:
+                prev_offset_bytes = -1
+            else:
+                # Note that next_index_elem refers to the _next_ message to be read. We want the offset of the message
+                # that we just read.
+                prev_offset_bytes = self.index.offset[self.next_index_elem - 1]
+
+        if isinstance(clear_existing, str):
+            # Verify input string and clear accordingly.
+            if clear_existing == 'message_type':
+                self.message_types = copy.deepcopy(self._original_message_types)
+            elif clear_existing == 'time_range':
+                self.time_range = copy.deepcopy(self._original_time_range)
+            elif clear_existing == 'source_id':
+                self.requested_source_ids = set()
+            else:
+                raise ValueError('Invalid clear_existing flag: %s' % clear_existing)
+        else:
+            # If requested, clear previous filter criteria.
+            if clear_existing:
+                if self.index is None:
+                    self.message_types = copy.deepcopy(self._original_message_types)
+                    self.time_range = copy.deepcopy(self._original_time_range)
+                    self.remove_invalid_p1_time = False
+                    self.requested_source_ids = None
+                else:
+                    self.index = self._original_index
+
+        # Set requested source IDs.
+        if source_ids is not None:
+            source_ids = set(source_ids)
+            # Apply source IDs that are available.
+            if self.available_source_ids != source_ids:
+                unavailable_source_ids = list(source_ids.difference(self.available_source_ids))
+                if len(unavailable_source_ids) > 0:
+                    self.logger.debug('Not all source IDs requested are available. Cannot extract the following '
+                                      'source IDs: {}'.format(unavailable_source_ids))
+                source_ids = list(source_ids.intersection(self.available_source_ids))
+                if len(source_ids) == 0:
+                    self.logger.debug('Requested source IDs unavailable. Cannot extract data.')
+                    self.filter_in_place(None, clear_existing='source_id')
+
+                if len(unavailable_source_ids) > 0:
+                    self.logger.info('Extracting the following available requested source IDs: {}'.format(source_ids))
+            self.requested_source_ids = source_ids
+
+        # No key specified (convenience case).
+        if key is None:
+            pass
+        # If we have an index file available, reduce the index to the requested criteria.
+        elif self.index is not None:
+            self.index = self.index[key]
+            self.filtered_message_types = len(np.unique(self._original_index.type)) != \
+                                          len(np.unique(self.index.type))
+        # Otherwise, store the criteria and apply them while reading.
+        else:
+            # Return entries for a specific message type.
+            if isinstance(key, MessageType):
+                self.message_types = set((key,))
+                self.filtered_message_types = True
+            elif MessagePayload.is_subclass(key):
+                self.message_types = set((key.get_type(),))
+                self.filtered_message_types = True
+            # Return entries for a list of message types.
+            elif isinstance(key, (set, list, tuple)) and len(key) > 0 and isinstance(next(iter(key)), MessageType):
+                new_message_types = {t for t in key if t is not None}
+                if self.message_types is None:
+                    self.message_types = new_message_types
+                else:
+                    self.message_types = self.message_types & new_message_types
+                self.filtered_message_types = True
+            elif isinstance(key, (set, list, tuple)) and len(key) > 0 and MessagePayload.is_subclass(next(iter(key))):
+                new_message_types = set([t.get_type() for t in key if t is not None])
+                if self.message_types is None:
+                    self.message_types = new_message_types
+                else:
+                    self.message_types = self.message_types & new_message_types
+                self.filtered_message_types = True
+            # Key is a slice in time. Return a subset of the data.
+            elif isinstance(key, slice) and (isinstance(key.start, (Timestamp, float)) or
+                                             isinstance(key.stop, (Timestamp, float))):
+                time_range = TimeRange(start=key.start, end=key.stop, absolute=isinstance(key.start, Timestamp))
+                if self.time_range is None:
+                    self.time_range = time_range
+                else:
+                    self.time_range.intersect(time_range, in_place=True)
+            # Key is a slice by index (# of messages). Return a subset of the index file.
+            #
+            # Note: Slicing is not supported if there is no index file. Slicing with an index file is handled above.
+            elif isinstance(key, slice) and (isinstance(key.start, int) or isinstance(key.stop, int)):
+                raise ValueError('Index slicing not supported when an index file is not present.')
+            # Key is a TimeRange object. Return a subset of the data. All nan elements (messages without P1 time) will
+            # be included in the results.
+            elif isinstance(key, TimeRange):
+                if self.time_range is None:
+                    self.time_range = key
+                else:
+                    self.time_range.intersect(key, in_place=True)
+
+        # Now, find the next entry in the newly filtered index starting after the most recent message we read. That
+        # way we can continue reading where we left off.
+        if self.index is not None:
+            if len(self.index) == 0:
+                self.next_index_elem = 0
+            elif prev_offset_bytes < 0:
+                self.next_index_elem = 0
+            else:
+                idx = np.argmax(self.index.offset > prev_offset_bytes)
+                if idx == 0 and self.index.offset[0] <= prev_offset_bytes:
+                    self.next_index_elem = len(self.index)
+                else:
+                    self.next_index_elem = idx
+
+        return self
+
+    def filter_out_invalid_p1_times(self, clear_existing: bool = False):
+        """!
+        @brief Limit the returned messages, removing any messages that do not have valid P1 time.
+
+        @param clear_existing If `True`, clear any previous filter criteria.
+
+        @return A reference to this class.
+        """
+        self.filter_in_place(key=None, clear_existing=clear_existing)
+
+        # If we have an index file available, reduce the index to the requested criteria.
+        if self.index is not None:
+            self.index = self.index.get_time_range(hint='remove_nans')
+            self.filtered_message_types = len(np.unique(self._original_index.type)) != \
+                                          len(np.unique(self.index.type))
+        else:
+            self.remove_invalid_p1_time = True
+
+        return self
+
+    def get_available_source_ids(self) -> Set[int]:
+        return self.available_source_ids
+
+    def _populate_available_source_ids(self, num_messages_to_read: int = 10):
+        self.available_source_ids = set()
+        # This function requires that the header is returned. Store the current
+        # `self.return_header` value.
+        stored_return_header = self.return_header
+        self.return_header = True
+        # Loop over all message types and read N of each type.
+        for message_type in np.unique(self.index['type']):
+            message_type = MessageType(message_type, raise_on_unrecognized=False)
+            self.filter_in_place(message_type)
+            num_messages_read = 0
+            while num_messages_read < num_messages_to_read:
+                try:
+                    result = self.read_next()
+                    header = result[0]
+                except StopIteration:
+                    break
+
+                num_messages_read += 1
+                self.available_source_ids.add(header.source_identifier)
+
+            self.clear_filters()
+
+        self.return_header = stored_return_header
+        self.rewind()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return self.next()
+
+    @classmethod
+    def generate_index_file(cls, input_file):
+        return fast_indexer.fast_generate_index(input_file)

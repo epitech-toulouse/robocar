@@ -1,0 +1,18 @@
+aenum>=3.1.1
+# Note: Using the Point One fork of gpstime until the patch to download the leap
+# seconds file from alternate servers is merged:
+# https://gitlab.com/jrollins/gpstime/-/merge_requests/2
+p1-gpstime>=0.6.3.dev1
+numpy>=1.16.0
+construct>=2.10.0
+
+# Required for analysis and example applications only. Not used by the `messages` package.
+argparse-formatter>=1.4
+colorama>=0.4.4
+palettable>=3.3.0
+plotly>=4.0.0
+pymap3d>=2.4.3
+scipy>=1.5.0
+
+# Required for development only.
+packaging>=21.0.0

@@ -1,0 +1,469 @@
+# Build library and examples, and generate releases.
+name: FusionEngine Client Build
+
+on:
+  push:
+    # Build on a push to any branch.
+    branches:
+      - '*'
+    # Build on a push of any tag named v* (v1.0, etc.) and generate a release.
+    tags:
+      - 'v*'
+
+jobs:
+  # Check code style.
+  check_style:
+    name: Check Style
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    # Check Python formatting.
+    - name: Check Python Formatting
+      id: autopep8
+      uses: peter-evans/autopep8@v1
+      with:
+        args: --in-place python/fusion_engine_client python/examples python/bin python/tests
+
+    - name: Test Python Result
+      if: steps.autopep8.outputs.exit-code == 2
+      run: exit 1
+
+    # Check C++ formatting.
+    - name: Check C++ Formatting
+      uses: jidicula/clang-format-action@v4.11.0
+      with:
+        clang-format-version: '13'
+        check-path: '.'
+
+  # Build the library and example applications (Bazel). Currently Linux only.
+  build_bazel:
+    name: Bazel Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Do a singular build for Bazel 4.2.2 to test Bazel 4.2.2.
+          - os: ubuntu-latest
+            compiler: gcc
+            version: 11
+            bazel: 4.2.2
+          # Run Bazel 6.5.0 on all compilers versions.
+          - os: ubuntu-latest
+            compiler: gcc
+            version: 9
+            bazel: 6.5.0
+          - os: ubuntu-latest
+            compiler: gcc
+            version: 10
+            bazel: 6.5.0
+          - os: ubuntu-latest
+            compiler: gcc
+            version: 11
+            bazel: 6.5.0
+          - os: ubuntu-latest
+            compiler: clang
+            version: 14
+            bazel: 6.5.0
+    steps:
+    - uses: actions/checkout@v2
+
+    # Compile.
+    - name: Install Bazel ${{ matrix.bazel }}
+      uses: abhinavsingh/setup-bazel@v3
+      with:
+        version: ${{ matrix.bazel }}
+
+    - name: Setup Environment (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        # Just for Github action builds set USE_BAZEL_VERSION to override the
+        # .bazelversion file so we can test different Bazel versions even though
+        # the recommended Bazel version will be in the .bazelversion file.
+        echo "USE_BAZEL_VERSION=${{ matrix.bazel }}" >> $GITHUB_ENV
+
+        if [[ "${{ matrix.compiler }}" == "gcc" ]]; then
+          sudo apt install gcc-${{ matrix.version }} g++-${{ matrix.version }}
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ matrix.version }} 100 \
+            --slave /usr/bin/g++ g++ /usr/bin/g++-${{ matrix.version }} \
+            --slave /usr/bin/gcov gcov /usr/bin/gcov-${{ matrix.version }}
+          sudo update-alternatives --set gcc /usr/bin/gcc-${{ matrix.version }}
+
+          echo "CC=/usr/bin/g++-${{ matrix.version }}" >> $GITHUB_ENV
+        else
+          sudo apt install clang-${{ matrix.version }}
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${{ matrix.version }} 100
+          sudo update-alternatives --set clang /usr/bin/clang-${{ matrix.version }}
+
+          echo "CC=/usr/bin/clang++-${{ matrix.version }}" >> $GITHUB_ENV
+        fi
+
+    - name: Build Library
+      run: |
+        bazel build -c opt //:*
+
+    - name: Build Examples
+      run: |
+        cd examples &&
+        bazel build -c opt //:*
+
+    - name: Install Test Files
+      run: |
+        mkdir test
+        cp examples/bazel-bin/message_decode/message_decode ./test/
+        cp examples/bazel-bin/generate_data/generate_data ./test/
+        cp examples/message_decode/example_data.p1log ./test/
+
+    # Run unit tests.
+    - name: Test Message Decoding
+      run: |
+        cd test
+        ./message_decode example_data.p1log
+
+    - name: Test Message Encoding
+      run: |
+        cd test
+        ./generate_data new_data.p1log &&
+        ./message_decode new_data.p1log
+
+  # Build the library and example applications (CMake).
+  build_cmake:
+    name: CMake Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: gcc
+            version: 9
+          - os: ubuntu-latest
+            compiler: gcc
+            version: 10
+          - os: ubuntu-latest
+            compiler: clang
+            version: 14
+          - os: windows-latest
+            compiler: msvc
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - uses: actions/checkout@v2
+
+    # Compile.
+    - name: Install CMake 3.16.x
+      uses: jwlawson/actions-setup-cmake@v1.14.1
+      with:
+        cmake-version: '3.16.x'
+
+    - name: Configure VS Toolchain (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Setup Environment (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        echo "EXT=.exe" >> $GITHUB_ENV
+
+    - name: Setup Environment (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        if [[ "${{ matrix.compiler }}" == "gcc" ]]; then
+          sudo apt install gcc-${{ matrix.version }} g++-${{ matrix.version }}
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ matrix.version }} 100 \
+            --slave /usr/bin/g++ g++ /usr/bin/g++-${{ matrix.version }} \
+            --slave /usr/bin/gcov gcov /usr/bin/gcov-${{ matrix.version }}
+          sudo update-alternatives --set gcc /usr/bin/gcc-${{ matrix.version }}
+
+          echo "CC=/usr/bin/gcc-${{ matrix.version }}" >> $GITHUB_ENV
+          echo "CXX=/usr/bin/g++-${{ matrix.version }}" >> $GITHUB_ENV
+        else
+          sudo apt install clang-${{ matrix.version }}
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${{ matrix.version }} 100
+          sudo update-alternatives --set clang /usr/bin/clang-${{ matrix.version }}
+
+          echo "CC=/usr/bin/clang-${{ matrix.version }}" >> $GITHUB_ENV
+          echo "CXX=/usr/bin/clang++-${{ matrix.version }}" >> $GITHUB_ENV
+        fi
+
+        echo "EXT=" >> $GITHUB_ENV
+
+    - name: Setup Build
+      run: |
+        mkdir cmake_build
+        cd cmake_build
+        cmake -DCMAKE_INSTALL_PREFIX=install ..
+
+    - name: Build Library And Examples (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cd cmake_build
+        make
+        make install
+
+    - name: Install Test Files (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        mkdir test
+        cp cmake_build/examples/message_decode/message_decode ./test/
+        cp cmake_build/examples/generate_data/generate_data ./test/
+        cp examples/message_decode/example_data.p1log ./test/
+
+    - name: Build Library And Examples (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd cmake_build
+        nmake
+        nmake install
+
+    - name: Install Test Files (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        mkdir test
+        cp cmake_build/fusion_engine_client.dll ./test/
+        cp cmake_build/examples/message_decode/message_decode.exe ./test/
+        cp cmake_build/examples/generate_data/generate_data.exe ./test/
+        cp examples/message_decode/example_data.p1log ./test/
+
+    - name: Build External Project Example (CMake, Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        mkdir examples/external_cmake_project/build
+        cd examples/external_cmake_project/build
+        cmake ..
+        make
+
+    # Run unit tests.
+    - name: Test Message Decoding
+      run: |
+        cd test
+        ./message_decode${EXT} example_data.p1log
+
+    - name: Test Message Encoding
+      run: |
+        cd test
+        ./generate_data${EXT} new_data.p1log
+        ./message_decode${EXT} new_data.p1log
+
+  # Build the documentation.
+  build_doxygen:
+    name: Documentation Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        doxygen: [1_8_18]
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        # Note: Checking out with full tag history for version query below.
+        fetch-depth: 0
+
+    - name: Setup Doxygen Cache
+      uses: actions/cache@v4
+      id: cache-doxygen
+      with:
+        path: |
+          doxygen
+        key: doxygen-source-${{ matrix.doxygen }}
+
+    - name: Install CMake 3.16.x
+      uses: jwlawson/actions-setup-cmake@v1.14.1
+      with:
+        cmake-version: '3.16.x'
+
+    - name: Build Doxygen
+      if: steps.cache-doxygen.outputs.cache-hit != 'true'
+      run: |
+        sudo apt install -y flex bison
+        git clone --depth 1 --branch Release_${{ matrix.doxygen }} https://github.com/doxygen/doxygen.git
+        mkdir doxygen/build
+        cd doxygen/build
+        cmake ..
+        make -j4
+
+    - name: Install Doxygen
+      run: |
+        cd doxygen/build
+        sudo make install
+
+    - name: Extract Tag Name
+      if: startsWith(github.ref, 'refs/tags/') || endsWith(github.ref, '/master')
+      run: echo "GIT_TAG=${GITHUB_REF##*/}" >> $GITHUB_ENV
+
+    - name: Extract Commit Hash
+      if: "!(startsWith(github.ref, 'refs/tags/') || endsWith(github.ref, '/master'))"
+      run: echo "GIT_TAG=${GITHUB_SHA}" >> $GITHUB_ENV
+
+    - name: Build Documentation
+      run: |
+        echo "Setting documentation version to: ${GIT_TAG}"
+        pip install packaging
+        python3 docs/update_versions.py ${GIT_TAG}
+        doxygen Doxyfile.version
+        tar cf fusion-engine-client-docs.tar docs/html --transform 's|^docs/html|fusion-engine-client/docs/html|'
+        tar rf fusion-engine-client-docs.tar docs/xml --transform 's|^docs/xml|fusion-engine-client/docs/xml|'
+        gzip fusion-engine-client-docs.tar
+        tar czf version-docs.tar.gz docs/include_header.js docs/versions.html
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: fusion-engine-client-docs.tar.gz
+        path: fusion-engine-client-docs.tar.gz
+
+    - name: Upload Versioned Files
+      uses: actions/upload-artifact@v4
+      with:
+        name: version-docs.tar.gz
+        path: version-docs.tar.gz
+
+  # Upload release (v*) or master documentation to S3.
+  upload_doxygen:
+    name: Upload Documentation
+    if: startsWith(github.ref, 'refs/tags/') || endsWith(github.ref, '/master')
+    needs: [build_doxygen]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Extract Tag Name
+      run: |
+        echo "GIT_TAG=${GITHUB_REF##*/}" >> $GITHUB_ENV
+        echo "Setting tag to: ${GIT_TAG}"
+
+    - name: Get Documentation Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: fusion-engine-client-docs.tar.gz
+
+    - name: Get Versioned Files
+      uses: actions/download-artifact@v4
+      with:
+        name: version-docs.tar.gz
+
+    - name: Upload Documentation To Web (S3)
+      run: |
+        tar xvzf fusion-engine-client-docs.tar.gz --strip-components=1
+        tar xvzf version-docs.tar.gz
+        aws s3 sync --delete --acl public-read docs/html s3://docs.pointonenav.com/fusion-engine/${GIT_TAG}
+        aws s3 cp --acl public-read docs/include_header.js s3://docs.pointonenav.com/fusion-engine/
+        aws s3 cp --acl public-read docs/versions.html s3://docs.pointonenav.com/fusion-engine/
+        aws s3 cp --acl public-read docs/index.html s3://docs.pointonenav.com/fusion-engine/
+        aws s3 cp --acl public-read docs/error.html s3://docs.pointonenav.com/fusion-engine/
+        aws s3 cp --acl public-read docs/favicon.ico s3://docs.pointonenav.com/fusion-engine/
+        aws s3 cp --acl public-read docs/point_one_logo.png s3://docs.pointonenav.com/fusion-engine/
+
+  # Run Python unit tests.
+  test_python:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install Python Requirements
+      run: |
+        pip install -r requirements.txt
+        pip install pytest
+
+    - name: Run Unit Tests
+      run: |
+        python -m pytest
+
+    - name: Build A Python Distribution
+      run: |
+        pip install build twine
+        python -m build
+        twine check dist/*
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: python_dist
+        path: python/dist
+
+  # Check autogenerated signal definitions.
+  test_signal_defs:
+    name: GNSS Signal Definitions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install Python Requirements
+      run: |
+        pip install -r requirements.txt
+
+    - name: Check Signal Definitions
+      run: |
+        python fusion_engine_client/messages/signal_def_gen.py --check-only
+
+  # Create a release only on a tag (not on a branch push).
+  release:
+    name: Create Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [check_style, build_bazel, build_cmake, build_doxygen, upload_doxygen, test_python]
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+    - name: Get Documentation Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: fusion-engine-client-docs.tar.gz
+
+    - name: Get Python Distribution Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: python_dist
+        path: python/dist
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@latest
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Documentation To Release
+      if: steps.create_release.conclusion == 'success'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: fusion-engine-client-docs.tar.gz
+        asset_name: fusion-engine-client-docs.tar.gz
+        asset_content_type: application/tar+gzip
+
+    - name: Upload The Python Distribution To PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        packages-dir: python/dist/
+        verbose: true

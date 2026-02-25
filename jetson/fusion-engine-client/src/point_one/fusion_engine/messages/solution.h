@@ -1,0 +1,720 @@
+/**************************************************************************/ /**
+ * @brief Platform position/attitude solution messages.
+ * @file
+ ******************************************************************************/
+
+#pragma once
+
+#include "point_one/fusion_engine/common/portability.h"
+#include "point_one/fusion_engine/messages/defs.h"
+
+namespace point_one {
+namespace fusion_engine {
+namespace messages {
+
+// Enforce 4-byte alignment and packing of all data structures and values.
+// Floating point values are aligned on platforms that require it. This is done
+// with a combination of setting struct attributes, and manual alignment
+// within the definitions. See the "Message Packing" section of the README.
+#pragma pack(push, 1)
+
+/**
+ * @defgroup solution_messages Navigation Solution Message Definitions
+ * @brief Output messages containing position, navigation, and time results.
+ * @ingroup messages
+ *
+ * See also @ref messages.
+ */
+
+/**
+ * @brief Platform pose solution: position, velocity, attitude (@ref
+ *        MessageType::POSE, version 1.2).
+ * @ingroup solution_messages
+ *
+ * @note
+ * All data is timestamped using Point One (P1) time, which is a monotonic
+ * timestamp referenced to the start of the device. Corresponding messages (@ref
+ * GNSSInfoMessage, @ref GNSSSatelliteMessage, etc.) may be associated using
+ * their @ref p1_time values.
+ */
+struct P1_ALIGNAS(4) PoseMessage : public MessagePayload {
+  static constexpr MessageType MESSAGE_TYPE = MessageType::POSE;
+  static constexpr uint8_t MESSAGE_VERSION = 2;
+  static constexpr int16_t INVALID_UNDULATION = INT16_MIN;
+
+  /** Set if the device is stationary. */
+  static constexpr uint8_t FLAG_STATIONARY = 0x01;
+
+  /** The time of the message, in P1 time (beginning at power-on). */
+  Timestamp p1_time;
+
+  /** The GPS time of the message, if available, referenced to 1980/1/6. */
+  Timestamp gps_time;
+
+  /** The type of this position solution. */
+  SolutionType solution_type;
+
+  /**
+   * A bitmask of flags associated with the pose data.
+   *
+   * Added in @ref PoseMessage version 1.2.
+   */
+  uint8_t flags = 0x0;
+
+  /**
+   * The geoid undulation at the current location (in cm).
+   *
+   * Geoid undulation is also frequently referred to as "geoid height". It is
+   * the height of the MSL geoid above the WGS-84 ellipsoid. Note that it is
+   * independent of the location of the receiver.
+   *
+   * Receiver ellipsoid altitude reported in @ref lla_deg (also frequently
+   * called "height above the ellipsoid") can be converted to a corresponding
+   * mean sea level (MSL) altitude ("height above the geoid" or "orthometric
+   * height") as follows:
+   *
+   * @f[
+   * h_{orthometric} = h_{ellipsoid} - undulation
+   * @f]
+   *
+   * Stored in units of 0.01 meters: `undulation_m = undulation_cm * 0.01`. Set
+   * to `-32768` if invalid.
+   *
+   * Added in @ref PoseMessage version 1.1.
+   */
+  int16_t undulation_cm = INVALID_UNDULATION;
+
+  /**
+   * The geodetic latitude, longitude, and altitude (in degrees/degrees/meters),
+   * expressed using the WGS-84 reference ellipsoid.
+   *
+   * @section p1_fe_pose_datum Datum/Epoch Considerations
+   * When comparing two positions, it is very important to make sure they are
+   * compared using the same geodetic datum, defined at the same time (epoch).
+   * Failing to do so can cause very large unexpected differences since the
+   * ground moves in various directions over time due to motion of tectonic
+   * plates.
+   *
+   * For example, the coordinates for a point on the ground in San Francisco
+   * expressed in the ITRF14 datum may differ by multiple meters from the
+   * coordinates for the same point expressed the NAD83 datum. Similarly, the
+   * coordinates for that location expressed in the ITRF14 2017.0 epoch
+   * (January 1, 2017) may differ by 12 cm or more when expressed using the
+   * ITRF14 2021.0 epoch (January 1, 2021).
+   *
+   * The datum and epoch to which the position reported in this message is
+   * aligned depends on the current @ref solution_type.
+   * - @ref SolutionType::AutonomousGPS / @ref SolutionType::DGPS /
+   *   @ref SolutionType::PPP - Standalone solutions (i.e., no differential
+   *   corrections) are aligned to the WGS-84 datum as broadcast live by GPS
+   *   (aligns closely with the ITRF08/14 datums).
+   * - @ref SolutionType::RTKFloat / @ref SolutionType::RTKFixed - When
+   *   differential corrections are applied, the reference datum and epoch are
+   *   defined by the corrections provider. Point One's Polaris Corrections
+   *   Service produces corrections using the ITRF14 datum. See
+   *   https://pointonenav.com/polaris for more details.
+   * - @ref SolutionType::Integrate - When the INS is dead reckoning in the
+   *   absence of GNSS, vision, or other measurements anchored in absolute world
+   *   coordinates, the position solution is defined in the same datum/epoch
+   *   specified by the previous solution type (e.g., WGS-84 if previously
+   *   standalone GNSS, i.e., @ref SolutionType::AutonomousGPS).
+   */
+  double lla_deg[3] = {NAN, NAN, NAN};
+
+  /**
+   * The position standard deviation (in meters), resolved with respect to the
+   * local ENU tangent plane: east, north, up.
+   */
+  float position_std_enu_m[3] = {NAN, NAN, NAN};
+
+  /**
+   * The platform attitude (in degrees), if known, described as intrinsic
+   * Euler-321 angles (yaw, pitch, roll) with respect to the local ENU tangent
+   * plane. Set to `NAN` if attitude is not available.
+   *
+   * @note
+   * The platform body axes are defined as +x forward, +y left, and +z up. A
+   * positive yaw is a left turn, positive pitch points the nose of the vehicle
+   * down, and positive roll is a roll toward the right. Yaw is measured from
+   * east in a counter-clockwise direction. For example, north is +90 degrees
+   * (i.e., `heading = 90.0 - ypr_deg[0]`).
+   */
+  double ypr_deg[3] = {NAN, NAN, NAN};
+
+  /**
+   * The attitude standard deviation (in degrees): yaw, pitch, roll.
+   */
+  float ypr_std_deg[3] = {NAN, NAN, NAN};
+
+  /**
+   * The platform velocity (in meters/second), resolved in the body frame. Set
+   * to `NAN` if attitude is not available for the body frame transformation.
+   */
+  double velocity_body_mps[3] = {NAN, NAN, NAN};
+
+  /**
+   * The velocity standard deviation (in meters/second), resolved in the body
+   * frame.
+   */
+  float velocity_std_body_mps[3] = {NAN, NAN, NAN};
+
+  /** The estimated aggregate 3D protection level (in meters). */
+  float aggregate_protection_level_m = NAN;
+  /** The estimated 2D horizontal protection level (in meters). */
+  float horizontal_protection_level_m = NAN;
+  /** The estimated vertical protection level (in meters). */
+  float vertical_protection_level_m = NAN;
+};
+
+/**
+ * @brief Auxiliary platform pose information (@ref MessageType::POSE_AUX,
+ *        version 1.0).
+ * @ingroup solution_messages
+ */
+struct P1_ALIGNAS(4) PoseAuxMessage : public MessagePayload {
+  static constexpr MessageType MESSAGE_TYPE = MessageType::POSE_AUX;
+  static constexpr uint8_t MESSAGE_VERSION = 0;
+
+  /** The time of the message, in P1 time (beginning at power-on). */
+  Timestamp p1_time;
+
+  /**
+   * The position standard deviation (in meters), resolved in the body frame.
+   * Set to `NAN` if attitude is not available for the body frame
+   * transformation.
+   */
+  float position_std_body_m[3] = {NAN, NAN, NAN};
+
+  /**
+   * The 3x3 position covariance matrix (in m^2), resolved in the local ENU
+   * frame. Values are stored in row-major order.
+   */
+  double position_cov_enu_m2[9] = {NAN};
+
+  /**
+   * The platform body orientation with respect to the local ENU frame,
+   * represented as a quaternion with the scalar component last (x, y, z, w).
+   */
+  double attitude_quaternion[4] = {NAN, NAN, NAN, NAN};
+
+  /**
+   * The platform velocity (in meters/second), resolved in the local ENU frame.
+   */
+  double velocity_enu_mps[3] = {NAN, NAN, NAN};
+
+  /**
+   * The velocity standard deviation (in meters/second), resolved in the local
+   * ENU frame.
+   */
+  float velocity_std_enu_mps[3] = {NAN, NAN, NAN};
+};
+
+/**
+ * @brief Information about the GNSS data used in the @ref PoseMessage with the
+ *        corresponding timestamp (@ref MessageType::GNSS_INFO, version 1.1).
+ * @ingroup solution_messages
+ *
+ * @note
+ * The deprecated `last_differential_time` field was removed in version 1.1 of
+ * this message, and was replaced by the new @ref leap_second, @ref num_svs,
+ * @ref corrections_age, and @ref baseline_distance fields. Attempting to use
+ * those fields on version 0 messages will result in undefined behavior.
+ */
+struct P1_ALIGNAS(4) GNSSInfoMessage : public MessagePayload {
+  static constexpr MessageType MESSAGE_TYPE = MessageType::GNSS_INFO;
+  static constexpr uint8_t MESSAGE_VERSION = 1;
+
+  static constexpr uint8_t INVALID_LEAP_SECOND = 0xFF;
+  static constexpr uint16_t INVALID_AGE = 0xFFFF;
+  static constexpr uint16_t INVALID_DISTANCE = 0xFFFF;
+  static constexpr uint32_t INVALID_REFERENCE_STATION = 0xFFFFFFFF;
+
+  /** The time of the message, in P1 time (beginning at power-on). */
+  Timestamp p1_time;
+
+  /** The GPS time of the message, if available, referenced to 1980/1/6. */
+  Timestamp gps_time;
+
+  /**
+   * The current UTC leap second (offset between UTC and GPS time), if known.
+   * Set to 0xFF if invalid.
+   *
+   * Added in message version 1.
+   */
+  uint8_t leap_second = INVALID_LEAP_SECOND;
+
+  /** The number of satellites used in the current position solution. */
+  uint8_t num_svs = 0;
+
+  uint8_t reserved[2];
+
+  /**
+   * The age of the most recently received GNSS corrections data (in 0.1
+   * seconds). Set to 0xFFFF if invalid.
+   *
+   * Added in message version 1.
+   */
+  uint16_t corrections_age = INVALID_AGE;
+
+  /**
+   * The distance between the device and the GNSS corrections base station.
+   * Stored in units of 10 meters:
+   * `baseline_distance_m = baseline_distance * 10`. Set to 0xFFFF if invalid.
+   *
+   * Added in message version 1.
+   */
+  uint16_t baseline_distance = INVALID_DISTANCE;
+
+  /**
+   * The ID of the GNSS corrections base station, if used. Set to 0xFFFFFFFF if
+   * invalid.
+   */
+  uint32_t reference_station_id = INVALID_REFERENCE_STATION;
+
+  /** The geometric dilution of precision (GDOP). */
+  float gdop = NAN;
+  /** The position dilution of precision (PDOP). */
+  float pdop = NAN;
+  /** The horizontal dilution of precision (HDOP). */
+  float hdop = NAN;
+  /** The vertical dilution of precision (VDOP). */
+  float vdop = NAN;
+
+  /** GPS time alignment standard deviation (in seconds). */
+  float gps_time_std_sec = NAN;
+};
+
+/**
+ * @brief Information about the individual satellites used in the @ref
+ *        PoseMessage and @ref GNSSInfoMessage with the corresponding timestamp
+ *        (@ref MessageType::GNSS_SATELLITE, version 1.0).
+ * @ingroup solution_messages
+ *
+ * @deprecated This message is deprecated in favor of the @ref
+ *             GNSSSignalsMessage that gives more information on both the
+ *             tracked satellites and signals.
+ *
+ * This message is followed by `N` @ref SatelliteInfo objects, where `N` is
+ * equal to @ref num_satellites. For example, a message with two satellites
+ * would be serialized as:
+ *
+ * ```
+ * {MessageHeader, GNSSSatelliteMessage, SatelliteInfo, SatelliteInfo, ...}
+ * ```
+ */
+struct P1_ALIGNAS(4) GNSSSatelliteMessage : public MessagePayload {
+  static constexpr MessageType MESSAGE_TYPE = MessageType::GNSS_SATELLITE;
+  static constexpr uint8_t MESSAGE_VERSION = 0;
+
+  /** The time of the message, in P1 time (beginning at power-on). */
+  Timestamp p1_time;
+
+  /** The GPS time of the message, if available, referenced to 1980/1/6. */
+  Timestamp gps_time;
+
+  /** The number of known satellites. */
+  uint16_t num_satellites = 0;
+
+  uint8_t reserved[2] = {0};
+};
+
+/**
+ * @brief Information about an individual satellite (see @ref
+ *        GNSSSatelliteMessage).
+ *
+ * For satellites where @ref usage is 0, the satellite may either be currently
+ * tracked by the receiver but not used for navigation, or may just be expected
+ * according to available ephemeris data.
+ */
+struct P1_ALIGNAS(4) SatelliteInfo {
+  /**
+   * @defgroup satellite_usage Bit definitions for the satellite usage bitmask
+   *           (@ref SatelliteInfo::usage).
+   * @{
+   */
+  static constexpr uint8_t SATELLITE_USED = 0x01;
+  /** @} */
+
+  static constexpr int16_t INVALID_CN0 = 0;
+
+  /** The GNSS system to which this satellite belongs. */
+  SatelliteType system = SatelliteType::UNKNOWN;
+
+  /** The satellite's PRN (or slot number for GLONASS). */
+  uint8_t prn = 0;
+
+  /**
+   * A bitmask specifying how this satellite was used in the position solution.
+   * Set to 0 if the satellite was not used. See @ref satellite_usage.
+   */
+  uint8_t usage = 0;
+
+  /**
+   * The carrier-to-noise density ratio (C/N0) for the L1 signal on the
+   * satellite.
+   *
+   * Stored in units of 0.25 dB-Hz: `cn0_dbhz = cn0 * 0.25`. Set to 0 if
+   * invalid. The range of this field is 0.25-63.75 dB-Hz. Values outside of
+   * this range will be clipped to the min/max values.
+   *
+   * @note
+   * If the satellite is not tracking L1 (or the L1-equivalent for other
+   * constellations, e.g., G1 for GLONASS) but another frequency is being used,
+   * that signal's C/N0 value will be reported.
+   *
+   * Added in @ref GNSSSatelliteMessage version 1.1.
+   */
+  uint8_t cn0 = INVALID_CN0;
+
+  /** The azimuth of the satellite (in degrees). */
+  float azimuth_deg = NAN;
+
+  /** The elevation of the satellite (in degrees). */
+  float elevation_deg = NAN;
+};
+
+/**
+ * @brief Information about the individual GNSS satellites and signals used in
+ *        the @ref PoseMessage and @ref GNSSInfoMessage with the corresponding
+ *        timestamp (@ref MessageType::GNSS_SIGNALS, version 1.1).
+ * @ingroup solution_messages
+ *
+ * This message is followed by `N` @ref GNSSSatelliteInfo objects, where `N` is
+ * equal to @ref num_satellites.
+ *
+ * After the satellite data objects, there will be a section of `S` @ref
+ * GNSSSignalInfo objects, where `S` is equal to `num_signals`.
+ *
+ * For example:
+ *  - A message with two satellites where the the first had one signal and the
+ *    second had two.
+ *
+ * ```
+ * num_satellites=2
+ * num_signals=3
+ *
+ * The data structure of the serialized message:
+ * {MessageHeader, GNSSSignalsMessage, GNSSSatelliteInfo, GNSSSatelliteInfo,
+ *  GNSSSignalInfo, GNSSSignalInfo, GNSSSignalInfo}
+ * ```
+ */
+struct P1_ALIGNAS(4) GNSSSignalsMessage : public MessagePayload {
+  static constexpr MessageType MESSAGE_TYPE = MessageType::GNSS_SIGNALS;
+  static constexpr uint8_t MESSAGE_VERSION = 1;
+
+  static constexpr uint16_t INVALID_GPS_WEEK = 0xFFFF;
+  static constexpr uint32_t INVALID_GPS_TOW = 0xFFFFFFFF;
+
+  /** The time of the message, in P1 time (beginning at power-on). */
+  Timestamp p1_time;
+
+  /**
+   * The precise GPS time of the message, if available, referenced to 1980/1/6.
+   */
+  Timestamp gps_time;
+
+  /** The approximate GPS time of week in milliseconds. */
+  uint32_t gps_tow_ms = INVALID_GPS_TOW;
+
+  /** The GPS week number. */
+  uint16_t gps_week = INVALID_GPS_WEEK;
+
+  /** The number of GNSS signals reported in this message. */
+  uint16_t num_signals = 0;
+
+  /** The number satellites reported in this message. */
+  uint8_t num_satellites = 0;
+
+  uint8_t reserved[7] = {0};
+};
+
+/**
+ * @brief Information about an individual satellite (see @ref
+ *        GNSSSignalsMessage).
+ */
+struct P1_ALIGNAS(4) GNSSSatelliteInfo {
+  /**
+   * @defgroup gnss_sv_status_flags Bit definitions for the satellite status
+   *           bitmask (@ref GNSSSatelliteInfo::status_flags).
+   * @{
+   */
+  static constexpr uint8_t STATUS_FLAG_IS_USED = 0x01;
+  static constexpr uint8_t STATUS_FLAG_IS_UNHEALTHY = 0x02;
+  static constexpr uint8_t STATUS_FLAG_IS_NON_LINE_OF_SIGHT = 0x04;
+  static constexpr uint8_t STATUS_FLAG_HAS_EPHEM = 0x10;
+  static constexpr uint8_t STATUS_FLAG_HAS_SBAS = 0x20;
+  /** @} */
+
+  static constexpr uint16_t INVALID_AZIMUTH = 0xFFFF;
+  static constexpr int16_t INVALID_ELEVATION = 0x7FFF;
+
+  /** The GNSS system to which this satellite belongs. */
+  SatelliteType system = SatelliteType::UNKNOWN;
+
+  /** The satellite's PRN (or slot number for GLONASS). */
+  uint8_t prn = 0;
+
+  /**
+   * A bitmask specifying how this satellite was used and what information was
+   * available for it.
+   */
+  uint8_t status_flags = 0;
+
+  uint8_t reserved[1] = {0};
+
+  /** The elevation of the satellite [-90, 90] (in 0.01 degrees). */
+  int16_t elevation_cdeg = INVALID_ELEVATION;
+
+  /**
+   * The azimuth of the satellite [0,359] (in 0.01 degrees). 0 is north, and
+   * azimuth increases in a clockwise direction.
+   */
+  uint16_t azimuth_cdeg = INVALID_AZIMUTH;
+};
+static_assert(sizeof(GNSSSatelliteInfo) == 8,
+              "GNSSSatelliteInfo does not match expected packed size.");
+
+/**
+ * @brief Information about an individual GNSS signal (see @ref
+ *        GNSSSignalsMessage).
+ */
+struct P1_ALIGNAS(4) GNSSSignalInfo {
+  /**
+   * @defgroup gnss_signal_status_flags Bit definitions for the signal status
+   *           bitmask (@ref GNSSSignalInfo::status_flags).
+   * @{
+   */
+  static constexpr uint16_t STATUS_FLAG_USED_PR = 0x01;
+  static constexpr uint16_t STATUS_FLAG_USED_DOPPLER = 0x02;
+  static constexpr uint16_t STATUS_FLAG_USED_CARRIER = 0x04;
+  static constexpr uint16_t STATUS_FLAG_CARRIER_AMBIGUITY_RESOLVED = 0x08;
+
+  static constexpr uint16_t STATUS_FLAG_VALID_PR = 0x10;
+  static constexpr uint16_t STATUS_FLAG_VALID_DOPPLER = 0x20;
+  static constexpr uint16_t STATUS_FLAG_CARRIER_LOCKED = 0x40;
+
+  static constexpr uint16_t STATUS_FLAG_HAS_RTK = 0x100;
+  static constexpr uint16_t STATUS_FLAG_HAS_SBAS = 0x200;
+  static constexpr uint16_t STATUS_FLAG_HAS_EPHEM = 0x400;
+  /** @} */
+
+  static constexpr uint8_t INVALID_CN0 = 0;
+
+  /** The type of signal being reported. */
+  GNSSSignalType signal_type = GNSSSignalType::UNKNOWN;
+
+  /**
+   * The PRN (or slot number for GLONASS) of the satellite that generated this
+   * signal.
+   */
+  uint8_t prn = 0;
+
+  /**
+   * The carrier-to-noise density ratio (C/N0) this signal.
+   *
+   * Stored in units of 0.25 dB-Hz: `cn0_dbhz = cn0 * 0.25`. Set to 0 if
+   * invalid. The range of this field is 0.25-63.75 dB-Hz. Values outside of
+   * this range will be clipped to the min/max values.
+   */
+  uint8_t cn0 = INVALID_CN0;
+
+  /**
+   * A bitmask specifying how this signal was used and what information was
+   * available for it.
+   */
+  uint16_t status_flags = 0;
+
+  uint8_t reserved[2] = {0};
+};
+static_assert(sizeof(GNSSSignalInfo) == 8,
+              "GNSSSignalInfo does not match expected packed size.");
+
+/**
+ * @brief The stages of the device calibration process.
+ * @ingroup solution_messages
+ */
+enum class CalibrationStage : uint8_t {
+  UNKNOWN = 0, ///< Calibration stage not known.
+  MOUNTING_ANGLE = 1, ///< Estimating IMU mounting angles.
+  DONE = 255, ///< Calibration complete.
+};
+
+/**
+ * @brief Get a human-friendly string name for the specified @ref
+ *        CalibrationStage.
+ *
+ * @param val The enum to get the string name for.
+ *
+ * @return The corresponding string name.
+ */
+P1_CONSTEXPR_FUNC const char* to_string(CalibrationStage val) {
+  switch (val) {
+    case CalibrationStage::UNKNOWN:
+      return "Unknown";
+    case CalibrationStage::MOUNTING_ANGLE:
+      return "IMU Mounting Angles";
+    case CalibrationStage::DONE:
+      return "Done";
+  }
+  return "Unrecognized";
+}
+
+/**
+ * @brief @ref CalibrationStage stream operator.
+ */
+inline p1_ostream& operator<<(p1_ostream& stream, CalibrationStage val) {
+  stream << to_string(val) << " (" << (int)val << ")";
+  return stream;
+}
+
+/**
+ * @brief Device calibration status update. (@ref
+ *        MessageType::CALIBRATION_STATUS, version 1.1).
+ * @brief
+ * @ingroup solution_messages
+ */
+struct P1_ALIGNAS(4) CalibrationStatusMessage : public MessagePayload {
+  static constexpr MessageType MESSAGE_TYPE = MessageType::CALIBRATION_STATUS;
+  static constexpr uint8_t MESSAGE_VERSION = 1;
+
+  /** The most recent P1 time, if available. */
+  Timestamp p1_time;
+
+  /**
+   * @name Calibration State Data
+   * @{
+   */
+
+  /** The current calibration stage. */
+  CalibrationStage calibration_stage = CalibrationStage::UNKNOWN;
+
+  uint8_t reserved1[3] = {0};
+
+  /** The IMU yaw, pitch, and roll mounting angle offsets (in degrees). */
+  float ypr_deg[3] = {NAN, NAN, NAN};
+
+  /**
+   * The IMU yaw, pitch, and roll mounting angle standard deviations (in
+   * degrees).
+   */
+  float ypr_std_dev_deg[3] = {NAN, NAN, NAN};
+
+  /** The accumulated calibration travel distance (in meters). */
+  float travel_distance_m = 0.0;
+
+  uint8_t reserved2[24] = {0};
+
+  /** @} */
+
+  /**
+   * @name Calibration Process Status
+   * @{
+   */
+
+  /**
+   * Set to 1 once the navigation engine state is validated after
+   * initialization.
+   */
+  uint8_t state_verified{0};
+
+  uint8_t reserved3[3] = {0};
+
+  /**
+   * The completion percentage for gyro bias estimation, stored with a
+   * scale factor of 0.5% (0-200).
+   */
+  uint8_t gyro_bias_percent_complete = 0;
+
+  /**
+   * The completion percentage for accelerometer bias estimation, stored with a
+   * scale factor of 0.5% (0-200).
+   */
+  uint8_t accel_bias_percent_complete = 0;
+
+  /**
+   * The completion percentage for IMU mounting angle estimation, stored with a
+   * scale factor of 0.5% (0-200).
+   */
+  uint8_t mounting_angle_percent_complete = 0;
+
+  uint8_t reserved4[5] = {0};
+
+  /** @} */
+
+  /**
+   * @name Calibration Thresholds
+   * @{
+   */
+
+  /**
+   * The minimum accumulated calibration travel distance needed to complete
+   * mounting angle calibration.
+   */
+  float min_travel_distance_m = NAN;
+
+  /**
+   * The max threshold for each of the YPR mounting angle states (in degrees),
+   * above which calibration is incomplete.
+   */
+  float mounting_angle_max_std_dev_deg[3] = {NAN, NAN, NAN};
+
+  /** @} */
+};
+
+/**
+ * @brief Relative ENU position to base station (@ref
+ *        MessageType::RELATIVE_ENU_POSITION, version 1.1).
+ * @ingroup solution_messages
+ *
+ * @note
+ * This message represents the relationship between the navigation engine's
+ * position solution and a nearby RTK base station. It is not used to convey
+ * unfiltered vehicle body orientation measurements generated using multiple
+ * GNSS antennas. See @ref GNSSAttitudeOutput instead.
+ */
+struct P1_ALIGNAS(4) RelativeENUPositionMessage : public MessagePayload {
+  static constexpr MessageType MESSAGE_TYPE =
+      MessageType::RELATIVE_ENU_POSITION;
+  static constexpr uint8_t MESSAGE_VERSION = 1;
+
+  static constexpr uint32_t INVALID_REFERENCE_STATION = 0xFFFFFFFF;
+
+  /** The time of the message, in P1 time (beginning at power-on). */
+  Timestamp p1_time;
+
+  /** The GPS time of the message, if available, referenced to 1980/1/6. */
+  Timestamp gps_time;
+
+  /** The type of this position solution. */
+  SolutionType solution_type = SolutionType::Invalid;
+
+  uint8_t reserved[3] = {0};
+
+  /** The ID of the differential base station. */
+  uint32_t reference_station_id = INVALID_REFERENCE_STATION;
+
+  /**
+   * The relative position (in meters), resolved in the local ENU frame.
+   *
+   * @note
+   * If a differential solution to the base station is not available, these
+   * values will be `NAN`.
+   */
+  double relative_position_enu_m[3] = {NAN, NAN, NAN};
+
+  /**
+   * The position standard deviation (in meters), resolved with respect to the
+   * local ENU tangent plane: east, north, up.
+   *
+   * @note
+   * If a differential solution to the base station is not available, these
+   * values will be `NAN`.
+   */
+  float position_std_enu_m[3] = {NAN, NAN, NAN};
+};
+
+#pragma pack(pop)
+
+} // namespace messages
+} // namespace fusion_engine
+} // namespace point_one

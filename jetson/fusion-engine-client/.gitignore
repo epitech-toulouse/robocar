@@ -1,0 +1,37 @@
+# Generated files.
+*.pyc
+*.html
+*.egg-info
+
+# Bazel output directories.
+bazel-*
+
+# Default cmake build directory.
+build/
+
+# Python files.
+venv*/
+*.pyc
+
+# IDE project settings.
+.clwb/
+.idea/
+.vscode
+*.code-workspace
+
+# P1 binary files.
+*.p1bin
+*.p1log
+*.p1i
+
+# Doxygen output.
+docs/html/
+docs/xml/
+
+Doxyfile.version
+docs/include_header.js
+docs/versions.html
+
+# Other output files.
+*.csv
+*.kml
