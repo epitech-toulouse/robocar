@@ -6,8 +6,8 @@
 	(paper "A4")
 	(title_block
 		(title "esp_connection")
-		(date "2026-03-02")
-		(rev "v1.1")
+		(date "2026-06-02")
+		(rev "v1.2")
 	)
 	(lib_symbols
 		(symbol "ESP32-S3-DEVKITC-1-N16R8V:ESP32-S3-DEVKITC-1-N16R8V"
@@ -1645,493 +1645,6 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "robocar:FT232_USB-C_to_UART_Module"
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(property "Reference" "U"
-				(at 8.382 8.636 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" ""
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Footprint" ""
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "Datasheet" ""
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "Description" "FT232 USB-C to UART Module"
-				(at -1.27 8.89 0)
-				(effects
-					(font
-						(size 0.762 0.762)
-					)
-				)
-			)
-			(symbol "FT232_USB-C_to_UART_Module_0_1"
-				(rectangle
-					(start -10.668 7.62)
-					(end 10.16 -7.62)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-			)
-			(symbol "FT232_USB-C_to_UART_Module_1_1"
-				(text "USB-C2.0"
-					(at 2.54 0.254 900)
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(pin input line
-					(at -12.7 6.35 0)
-					(length 2.54)
-					(name "VCCIO"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin input line
-					(at -12.7 3.81 0)
-					(length 2.54)
-					(name "GND"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin output line
-					(at -12.7 1.27 0)
-					(length 2.54)
-					(name "TXD"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "3"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin input line
-					(at -12.7 -1.27 0)
-					(length 2.54)
-					(name "RXD"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "4"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin output line
-					(at -12.7 -3.81 0)
-					(length 2.54)
-					(name "RTS"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "5"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin input line
-					(at -12.7 -6.35 0)
-					(length 2.54)
-					(name "CTS"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "6"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 9.525 -9.525 0)
-					(length 5.08)
-					(hide yes)
-					(name "VBUS"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "A9"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 9.525 -9.525 0)
-					(length 5.08)
-					(hide yes)
-					(name "VBUS"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "B4"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 9.525 -9.525 0)
-					(length 5.08)
-					(hide yes)
-					(name "VBUS"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "B9"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 15.24 5.08 180)
-					(length 5.08)
-					(name "VBUS"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A4"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin bidirectional line
-					(at 15.24 2.54 180)
-					(length 5.08)
-					(name "CC"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A5"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin bidirectional line
-					(at 15.24 0 180)
-					(length 5.08)
-					(name "VCONN"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "B5"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin bidirectional line
-					(at 15.24 -2.54 180)
-					(length 5.08)
-					(name "D-"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A7"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin bidirectional line
-					(at 15.24 -5.08 180)
-					(length 5.08)
-					(name "D+"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A6"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
-		(symbol "robocar:OAK-D-Lite"
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(property "Reference" "U"
-				(at 5.842 7.366 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" ""
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Footprint" ""
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "Datasheet" ""
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "Description" "OAK-D Lite"
-				(at -1.016 7.366 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(symbol "OAK-D-Lite_0_1"
-				(rectangle
-					(start -6.35 6.35)
-					(end 6.35 -6.35)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-			)
-			(symbol "OAK-D-Lite_1_1"
-				(text "USB-C2.0"
-					(at 1.27 -0.254 900)
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(pin passive line
-					(at -11.43 5.08 0)
-					(length 5.08)
-					(name "VBUS"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A4"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin bidirectional line
-					(at -11.43 2.54 0)
-					(length 5.08)
-					(name "CC"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A5"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin bidirectional line
-					(at -11.43 0 0)
-					(length 5.08)
-					(name "VCONN"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "B5"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin bidirectional line
-					(at -11.43 -2.54 0)
-					(length 5.08)
-					(name "D-"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A7"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-				(pin bidirectional line
-					(at -11.43 -5.08 0)
-					(length 5.08)
-					(name "D+"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-					(number "A6"
-						(effects
-							(font
-								(size 1.016 1.016)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
 		(symbol "robocar:P1_Standard_Dev_Kit"
 			(exclude_from_sim no)
 			(in_bom yes)
@@ -3198,16 +2711,245 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "robocar:recamera_poe"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "U"
+				(at 10.922 13.716 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "recamera_poe"
+				(at -5.588 13.97 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "recamera_poe_0_1"
+				(rectangle
+					(start -12.7 12.7)
+					(end 12.7 -12.7)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "recamera_poe_1_1"
+				(text "JST"
+					(at -2.032 5.08 900)
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(pin input line
+					(at -15.24 11.43 0)
+					(length 2.54)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin bidirectional line
+					(at -15.24 8.89 0)
+					(length 2.54)
+					(name "GPIO488"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin bidirectional line
+					(at -15.24 6.35 0)
+					(length 2.54)
+					(name "GPIO487"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at -15.24 3.81 0)
+					(length 2.54)
+					(name "TX"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin bidirectional line
+					(at -15.24 1.27 0)
+					(length 2.54)
+					(name "GPIO490"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -15.24 -1.27 0)
+					(length 2.54)
+					(name "RX"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at -15.24 -6.35 0)
+					(length 2.54)
+					(name "TX"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -15.24 -8.89 0)
+					(length 2.54)
+					(name "RX"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -15.24 -11.43 0)
+					(length 2.54)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 	)
 	(junction
 		(at 184.15 113.03)
 		(diameter 0)
 		(color 0 0 0 1)
 		(uuid "1d75ca28-5753-4df5-b296-c9a16bfd8f4d")
-	)
-	(no_connect
-		(at 189.23 81.28)
-		(uuid "0cc785e3-6c05-4eb4-ba45-3a02376068f3")
 	)
 	(no_connect
 		(at 71.12 88.9)
@@ -3284,10 +3026,6 @@
 	(no_connect
 		(at 71.12 120.65)
 		(uuid "5f50e90e-0502-4bf9-8cb0-b3c00dc17041")
-	)
-	(no_connect
-		(at 189.23 78.74)
-		(uuid "5f83a055-1f4c-46c3-99b7-eb402e75d6f2")
 	)
 	(no_connect
 		(at 71.12 125.73)
@@ -3503,17 +3241,6 @@
 	)
 	(wire
 		(pts
-			(xy 217.17 69.85) (xy 226.06 69.85)
-		)
-		(stroke
-			(width 0)
-			(type default)
-			(color 132 0 0 1)
-		)
-		(uuid "43bf0014-66bc-48e4-9e36-d0cfe1b3edc1")
-	)
-	(wire
-		(pts
 			(xy 194.31 110.49) (xy 184.15 110.49)
 		)
 		(stroke
@@ -3532,17 +3259,6 @@
 			(type default)
 		)
 		(uuid "555391a7-8aa0-425e-bd19-f1a8661b2bef")
-	)
-	(wire
-		(pts
-			(xy 217.17 74.93) (xy 226.06 74.93)
-		)
-		(stroke
-			(width 0)
-			(type default)
-			(color 255 0 0 1)
-		)
-		(uuid "588dfbf4-fb10-4035-9163-457676ac78b0")
 	)
 	(wire
 		(pts
@@ -3568,17 +3284,6 @@
 	)
 	(wire
 		(pts
-			(xy 217.17 72.39) (xy 226.06 72.39)
-		)
-		(stroke
-			(width 0)
-			(type default)
-			(color 255 255 0 1)
-		)
-		(uuid "706f6d73-7817-4f6c-b5ef-855313f02e9e")
-	)
-	(wire
-		(pts
 			(xy 172.72 74.93) (xy 179.07 74.93)
 		)
 		(stroke
@@ -3590,7 +3295,7 @@
 	)
 	(wire
 		(pts
-			(xy 189.23 73.66) (xy 179.07 73.66)
+			(xy 179.07 73.66) (xy 191.77 73.66)
 		)
 		(stroke
 			(width 0)
@@ -3620,17 +3325,6 @@
 			(color 0 0 194 1)
 		)
 		(uuid "9c09073f-f905-4f19-9d69-7f4bd7bd56cf")
-	)
-	(wire
-		(pts
-			(xy 217.17 80.01) (xy 226.06 80.01)
-		)
-		(stroke
-			(width 0)
-			(type default)
-			(color 0 132 0 1)
-		)
-		(uuid "a8df9663-d26b-401d-9820-86afe06904c6")
 	)
 	(wire
 		(pts
@@ -3665,7 +3359,7 @@
 	)
 	(wire
 		(pts
-			(xy 189.23 76.2) (xy 180.34 76.2)
+			(xy 180.34 76.2) (xy 191.77 76.2)
 		)
 		(stroke
 			(width 0)
@@ -3695,17 +3389,6 @@
 			(color 0 0 194 1)
 		)
 		(uuid "da2d902f-c7f9-4df1-bd13-0d4b4e91e264")
-	)
-	(wire
-		(pts
-			(xy 217.17 77.47) (xy 226.06 77.47)
-		)
-		(stroke
-			(width 0)
-			(type default)
-			(color 132 132 0 1)
-		)
-		(uuid "de007f45-0d9f-41bb-a5fd-76788e936eee")
 	)
 	(wire
 		(pts
@@ -4014,73 +3697,6 @@
 		)
 	)
 	(symbol
-		(lib_id "power:+5V")
-		(at 189.23 68.58 90)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "2397abad-95d8-4622-bcd6-d192db4fd671")
-		(property "Reference" "#PWR010"
-			(at 193.04 68.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "+5V"
-			(at 185.42 68.5799 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" ""
-			(at 189.23 68.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 189.23 68.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"+5V\""
-			(at 189.23 68.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "97782e4d-cb6c-41a2-9915-fb8bef3842db")
-		)
-		(instances
-			(project ""
-				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
-					(reference "#PWR010")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "power:Earth")
 		(at 129.54 147.32 180)
 		(unit 1)
@@ -4140,108 +3756,6 @@
 			(project "robocar"
 				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
 					(reference "#PWR03")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "robocar:FT232_USB-C_to_UART_Module")
-		(at 201.93 74.93 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "5e33f929-626e-40fe-97e5-d41c03e4fd40")
-		(property "Reference" "U6"
-			(at 201.676 60.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "~"
-			(at 201.676 63.5 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 201.93 74.93 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 201.93 74.93 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "FT232 USB-C to UART Module"
-			(at 201.676 66.04 0)
-			(effects
-				(font
-					(size 0.762 0.762)
-				)
-			)
-		)
-		(pin "A9"
-			(uuid "b13b9db7-59a9-4070-b517-0707b719fb63")
-		)
-		(pin "B4"
-			(uuid "b862196d-681b-4997-bd69-20872a716437")
-		)
-		(pin "B5"
-			(uuid "a7192402-a2c8-4cb6-8001-b3a90fe6e3bc")
-		)
-		(pin "1"
-			(uuid "71c4560d-4870-4d84-a3ff-2b7fe33cc0fc")
-		)
-		(pin "5"
-			(uuid "fa508d35-3846-4104-90ae-a64b70d359e9")
-		)
-		(pin "6"
-			(uuid "64801889-738a-432b-8321-f2b615b2ed34")
-		)
-		(pin "A7"
-			(uuid "debc7dbb-ed78-4a43-9b8a-c3a1968d8bb7")
-		)
-		(pin "4"
-			(uuid "ed0dd906-0ef6-4f69-ad17-a8da60a04211")
-		)
-		(pin "2"
-			(uuid "6d1159d6-a81d-429f-be3b-afe531eb9a38")
-		)
-		(pin "B9"
-			(uuid "bfde5975-2d47-4468-91c5-eb52b6959f25")
-		)
-		(pin "A6"
-			(uuid "37bd55c4-80f5-43e4-a084-f5f7a2179771")
-		)
-		(pin "3"
-			(uuid "29a8b820-650c-4def-8d35-3d2017c81036")
-		)
-		(pin "A4"
-			(uuid "0931525c-599f-4275-a1b8-478e195df2fc")
-		)
-		(pin "A5"
-			(uuid "bb9b8624-01c4-4701-bb26-2819f2e0f059")
-		)
-		(instances
-			(project ""
-				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
-					(reference "U6")
 					(unit 1)
 				)
 			)
@@ -4313,33 +3827,35 @@
 		)
 	)
 	(symbol
-		(lib_id "power:Earth")
-		(at 189.23 71.12 270)
+		(lib_id "robocar:recamera_poe")
+		(at 207.01 67.31 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "a3385d29-664d-4b44-9354-7b60286d1293")
-		(property "Reference" "#PWR09"
-			(at 182.88 71.12 0)
+		(fields_autoplaced yes)
+		(uuid "a00de2aa-f7d3-4f74-bcbe-4026d481a378")
+		(property "Reference" "U5"
+			(at 220.98 64.7699 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(hide yes)
+				(justify left)
 			)
 		)
-		(property "Value" "GND"
-			(at 184.15 71.12 0)
+		(property "Value" "~"
+			(at 220.98 67.3099 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
+				(justify left)
 			)
 		)
 		(property "Footprint" ""
-			(at 189.23 71.12 0)
+			(at 207.01 67.31 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4347,8 +3863,8 @@
 				(hide yes)
 			)
 		)
-		(property "Datasheet" "~"
-			(at 189.23 71.12 0)
+		(property "Datasheet" ""
+			(at 207.01 67.31 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4356,22 +3872,46 @@
 				(hide yes)
 			)
 		)
-		(property "Description" "Power symbol creates a global label with name \"Earth\""
-			(at 189.23 71.12 0)
+		(property "Description" "recamera_poe"
+			(at 220.98 69.8499 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(hide yes)
+				(justify left)
 			)
 		)
 		(pin "1"
-			(uuid "f89ceee6-3130-430d-a24d-9b75b98c27af")
+			(uuid "82b07b6c-c1cc-49dc-bfa8-49eca6e2fe7b")
+		)
+		(pin "3"
+			(uuid "592669bd-5a67-46f2-bca9-22f37c91a9d2")
+		)
+		(pin "4"
+			(uuid "7f1ae830-a692-4b90-8949-e6f39ad2c217")
+		)
+		(pin "2"
+			(uuid "0a1b012d-e000-4448-a863-1f304e99fc5e")
+		)
+		(pin "3"
+			(uuid "2a4c1baf-ff42-4863-946a-c26ee47f5479")
+		)
+		(pin "1"
+			(uuid "9fbd908b-f391-4256-91b9-1e340dff2ced")
+		)
+		(pin "6"
+			(uuid "5a11bafa-55df-442b-bb19-712cc0a4f577")
+		)
+		(pin "2"
+			(uuid "0d063a91-1178-4d23-9a84-a2d785b48fe1")
+		)
+		(pin "5"
+			(uuid "5feb439d-8e3d-464c-8a57-9cdcc0acd6d1")
 		)
 		(instances
-			(project "robocar"
+			(project ""
 				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
-					(reference "#PWR09")
+					(reference "U5")
 					(unit 1)
 				)
 			)
@@ -4515,85 +4055,6 @@
 			(project ""
 				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
 					(reference "U1")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "robocar:OAK-D-Lite")
-		(at 237.49 74.93 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "cba8fcb1-e657-4dc1-b5e4-80e54e16bfaf")
-		(property "Reference" "U5"
-			(at 245.11 72.3899 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" "~"
-			(at 245.11 74.9299 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" ""
-			(at 237.49 74.93 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 237.49 74.93 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "OAK-D Lite"
-			(at 245.11 77.4699 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(pin "A6"
-			(uuid "3fba9885-0e47-4854-9db3-1a6557405415")
-		)
-		(pin "A7"
-			(uuid "bf30e45e-cfc7-4890-9162-d5a538ae0999")
-		)
-		(pin "A4"
-			(uuid "d4823b33-3d62-4034-9a16-2a5e4f6e122c")
-		)
-		(pin "A5"
-			(uuid "9f981b3d-041c-45da-868b-1c942224abc0")
-		)
-		(pin "B5"
-			(uuid "2a1f5ebe-9de6-4ccf-ba0a-f1aabbeb0b3b")
-		)
-		(instances
-			(project ""
-				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
-					(reference "U5")
 					(unit 1)
 				)
 			)
