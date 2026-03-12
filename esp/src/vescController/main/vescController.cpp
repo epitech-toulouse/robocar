@@ -2,84 +2,89 @@
 #include "driver/uart.h"
 #include <cstring>
 
-vescController::vescController(int txdPin, int rxdPin) {
-    this->txdPin = txdPin;
-    this->rxdPin = rxdPin;
-
-    initVescUART();
+VescController::VescController(int txPin, int rxPin)
+    : txPin(txPin), rxPin(rxPin) {
+    initUart();
 }
 
-vescController::~vescController() {
-    //TODO
+VescController::~VescController() {
+    uart_driver_delete(UART_NUM_1);
 }
 
-void vescController::initVescUART() {
-    uart_config_t uart_config = {};
-    uart_config.baud_rate = 115200;
-    uart_config.data_bits = UART_DATA_8_BITS;
-    uart_config.parity = UART_PARITY_DISABLE;
-    uart_config.stop_bits = UART_STOP_BITS_1;
-    uart_config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
-    uart_param_config(UART_NUM_1, &uart_config);
-    uart_set_pin(UART_NUM_1, this->txdPin, this->rxdPin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+void VescController::initUart() {
+    uart_config_t cfg = {};
+    cfg.baud_rate  = 115200;
+    cfg.data_bits  = UART_DATA_8_BITS;
+    cfg.parity     = UART_PARITY_DISABLE;
+    cfg.stop_bits  = UART_STOP_BITS_1;
+    cfg.flow_ctrl  = UART_HW_FLOWCTRL_DISABLE;
+    uart_param_config(UART_NUM_1, &cfg);
+    uart_set_pin(UART_NUM_1, txPin, rxPin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     uart_driver_install(UART_NUM_1, 1024, 0, 0, NULL, 0);
 }
 
-void vescController::sendPacket(uint8_t* payload, int len) {
+void VescController::sendPacket(const uint8_t* payload, int len) {
     uint8_t frame[256];
-    int count = 0;
+    int idx = 0;
 
-    // 1. Start Byte (0x02 for small packets, 0x03 for large)
-    frame[count++] = VESC_START_BYTE;
-    
-    // 2. Payload Length
-    frame[count++] = (uint8_t)len;
+    frame[idx++] = START_BYTE;
+    frame[idx++] = (uint8_t)len;
+    memcpy(&frame[idx], payload, len);
+    idx += len;
 
-    // 3. The Actual Data
-    memcpy(&frame[count], payload, len);
-    count += len;
-
-    // 4. CRC16 Checksum
     uint16_t crc = crc16(payload, len);
-    frame[count++] = (uint8_t)(crc >> 8);
-    frame[count++] = (uint8_t)(crc & 0xFF);
+    frame[idx++] = (uint8_t)(crc >> 8);
+    frame[idx++] = (uint8_t)(crc & 0xFF);
+    frame[idx++] = END_BYTE;
 
-    // 5. End Byte
-    frame[count++] = VESC_END_BYTE;
-
-    // Send it to the VESC
-    uart_write_bytes(UART_NUM_1, (const char*)frame, count);
+    uart_write_bytes(UART_NUM_1, (const char*)frame, idx);
 }
 
-void vescController::set_vesc_duty(float duty) {
+void VescController::sendInt32Cmd(CommPacketId cmd, int32_t value) {
     uint8_t payload[5];
-    // VESC expects duty cycle multiplied by 100,000
-    int32_t d = (int32_t)(duty * 100000.0f);
-    
-    payload[0] = 5; // COMM_SET_DUTY
-    payload[1] = (d >> 24) & 0xFF;
-    payload[2] = (d >> 16) & 0xFF;
-    payload[3] = (d >> 8) & 0xFF;
-    payload[4] = d & 0xFF;
-    
+    payload[0] = cmd;
+    payload[1] = (value >> 24) & 0xFF;
+    payload[2] = (value >> 16) & 0xFF;
+    payload[3] = (value >> 8)  & 0xFF;
+    payload[4] = value & 0xFF;
     sendPacket(payload, 5);
 }
 
-/// @brief set steering position of the servo, 0.0 (left) to 1.0 (right), 0.5 is center
-/// @param position the sterring position
-void vescController::setSteering(float position) {
-    // VESC expects 0 to 1000 for the servo pulse
+/// @brief set the speed of the motor in duty cycle from -1.0 to 1.0, with a maximum speed for safety
+/// @param duty the duty cycle
+void VescController::setDuty(float duty) {
+    duty = duty > VESC_MAX_MOTOR_SPEED ? VESC_MAX_MOTOR_SPEED : duty;
+    if (duty < -VESC_MAX_MOTOR_SPEED) duty = -VESC_MAX_MOTOR_SPEED;
+    int32_t d = (int32_t)(duty * 100000.0f);
+    sendInt32Cmd(COMM_SET_DUTY, d);
+}
+
+/// @brief set the speed of the motor in amps, no maximum speed insafe
+/// @param amps 
+void VescController::setCurrent(float amps) {
+    int32_t a = (int32_t)(amps * 1000.0f);
+    sendInt32Cmd(COMM_SET_CURRENT, a);
+}
+
+/// @brief set the steering of the motor in amps
+/// @param amps 
+void VescController::setBrake(float amps) {
+    int32_t a = (int32_t)(amps * 1000.0f);
+    sendInt32Cmd(COMM_SET_BRAKE, a);
+}
+
+/// @brief set the steering of the motor in position from 0.0 to 1.0 (0.5 is the center)
+/// @param position the steering position
+void VescController::setSteering(float position) {
     uint16_t pos = (uint16_t)(position * 1000.0f);
-    
     uint8_t payload[3];
-    payload[0] = 7; // COMM_SET_SERVO
+    payload[0] = COMM_SET_SERVO_POS;
     payload[1] = (pos >> 8) & 0xFF;
     payload[2] = pos & 0xFF;
-
     sendPacket(payload, 3);
 }
 
-uint16_t vescController::crc16(const uint8_t* buf, int len) {
+uint16_t VescController::crc16(const uint8_t* buf, int len) {
     uint16_t crc = 0;
     for (int i = 0; i < len; i++) {
         crc ^= (uint16_t)buf[i] << 8;
