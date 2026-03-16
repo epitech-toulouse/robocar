@@ -1,1 +1,0 @@
-source $HOME/.espressif/tools/activate_idf_v5.5.3.sh

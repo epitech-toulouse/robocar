@@ -96,4 +96,4 @@ uint16_t VescController::crc16(const uint8_t* buf, int len) {
         }
     }
     return crc;
-}
+}   
