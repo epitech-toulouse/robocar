@@ -13,7 +13,47 @@
 
 #define LIDAR_RX_PIN 16
 
-static constexpr float FRONT_WINDOW_DEG = 8.0f;
+// LiDAR-only driving parameters.
+static constexpr float FRONT_WINDOW_DEG = 25.0f;
+static constexpr float SIDE_WINDOW_MIN_DEG = 25.0f;
+static constexpr float SIDE_WINDOW_MAX_DEG = 80.0f;
+
+static constexpr float STOP_DISTANCE_M = 0.40f;
+static constexpr float SLOW_DISTANCE_M = 1.00f;
+static constexpr float SAFE_DISTANCE_M = 2.20f;
+
+static constexpr float SPEED_FORWARD = 0.050f;
+static constexpr float SPEED_SLOW = 0.025f;
+static constexpr float SPEED_REVERSE = -0.030f;
+
+static constexpr float STEER_CENTER = 0.50f;
+static constexpr float STEER_LEFT = 0.20f;
+static constexpr float STEER_RIGHT = 0.80f;
+
+static constexpr TickType_t REVERSE_DURATION_TICKS = pdMS_TO_TICKS(800);
+
+static float clampf(float value, float lo, float hi) {
+    if (value < lo) return lo;
+    if (value > hi) return hi;
+    return value;
+}
+
+static bool in_sector(float angleDeg, float minDeg, float maxDeg) {
+    return angleDeg >= minDeg && angleDeg <= maxDeg;
+}
+
+static float nearest_in_sector(const std::vector<LidarPoint>& scan, float minDeg, float maxDeg) {
+    float nearest = -1.0f;
+    for (const auto& p : scan) {
+        if (!in_sector(p.angleDeg, minDeg, maxDeg)) {
+            continue;
+        }
+        if (nearest < 0.0f || p.distanceMeters < nearest) {
+            nearest = p.distanceMeters;
+        }
+    }
+    return nearest;
+}
 
 void vesc_control_task(void *pvParameters) {
     VescController vesc(VESC_TX_PIN, VESC_RX_PIN);
@@ -24,37 +64,84 @@ void vesc_control_task(void *pvParameters) {
         std::cout << "Failed to start LidarReader" << std::endl;
     }
 
-    // Sweep steering servo
-    printf("Steering sweep\n");
-    float pos = 0.5f;
-    float step = 0.01f;
+    vesc.setDuty(0.1f);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    TickType_t reverseUntil = 0;
+    float reverseSteer = STEER_CENTER;
 
     while (1) {
-        vesc.setDuty(0.01f);
-        vesc.setSteering(pos);
-        pos += step;
-        if (pos >= 0.9f || pos <= 0.1f)
-            step = -step;
-
         const bool gotUartBytes = lidar.poll();
         std::vector<LidarPoint> lastScan = lidar.getLatestScanPoints();
 
-        float nearestPoint = -1.0f;
-        for (const auto& point : lastScan) {
-            if (point.angleDeg >= (360.0f - FRONT_WINDOW_DEG) || point.angleDeg <= FRONT_WINDOW_DEG) {
-                if (nearestPoint < 0.0f || point.distanceMeters < nearestPoint) {
-                    nearestPoint = point.distanceMeters;
-                }
+        if (lastScan.empty()) {
+            vesc.setDuty(0.0f);
+            vesc.setSteering(STEER_CENTER);
+            std::cout << "LiDAR scan not ready yet. UART bytes=" << (gotUartBytes ? "yes" : "no") << std::endl;
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+
+        const float frontNear = nearest_in_sector(lastScan, 0.0f, FRONT_WINDOW_DEG) < 0.0f
+                                    ? nearest_in_sector(lastScan, 360.0f - FRONT_WINDOW_DEG, 360.0f)
+                                    : std::min(nearest_in_sector(lastScan, 0.0f, FRONT_WINDOW_DEG),
+                                               nearest_in_sector(lastScan, 360.0f - FRONT_WINDOW_DEG, 360.0f));
+
+        const float leftNear = nearest_in_sector(lastScan, SIDE_WINDOW_MIN_DEG, SIDE_WINDOW_MAX_DEG);
+        const float rightNear = nearest_in_sector(lastScan, 360.0f - SIDE_WINDOW_MAX_DEG, 360.0f - SIDE_WINDOW_MIN_DEG);
+
+        const TickType_t now = xTaskGetTickCount();
+        if (now < reverseUntil) {
+            vesc.setSteering(reverseSteer);
+            vesc.setDuty(SPEED_REVERSE);
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+
+        // If there is a critical obstacle in front, back up and turn toward the more open side.
+        if (frontNear > 0.0f && frontNear < STOP_DISTANCE_M) {
+            const bool leftMoreOpen = (leftNear < 0.0f) || (rightNear > 0.0f && rightNear > leftNear);
+            reverseSteer = leftMoreOpen ? STEER_RIGHT : STEER_LEFT;
+            reverseUntil = now + REVERSE_DURATION_TICKS;
+            vesc.setSteering(reverseSteer);
+            vesc.setDuty(SPEED_REVERSE);
+            std::cout << "Reverse: front=" << frontNear << "m left=" << leftNear << "m right=" << rightNear << "m" << std::endl;
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+
+        float steer = STEER_CENTER;
+        if (leftNear > 0.0f && rightNear > 0.0f) {
+            if (leftNear > rightNear) {
+                steer = STEER_LEFT;
+            } else if (rightNear > leftNear) {
+                steer = STEER_RIGHT;
+            }
+        } else if (leftNear > 0.0f && rightNear < 0.0f) {
+            steer = STEER_LEFT;
+        } else if (rightNear > 0.0f && leftNear < 0.0f) {
+            steer = STEER_RIGHT;
+        }
+
+        float speed = SPEED_FORWARD;
+        if (frontNear > 0.0f) {
+            if (frontNear <= STOP_DISTANCE_M) {
+                speed = 0.0f;
+            } else if (frontNear < SAFE_DISTANCE_M) {
+                const float ratio = (frontNear - STOP_DISTANCE_M) / (SAFE_DISTANCE_M - STOP_DISTANCE_M);
+                speed = SPEED_SLOW + (SPEED_FORWARD - SPEED_SLOW) * clampf(ratio, 0.0f, 1.0f);
             }
         }
 
-        if (lastScan.empty()) {
-            std::cout << "LiDAR scan not ready yet. UART bytes=" << (gotUartBytes ? "yes" : "no") << std::endl;
-        } else if (nearestPoint < 0.0f) {
-            std::cout << "No valid point in +/-" << FRONT_WINDOW_DEG << " deg front window." << std::endl;
-        } else {
-            std::cout << "Nearest front point: " << nearestPoint << " meters (scan points=" << lastScan.size() << ")" << std::endl;
-        }
+        vesc.setSteering(steer);
+        vesc.setDuty(speed);
+
+        std::cout << "AUTO front=" << frontNear
+                  << "m left=" << leftNear
+                  << "m right=" << rightNear
+                  << "m steer=" << steer
+                  << " speed=" << speed
+                  << " pts=" << lastScan.size() << std::endl;
 
         vTaskDelay(pdMS_TO_TICKS(20));
     }
