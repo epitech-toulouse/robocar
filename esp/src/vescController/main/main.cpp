@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "esp_err.h"
+#include "bluetooth_receiver.hpp"
 
 #define VESC_TX_PIN 17
 #define VESC_RX_PIN 18
@@ -31,6 +32,8 @@ static constexpr float STEER_LEFT = 0.20f;
 static constexpr float STEER_RIGHT = 0.80f;
 
 static constexpr TickType_t REVERSE_DURATION_TICKS = pdMS_TO_TICKS(800);
+static constexpr TickType_t LIDAR_NO_DATA_TIMEOUT_TICKS = pdMS_TO_TICKS(3000);
+static constexpr TickType_t LIDAR_LOG_PERIOD_TICKS = pdMS_TO_TICKS(1000);
 
 static float clampf(float value, float lo, float hi) {
     if (value < lo) return lo;
@@ -60,24 +63,62 @@ void vesc_control_task(void *pvParameters) {
     // LD19 sends data from its TX line into ESP RX. We do not need ESP TX for LD19.
     LidarReader lidar(LIDAR_RX_PIN, -1, LIDAR_UART_NUM);
     std::cout << "LiDAR UART config: uart=" << LIDAR_UART_NUM << " rx=" << LIDAR_RX_PIN << std::endl;
-    if (lidar.start() != ESP_OK) {
-        std::cout << "Failed to start LidarReader" << std::endl;
+    bool lidarEnabled = (lidar.start() == ESP_OK);
+    if (!lidarEnabled) {
+        std::cout << "LiDAR unavailable -> manual BLE mode only" << std::endl;
     }
+    TickType_t lidarNoDataSince = 0;
+    TickType_t lastLidarLog = 0;
 
-    vesc.setDuty(0.1f);
+    vesc.setDuty(0.0f);
+    vesc.setSteering(STEER_CENTER);
     vTaskDelay(pdMS_TO_TICKS(20));
 
     TickType_t reverseUntil = 0;
     float reverseSteer = STEER_CENTER;
 
     while (1) {
+        float manualDuty, manualSteer;
+        if (get_manual_control(manualDuty, manualSteer)) {
+            vesc.setSteering(manualSteer);
+            vesc.setDuty(manualDuty);
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+
+        if (!lidarEnabled) {
+            vesc.setDuty(0.0f);
+            vesc.setSteering(STEER_CENTER);
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+
         const bool gotUartBytes = lidar.poll();
         std::vector<LidarPoint> lastScan = lidar.getLatestScanPoints();
 
+        if (gotUartBytes) {
+            lidarNoDataSince = 0;
+        } else if (lidarNoDataSince == 0) {
+            lidarNoDataSince = xTaskGetTickCount();
+        }
+
         if (lastScan.empty()) {
+            const TickType_t now = xTaskGetTickCount();
+            if (lidarNoDataSince != 0 && (now - lidarNoDataSince) > LIDAR_NO_DATA_TIMEOUT_TICKS) {
+                lidarEnabled = false;
+                std::cout << "LiDAR timeout (no UART data) -> manual BLE mode only" << std::endl;
+                vesc.setDuty(0.0f);
+                vesc.setSteering(STEER_CENTER);
+                vTaskDelay(pdMS_TO_TICKS(20));
+                continue;
+            }
+
             vesc.setDuty(0.0f);
             vesc.setSteering(STEER_CENTER);
-            std::cout << "LiDAR scan not ready yet. UART bytes=" << (gotUartBytes ? "yes" : "no") << std::endl;
+            if ((now - lastLidarLog) > LIDAR_LOG_PERIOD_TICKS) {
+                std::cout << "LiDAR scan not ready yet. UART bytes=" << (gotUartBytes ? "yes" : "no") << std::endl;
+                lastLidarLog = now;
+            }
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
@@ -149,5 +190,6 @@ void vesc_control_task(void *pvParameters) {
 
 extern "C" void app_main(void) {
     printf("Starting VESC Controller on ESP32-S3...\n");
+    init_bluetooth_receiver();
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, NULL);
 }
