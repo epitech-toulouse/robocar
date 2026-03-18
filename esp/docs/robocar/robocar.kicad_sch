@@ -3012,6 +3012,10 @@
 		(uuid "45c4e82b-5d7b-4f57-853f-198c25680f93")
 	)
 	(no_connect
+		(at 127 74.93)
+		(uuid "47f694d8-6adb-4dff-b5ba-5feffa39c705")
+	)
+	(no_connect
 		(at 86.36 138.43)
 		(uuid "500bf06d-cf87-4b8b-a312-a805625af0dc")
 	)
@@ -3084,6 +3088,10 @@
 		(uuid "938046c7-6063-4cea-80f8-a404e84b60f1")
 	)
 	(no_connect
+		(at 127 77.47)
+		(uuid "96acdd3d-2348-4b04-9c3d-87702fad46e5")
+	)
+	(no_connect
 		(at 83.82 57.15)
 		(uuid "9983ba9c-eb22-4d94-b25b-ba4636c2e205")
 	)
@@ -3144,6 +3152,10 @@
 		(uuid "c9b76920-a6c1-4c38-a13b-7bbaec3403b0")
 	)
 	(no_connect
+		(at 83.82 74.93)
+		(uuid "cc4ebc99-ba11-4e3a-9be4-ba287aa048e8")
+	)
+	(no_connect
 		(at 127 82.55)
 		(uuid "cf6f3a30-512a-45c1-ac27-20f6bd7aa0ba")
 	)
@@ -3162,10 +3174,6 @@
 	(no_connect
 		(at 86.36 133.35)
 		(uuid "d7d1ea44-9f59-4d38-9140-6720fcbbb599")
-	)
-	(no_connect
-		(at 127 107.95)
-		(uuid "dc4296ce-45b6-40fd-8c90-24b495609119")
 	)
 	(no_connect
 		(at 83.82 49.53)
@@ -3225,24 +3233,14 @@
 	)
 	(wire
 		(pts
-			(xy 123.19 77.47) (xy 127 77.47)
+			(xy 123.19 107.95) (xy 123.19 104.14)
 		)
 		(stroke
 			(width 0)
 			(type default)
+			(color 0 132 132 1)
 		)
-		(uuid "0c2e7944-c03c-4884-bb64-5dfd7f97db1b")
-	)
-	(wire
-		(pts
-			(xy 123.19 74.93) (xy 127 74.93)
-		)
-		(stroke
-			(width 0)
-			(type default)
-			(color 255 153 0 1)
-		)
-		(uuid "10f1d79e-410b-4bf8-8920-bc07c8f1151a")
+		(uuid "089421a8-d1a2-44c0-9965-5fc5addae97d")
 	)
 	(wire
 		(pts
@@ -3265,6 +3263,17 @@
 			(color 255 0 255 1)
 		)
 		(uuid "1e53d4f0-a9f5-4919-91ee-bdaa2230e5ae")
+	)
+	(wire
+		(pts
+			(xy 127 107.95) (xy 123.19 107.95)
+		)
+		(stroke
+			(width 0)
+			(type default)
+			(color 0 132 132 1)
+		)
+		(uuid "1fa6c830-be0b-40d3-b6eb-45f8d9534beb")
 	)
 	(wire
 		(pts
@@ -3306,7 +3315,7 @@
 		(stroke
 			(width 0)
 			(type default)
-			(color 0 132 0 1)
+			(color 0 194 194 1)
 		)
 		(uuid "4223c1c5-7a65-43e6-8c69-f7029af9e249")
 	)
@@ -3353,6 +3362,17 @@
 			(color 255 255 0 1)
 		)
 		(uuid "6798d3d5-8a1f-4795-8d56-c6c7cf377baf")
+	)
+	(wire
+		(pts
+			(xy 114.3 104.14) (xy 123.19 104.14)
+		)
+		(stroke
+			(width 0)
+			(type default)
+			(color 0 132 132 1)
+		)
+		(uuid "69426491-c999-4ddb-bf71-4b417c2c2760")
 	)
 	(wire
 		(pts
@@ -3454,17 +3474,6 @@
 	)
 	(wire
 		(pts
-			(xy 83.82 74.93) (xy 91.44 74.93)
-		)
-		(stroke
-			(width 0)
-			(type default)
-			(color 255 153 0 1)
-		)
-		(uuid "f8e87295-84f1-449f-bb98-2b79bb01d112")
-	)
-	(wire
-		(pts
 			(xy 92.71 148.59) (xy 86.36 148.59)
 		)
 		(stroke
@@ -3474,17 +3483,7 @@
 		)
 		(uuid "fe4efbf3-3d0d-4016-a413-45522cc2f326")
 	)
-	(label "VESC_I2C_SCL"
-		(at 91.44 74.93 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "1f4ee69c-514a-4d8e-bc15-a3190e0fea43")
-	)
-	(label "VESC_I2C_SDA"
+	(label "VESC_UART_RX"
 		(at 91.44 77.47 0)
 		(effects
 			(font
@@ -3513,16 +3512,6 @@
 			(justify right bottom)
 		)
 		(uuid "754688d9-589b-4421-b169-366543fa92ae")
-	)
-	(label "VESC_I2C_SDA"
-		(at 123.19 77.47 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "7e093c4e-6042-4c41-bfd8-88cd95728af1")
 	)
 	(label "LIDAR_UART_TX"
 		(at 67.31 104.14 0)
@@ -3574,6 +3563,16 @@
 		)
 		(uuid "c7d8e531-49ba-4c04-9a59-1957cb815050")
 	)
+	(label "VESC_UART_RX"
+		(at 114.3 104.14 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "c9e80413-2939-4da5-99c5-1062ad34ca95")
+	)
 	(label "GPS_USB_DP"
 		(at 114.3 167.64 0)
 		(effects
@@ -3593,16 +3592,6 @@
 			(justify left bottom)
 		)
 		(uuid "d12e1b72-ec44-4239-bc20-b6a4fe8b4665")
-	)
-	(label "VESC_I2C_SCL"
-		(at 123.19 74.93 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "fa07d8c9-cae9-435d-a5a5-24dca54ec93e")
 	)
 	(label "CAM_UART_RX"
 		(at 114.3 113.03 180)
