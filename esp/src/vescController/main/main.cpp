@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "soc/gpio_num.h"
 #include "vescController.hpp"
 #include "lidarReader.hpp"
 #include <iostream>
@@ -8,8 +9,8 @@
 #include "esp_err.h"
 #include "bluetooth_receiver.hpp"
 
-#define VESC_TX_PIN 17
-#define VESC_RX_PIN 18
+#define VESC_TX_PIN (gpio_num_t) 17
+#define VESC_RX_PIN (gpio_num_t) 18
 #define LIDAR_UART_NUM 2
 
 #define LIDAR_RX_PIN 16
@@ -85,6 +86,12 @@ void vesc_control_task(void *pvParameters) {
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
+
+        if (true) {
+          vesc.setDuty(0.1f);
+          vesc.setSteering(STEER_LEFT);
+	  continue;
+	}
 
         if (!lidarEnabled) {
             vesc.setDuty(0.0f);
@@ -190,6 +197,6 @@ void vesc_control_task(void *pvParameters) {
 
 extern "C" void app_main(void) {
     printf("Starting VESC Controller on ESP32-S3...\n");
-    init_bluetooth_receiver();
+    //init_bluetooth_receiver();
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, NULL);
 }
