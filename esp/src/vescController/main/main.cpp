@@ -182,6 +182,7 @@ void vesc_control_task(void *pvParameters) {
 extern "C" void app_main(void) {
     printf("Starting VESC Controller on ESP32-S3...\n");
     init_bluetooth_receiver();
-    init_vesc_lidar_uart();
+    init_lidar_uart();
+    init_vesc_rmt_uart();
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, NULL);
 }

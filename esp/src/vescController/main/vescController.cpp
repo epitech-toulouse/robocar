@@ -1,6 +1,6 @@
 #include "vescController.hpp"
 #include "config.h"
-#include "driver/uart.h"
+#include "rmt_uart.h"
 #include <cstring>
 
 VescController::VescController() {}
@@ -21,7 +21,7 @@ void VescController::sendPacket(const uint8_t* payload, int len) {
     frame[idx++] = (uint8_t)(crc & 0xFF);
     frame[idx++] = END_BYTE;
 
-    uart_write_bytes(LIDAR_VESC_UART_PORT, (const char*)frame, idx);
+    rmt_uart_write_bytes(VESC_RMT_UART_PORT, (const uint8_t*)frame, (size_t) idx);
 }
 
 void VescController::sendInt32Cmd(CommPacketId cmd, int32_t value) {

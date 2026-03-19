@@ -74,7 +74,7 @@ bool LidarReader::update() {
         return false;
     }
 
-    const int bytesRead = uart_read_bytes(LIDAR_VESC_UART_PORT, readBuffer.data(), readBuffer.size(), 0);
+    const int bytesRead = uart_read_bytes(LIDAR_UART_PORT, readBuffer.data(), readBuffer.size(), 0);
     if (bytesRead <= 0) {
         return false;
     }

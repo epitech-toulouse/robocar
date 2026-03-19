@@ -5,8 +5,11 @@
 extern "C" {
 #endif
 
-void init_vesc_lidar_uart(void);
-void delete_vesc_lidar_uart(void);
+void init_lidar_uart(void);
+void delete_lidar_uart(void);
+
+void init_vesc_rmt_uart(void);
+void delete_vesc_rmt_uart(void);
 
 #if __cplusplus
 }
