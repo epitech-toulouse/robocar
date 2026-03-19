@@ -7,12 +7,7 @@
 
 #include "esp_err.h"
 #include "bluetooth_receiver.hpp"
-
-#define VESC_TX_PIN 17
-#define VESC_RX_PIN 18
-#define LIDAR_UART_NUM 2
-
-#define LIDAR_RX_PIN 16
+#include "vescLidarUart.h"
 
 // LiDAR-only driving parameters.
 static constexpr float FRONT_WINDOW_DEG = 25.0f;
@@ -59,14 +54,10 @@ static float nearest_in_sector(const std::vector<LidarPoint>& scan, float minDeg
 }
 
 void vesc_control_task(void *pvParameters) {
-    VescController vesc(VESC_TX_PIN, VESC_RX_PIN);
+    VescController vesc;
     // LD19 sends data from its TX line into ESP RX. We do not need ESP TX for LD19.
-    LidarReader lidar(LIDAR_RX_PIN, -1, LIDAR_UART_NUM);
-    std::cout << "LiDAR UART config: uart=" << LIDAR_UART_NUM << " rx=" << LIDAR_RX_PIN << std::endl;
+    LidarReader lidar;
     bool lidarEnabled = (lidar.start() == ESP_OK);
-    if (!lidarEnabled) {
-        std::cout << "LiDAR unavailable -> manual BLE mode only" << std::endl;
-    }
     TickType_t lidarNoDataSince = 0;
     TickType_t lastLidarLog = 0;
 
@@ -191,5 +182,6 @@ void vesc_control_task(void *pvParameters) {
 extern "C" void app_main(void) {
     printf("Starting VESC Controller on ESP32-S3...\n");
     init_bluetooth_receiver();
+    init_vesc_lidar_uart();
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, NULL);
 }
