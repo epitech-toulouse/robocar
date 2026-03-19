@@ -1,27 +1,11 @@
 #include "vescController.hpp"
-#include "driver/uart.h"
+#include "config.h"
+#include "rmt_uart.h"
 #include <cstring>
 
-VescController::VescController(int txPin, int rxPin)
-    : txPin(txPin), rxPin(rxPin) {
-    initUart();
-}
+VescController::VescController() {}
 
-VescController::~VescController() {
-    uart_driver_delete(UART_NUM_1);
-}
-
-void VescController::initUart() {
-    uart_config_t cfg = {};
-    cfg.baud_rate  = 115200;
-    cfg.data_bits  = UART_DATA_8_BITS;
-    cfg.parity     = UART_PARITY_DISABLE;
-    cfg.stop_bits  = UART_STOP_BITS_1;
-    cfg.flow_ctrl  = UART_HW_FLOWCTRL_DISABLE;
-    uart_param_config(UART_NUM_1, &cfg);
-    uart_set_pin(UART_NUM_1, txPin, rxPin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    uart_driver_install(UART_NUM_1, 1024, 0, 0, NULL, 0);
-}
+VescController::~VescController() {}
 
 void VescController::sendPacket(const uint8_t* payload, int len) {
     uint8_t frame[256];
@@ -37,7 +21,7 @@ void VescController::sendPacket(const uint8_t* payload, int len) {
     frame[idx++] = (uint8_t)(crc & 0xFF);
     frame[idx++] = END_BYTE;
 
-    uart_write_bytes(UART_NUM_1, (const char*)frame, idx);
+    rmt_uart_write_bytes(VESC_RMT_UART_PORT, (const uint8_t*)frame, (size_t) idx);
 }
 
 void VescController::sendInt32Cmd(CommPacketId cmd, int32_t value) {

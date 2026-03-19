@@ -6,7 +6,7 @@
 
 class VescController {
 public:
-    VescController(int txPin, int rxPin);
+    VescController();
     ~VescController();
 
     /// Set motor duty cycle, range: -1.0 (full reverse) to 1.0 (full forward)
@@ -31,11 +31,6 @@ private:
         COMM_SET_BRAKE      = 7,
         COMM_SET_SERVO_POS  = 12,
     };
-
-    int txPin;
-    int rxPin;
-
-    void initUart();
     void sendPacket(const uint8_t* payload, int len);
     void sendInt32Cmd(CommPacketId cmd, int32_t value);
     static uint16_t crc16(const uint8_t* buf, int len);

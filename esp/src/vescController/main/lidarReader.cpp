@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "config.h"
 #include "driver/uart.h"
 
 namespace {
@@ -25,11 +26,8 @@ constexpr std::array<uint8_t, 256> LD19_CRC8_TABLE = {
     0xF4, 0xB9, 0x6E, 0x23, 0x8D, 0xC0, 0x17, 0x5A, 0x06, 0x4B, 0x9C, 0xD1, 0x7F, 0x32, 0xE5, 0xA8};
 }
 
-LidarReader::LidarReader(int rxPin, int txPin, int uartNum, float angleOffsetDeg)
-    : uartNum(uartNum),
-      txPin(txPin),
-      rxPin(rxPin),
-      angleOffsetDeg(angleOffsetDeg),
+LidarReader::LidarReader(float angleOffsetDeg)
+    : angleOffsetDeg(angleOffsetDeg),
       running(false),
       buffer(),
       scanInProgress(),
@@ -48,7 +46,6 @@ void LidarReader::stop() {
         return;
     }
 
-    uart_driver_delete(static_cast<uart_port_t>(uartNum));
     running = false;
     buffer.clear();
     scanInProgress.clear();
@@ -58,11 +55,6 @@ void LidarReader::stop() {
 int LidarReader::start() {
     if (running) {
         return ESP_OK;
-    }
-
-    const int err = initUart();
-    if (err != ESP_OK) {
-        return err;
     }
 
     buffer.clear();
@@ -82,39 +74,13 @@ bool LidarReader::update() {
         return false;
     }
 
-    const int bytesRead = uart_read_bytes(static_cast<uart_port_t>(uartNum), readBuffer.data(), readBuffer.size(), 0);
+    const int bytesRead = uart_read_bytes(LIDAR_UART_PORT, readBuffer.data(), readBuffer.size(), 0);
     if (bytesRead <= 0) {
         return false;
     }
 
     processBytes(readBuffer.data(), static_cast<std::size_t>(bytesRead));
     return true;
-}
-
-int LidarReader::initUart() {
-    uart_config_t cfg = {};
-    cfg.baud_rate = BAUD_RATE;
-    cfg.data_bits = UART_DATA_8_BITS;
-    cfg.parity = UART_PARITY_DISABLE;
-    cfg.stop_bits = UART_STOP_BITS_1;
-    cfg.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
-    cfg.source_clk = UART_SCLK_DEFAULT;
-
-    const uart_port_t port = static_cast<uart_port_t>(uartNum);
-
-    esp_err_t err = uart_param_config(port, &cfg);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    const int uartTxPin = (txPin >= 0) ? txPin : UART_PIN_NO_CHANGE;
-    const int uartRxPin = (rxPin >= 0) ? rxPin : UART_PIN_NO_CHANGE;
-    err = uart_set_pin(port, uartTxPin, uartRxPin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    return uart_driver_install(port, DRIVER_BUFFER_SIZE, 0, 0, nullptr, 0);
 }
 
 void LidarReader::processBytes(const uint8_t* data, std::size_t len) {
