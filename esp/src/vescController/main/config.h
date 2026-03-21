@@ -28,4 +28,7 @@ static uart_port_t const GPS_UART_PORT = UART_NUM_0;
 static gpio_num_t const GPS_UART_TX = GPIO_NUM_43;
 static gpio_num_t const GPS_UART_RX = GPIO_NUM_44;
 
+/* COUPE CIRCUIT */
+static gpio_num_t const COUPE_CIRCUIT_PIN = GPIO_NUM_19;
+
 #endif /* CONFIG_H */

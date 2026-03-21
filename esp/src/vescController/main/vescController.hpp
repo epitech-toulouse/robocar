@@ -21,7 +21,11 @@ public:
     /// Set steering servo position, range: 0.0 (left) to 1.0 (right), 0.5 = center
     void setSteering(float position);
 
+    void deactivate();
+    void activate();
+
 private:
+    bool active = false;
     static constexpr uint8_t START_BYTE = 0x02;
     static constexpr uint8_t END_BYTE   = 0x03;
 
