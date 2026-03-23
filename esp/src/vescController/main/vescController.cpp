@@ -1,5 +1,6 @@
 #include "vescController.hpp"
 #include "config.h"
+#include "esp_system.h"
 #include "rmt_uart.h"
 #include <cstring>
 
@@ -24,6 +25,15 @@ void VescController::sendPacket(const uint8_t* payload, int len) {
     rmt_uart_write_bytes(VESC_RMT_UART_PORT, (const uint8_t*)frame, (size_t) idx);
 }
 
+void VescController::activate() {
+    this->active = true;
+}
+
+void VescController::deactivate() {
+    this->active = false;
+    this->setDuty(0.0f);
+}
+
 void VescController::sendInt32Cmd(CommPacketId cmd, int32_t value) {
     uint8_t payload[5];
     payload[0] = cmd;
@@ -37,15 +47,21 @@ void VescController::sendInt32Cmd(CommPacketId cmd, int32_t value) {
 /// @brief set the speed of the motor in duty cycle from -1.0 to 1.0, with a maximum speed for safety
 /// @param duty the duty cycle
 void VescController::setDuty(float duty) {
-    duty = duty > VESC_MAX_MOTOR_SPEED ? VESC_MAX_MOTOR_SPEED : duty;
-    if (duty < -VESC_MAX_MOTOR_SPEED) duty = -VESC_MAX_MOTOR_SPEED;
-    int32_t d = (int32_t)(duty * 100000.0f);
-    sendInt32Cmd(COMM_SET_DUTY, d);
+    if (this->active) {
+      duty = duty > VESC_MAX_MOTOR_SPEED ? VESC_MAX_MOTOR_SPEED : duty;
+      if (duty < -VESC_MAX_MOTOR_SPEED)
+        duty = -VESC_MAX_MOTOR_SPEED;
+      int32_t d = (int32_t)(duty * 100000.0f);
+      sendInt32Cmd(COMM_SET_DUTY, d);
+    } else {
+        sendInt32Cmd(COMM_SET_DUTY, 0);
+    }
 }
 
 /// @brief set the speed of the motor in amps, no maximum speed insafe
 /// @param amps 
 void VescController::setCurrent(float amps) {
+    esp_restart();
     int32_t a = (int32_t)(amps * 1000.0f);
     sendInt32Cmd(COMM_SET_CURRENT, a);
 }
@@ -53,6 +69,7 @@ void VescController::setCurrent(float amps) {
 /// @brief set the steering of the motor in amps
 /// @param amps 
 void VescController::setBrake(float amps) {
+    esp_restart();
     int32_t a = (int32_t)(amps * 1000.0f);
     sendInt32Cmd(COMM_SET_BRAKE, a);
 }
@@ -67,6 +84,9 @@ void VescController::setSteering(float position) {
     payload[2] = pos & 0xFF;
     sendPacket(payload, 3);
 }
+
+// ça me fume, personne a compris ce que ce code fait mdr
+// gg l'IA :D
 
 uint16_t VescController::crc16(const uint8_t* buf, int len) {
     uint16_t crc = 0;

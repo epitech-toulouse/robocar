@@ -1,6 +1,14 @@
+#include <cstdint>
 #include <stdio.h>
+#include "config.h"
+#include "driver/gpio.h"
+#include "esp_attr.h"
+#include "esp_intr_alloc.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/projdefs.h"
 #include "freertos/task.h"
+#include "hal/gpio_types.h"
+#include "portmacro.h"
 #include "vescController.hpp"
 #include "lidarReader.hpp"
 #include <iostream>
@@ -53,6 +61,32 @@ static float nearest_in_sector(const std::vector<LidarPoint>& scan, float minDeg
     return nearest;
 }
 
+#include "esp_log.h"
+
+static TaskHandle_t vesc_control_task_handle = nullptr;
+
+void IRAM_ATTR coupe_circuit_handler(void *args)
+{
+    (void) args;
+    BaseType_t priorityTaken = pdFALSE;
+
+    if (vesc_control_task_handle)
+        vTaskNotifyGiveFromISR(vesc_control_task_handle, &priorityTaken);
+    if (priorityTaken != pdFALSE) {
+        portYIELD_FROM_ISR(priorityTaken);
+    }
+/*
+    VescController *vesc = (VescController *) vesc_ptr;
+
+    int level = gpio_get_level(COUPE_CIRCUIT_PIN);
+    // ESP_LOGE("COUPE_CIRCUIT", "Level = %d\n", level);
+    if (level) // HIGH = disconnected
+        vesc->deactivate();
+    else
+        vesc->activate();
+*/
+}
+
 void vesc_control_task(void *pvParameters) {
     VescController vesc;
     // LD19 sends data from its TX line into ESP RX. We do not need ESP TX for LD19.
@@ -63,24 +97,37 @@ void vesc_control_task(void *pvParameters) {
 
     vesc.setDuty(0.0f);
     vesc.setSteering(STEER_CENTER);
+    gpio_set_direction(COUPE_CIRCUIT_PIN, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(COUPE_CIRCUIT_PIN, GPIO_PULLUP_ONLY);
+    gpio_set_intr_type(COUPE_CIRCUIT_PIN, GPIO_INTR_ANYEDGE);
+    ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_EDGE | ESP_INTR_FLAG_IRAM));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(COUPE_CIRCUIT_PIN, &coupe_circuit_handler, nullptr));
+    gpio_intr_enable(COUPE_CIRCUIT_PIN);
     vTaskDelay(pdMS_TO_TICKS(20));
 
     TickType_t reverseUntil = 0;
     float reverseSteer = STEER_CENTER;
+    uint32_t notification_value = 0;
 
     while (1) {
+        if (xTaskNotifyWait(0, 0, &notification_value, pdMS_TO_TICKS(20)) == pdPASS) { // On interrupt on coupe circuit pin
+            if (gpio_get_level(COUPE_CIRCUIT_PIN)) { // HIGH = disconnected
+                vesc.deactivate();
+            } else {
+                vesc.activate();
+            }
+            continue;
+        }
         float manualDuty, manualSteer;
         if (get_manual_control(manualDuty, manualSteer)) {
             vesc.setSteering(manualSteer);
             vesc.setDuty(manualDuty);
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
         if (!lidarEnabled) {
             vesc.setDuty(0.0f);
             vesc.setSteering(STEER_CENTER);
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
@@ -100,7 +147,6 @@ void vesc_control_task(void *pvParameters) {
                 std::cout << "LiDAR timeout (no UART data) -> manual BLE mode only" << std::endl;
                 vesc.setDuty(0.0f);
                 vesc.setSteering(STEER_CENTER);
-                vTaskDelay(pdMS_TO_TICKS(20));
                 continue;
             }
 
@@ -110,7 +156,6 @@ void vesc_control_task(void *pvParameters) {
                 std::cout << "LiDAR scan not ready yet. UART bytes=" << (gotUartBytes ? "yes" : "no") << std::endl;
                 lastLidarLog = now;
             }
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
@@ -126,7 +171,6 @@ void vesc_control_task(void *pvParameters) {
         if (now < reverseUntil) {
             vesc.setSteering(reverseSteer);
             vesc.setDuty(SPEED_REVERSE);
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
@@ -138,7 +182,6 @@ void vesc_control_task(void *pvParameters) {
             vesc.setSteering(reverseSteer);
             vesc.setDuty(SPEED_REVERSE);
             std::cout << "Reverse: front=" << frontNear << "m left=" << leftNear << "m right=" << rightNear << "m" << std::endl;
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
@@ -174,8 +217,6 @@ void vesc_control_task(void *pvParameters) {
                   << "m steer=" << steer
                   << " speed=" << speed
                   << " pts=" << lastScan.size() << std::endl;
-
-        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
@@ -184,5 +225,5 @@ extern "C" void app_main(void) {
     init_bluetooth_receiver();
     init_lidar_uart();
     init_vesc_rmt_uart();
-    xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, NULL);
+    xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, &vesc_control_task_handle);
 }
