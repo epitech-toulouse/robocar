@@ -33,6 +33,8 @@ static constexpr float SPEED_REVERSE = -0.030f;
 static constexpr float STEER_CENTER = 0.50f;
 static constexpr float STEER_LEFT = 0.20f;
 static constexpr float STEER_RIGHT = 0.80f;
+// Set true when the car/sensor mounting makes autonomous left-right decisions mirrored.
+static constexpr bool AUTO_STEER_REVERSED = true;
 
 static constexpr TickType_t REVERSE_DURATION_TICKS = pdMS_TO_TICKS(800);
 static constexpr TickType_t LIDAR_NO_DATA_TIMEOUT_TICKS = pdMS_TO_TICKS(3000);
@@ -59,6 +61,20 @@ static float nearest_in_sector(const std::vector<LidarPoint>& scan, float minDeg
         }
     }
     return nearest;
+}
+
+static float min_valid_distance(float a, float b) {
+    if (a < 0.0f) return b;
+    if (b < 0.0f) return a;
+    return std::min(a, b);
+}
+
+static float map_auto_steer(float steer) {
+    steer = clampf(steer, STEER_LEFT, STEER_RIGHT);
+    if (AUTO_STEER_REVERSED) {
+        steer = (STEER_LEFT + STEER_RIGHT) - steer;
+    }
+    return clampf(steer, STEER_LEFT, STEER_RIGHT);
 }
 
 #include "esp_log.h"
@@ -159,17 +175,16 @@ void vesc_control_task(void *pvParameters) {
             continue;
         }
 
-        const float frontNear = nearest_in_sector(lastScan, 0.0f, FRONT_WINDOW_DEG) < 0.0f
-                                    ? nearest_in_sector(lastScan, 360.0f - FRONT_WINDOW_DEG, 360.0f)
-                                    : std::min(nearest_in_sector(lastScan, 0.0f, FRONT_WINDOW_DEG),
-                                               nearest_in_sector(lastScan, 360.0f - FRONT_WINDOW_DEG, 360.0f));
+        const float frontLeft = nearest_in_sector(lastScan, 0.0f, FRONT_WINDOW_DEG);
+        const float frontRight = nearest_in_sector(lastScan, 360.0f - FRONT_WINDOW_DEG, 360.0f);
+        const float frontNear = min_valid_distance(frontLeft, frontRight);
 
         const float leftNear = nearest_in_sector(lastScan, SIDE_WINDOW_MIN_DEG, SIDE_WINDOW_MAX_DEG);
         const float rightNear = nearest_in_sector(lastScan, 360.0f - SIDE_WINDOW_MAX_DEG, 360.0f - SIDE_WINDOW_MIN_DEG);
 
         const TickType_t now = xTaskGetTickCount();
         if (now < reverseUntil) {
-            vesc.setSteering(reverseSteer);
+            vesc.setSteering(map_auto_steer(reverseSteer));
             vesc.setDuty(SPEED_REVERSE);
             continue;
         }
@@ -179,24 +194,30 @@ void vesc_control_task(void *pvParameters) {
             const bool leftMoreOpen = (leftNear < 0.0f) || (rightNear > 0.0f && rightNear > leftNear);
             reverseSteer = leftMoreOpen ? STEER_RIGHT : STEER_LEFT;
             reverseUntil = now + REVERSE_DURATION_TICKS;
-            vesc.setSteering(reverseSteer);
+            vesc.setSteering(map_auto_steer(reverseSteer));
             vesc.setDuty(SPEED_REVERSE);
             std::cout << "Reverse: front=" << frontNear << "m left=" << leftNear << "m right=" << rightNear << "m" << std::endl;
             continue;
         }
 
         float steer = STEER_CENTER;
+        
+        // Proportional steering logic to safely avoid obstacles
         if (leftNear > 0.0f && rightNear > 0.0f) {
-            if (leftNear > rightNear) {
-                steer = STEER_LEFT;
-            } else if (rightNear > leftNear) {
-                steer = STEER_RIGHT;
-            }
+            // Both sides have obstacles. Steer away from the closer one.
+            float diff = leftNear - rightNear; // positive if left is further
+            steer = STEER_CENTER - 0.3f * diff;
         } else if (leftNear > 0.0f && rightNear < 0.0f) {
-            steer = STEER_LEFT;
+            // Obstacle on left, right is open. Steer RIGHT to avoid left obstacle.
+            steer = STEER_CENTER + 0.3f / leftNear;
         } else if (rightNear > 0.0f && leftNear < 0.0f) {
+            // Obstacle on right, left is open. Steer LEFT to avoid right obstacle.
+            steer = STEER_CENTER - 0.3f / rightNear;
+        } else if (frontNear > 0.0f && frontNear < SAFE_DISTANCE_M) {
+            // Path clear on sides, but obstacle in front. Dodge to the right.
             steer = STEER_RIGHT;
         }
+        steer = map_auto_steer(steer);
 
         float speed = SPEED_FORWARD;
         if (frontNear > 0.0f) {
