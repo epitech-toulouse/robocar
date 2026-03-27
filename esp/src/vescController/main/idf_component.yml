@@ -1,0 +1,18 @@
+## IDF Component Manager Manifest File
+## Needed for usb_host_cdc_acm and VCP drivers used by gps_reader.cpp
+
+dependencies:
+  idf:
+    version: ">=5.0.0"
+  usb_host_cdc_acm:
+    version: "*"
+  usb_host_vcp:
+    version: "*"
+    rules:
+      - if: "idf_version >=5.0"
+  usb_host_ch34x_vcp:
+    version: "*"
+  usb_host_cp210x_vcp:
+    version: "*"
+  usb_host_ftdi_vcp:
+    version: "*"

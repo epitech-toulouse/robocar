@@ -19,6 +19,10 @@
 
 #include "drive.hpp"
 
+#include "gps_reader.hpp"
+#include "navigation_controller.hpp"
+#include "target_point.hpp"
+
 #include "esp_log.h"
 
 static constexpr TickType_t LIDAR_NO_DATA_TIMEOUT_TICKS = pdMS_TO_TICKS(3000);
@@ -40,9 +44,9 @@ void IRAM_ATTR coupe_circuit_handler(void *args)
 
 void vesc_control_task(void *pvParameters) {
     VescController vesc;
-    // LD19 sends data from its TX line into ESP RX. We do not need ESP TX for LD19.
     LidarReader lidar;
     AutonomousDriver driver;
+    NavigationController navController;
     bool lidarEnabled = (lidar.start() == ESP_OK);
     TickType_t lidarNoDataSince = 0;
     TickType_t lastLidarLog = 0;
@@ -74,6 +78,35 @@ void vesc_control_task(void *pvParameters) {
             vesc.setDuty(manualDuty);
             continue;
         }
+
+        // --- PRIORITY 2: NAV mode (GPS target + LIDAR) ---
+        float navLat, navLon;
+        if (get_nav_target_ble(navLat, navLon)) {
+            // Update target in the target point manager
+            nav_set_target(navLat, navLon);
+
+            GpsFix gps;
+            bool gpsValid = get_gps_fix(gps);
+
+            if (gpsValid && gps.has_fix) {
+                NavCommands nav = navController.compute(gps, lastScan,
+                                                        navLat, navLon);
+                vesc.setSteering(nav.steer);
+                vesc.setDuty(nav.duty);
+
+                // Check if arrived
+                if (nav_get_state() == NavState::ARRIVED) {
+                    clear_nav_target_ble();
+                }
+            } else {
+                // No GPS fix → safety stop, keep nav mode active
+                vesc.setDuty(0.0f);
+                vesc.setSteering(STEER_CENTER);
+            }
+            continue;
+        }
+
+        // --- PRIORITY 3: LIDAR-only FTG auto drive ---
 
         if (!lidarEnabled) {
             vesc.setDuty(0.0f);
@@ -116,9 +149,10 @@ void vesc_control_task(void *pvParameters) {
 }
 
 extern "C" void app_main(void) {
-    printf("Starting VESC Controller on ESP32-S3...\n");
+    printf("Starting VESC Controller + GPS Navigation on ESP32-S3...\n");
     init_bluetooth_receiver();
     init_lidar_uart();
     init_vesc_rmt_uart();
-    xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, &vesc_control_task_handle);
+    init_gps_usb();
+    xTaskCreate(vesc_control_task, "vesc_task", 8192, NULL, 5, &vesc_control_task_handle);
 }

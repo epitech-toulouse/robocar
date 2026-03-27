@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import DashboardScreen from '../screens/DashboardScreen';
 import ControlScreen from '../screens/ControlScreen';
 import ConnectionScreen from '../screens/ConnectionScreen';
+import MapScreen from '../screens/MapScreen';
 
 const Tab = createMaterialTopTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -29,6 +30,11 @@ const MainTabs = () => {
         name="Control" 
         component={ControlScreen} 
         options={{ tabBarLabel: 'Contrôles' }} 
+      />
+      <Tab.Screen 
+        name="Navigation" 
+        component={MapScreen} 
+        options={{ tabBarLabel: 'Navigation' }} 
       />
     </Tab.Navigator>
   );

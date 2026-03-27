@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 
 static const char *TAG = "ble_recv";
 
@@ -34,6 +35,16 @@ static constexpr float DUTY_FORWARD = 0.05f;
 static constexpr float DUTY_BACKWARD = -0.05f;
 
 static constexpr TickType_t MANUAL_TIMEOUT_MS = 2000;
+
+/* ---------- Navigation target (set from JSON BLE commands) ---------- */
+static std::atomic<bool>  s_nav_active{false};
+static std::atomic<float> s_nav_lat{0.0f};
+static std::atomic<float> s_nav_lon{0.0f};
+
+/* JSON buffer for multi-byte BLE payloads */
+static char  s_json_buf[128];
+static int   s_json_pos = 0;
+static bool  s_json_collecting = false;
 
 #if CONFIG_BT_BLUEDROID_ENABLED && CONFIG_BT_BLE_ENABLED
 static constexpr uint16_t GATTS_APP_ID = 0x55;
@@ -118,25 +129,96 @@ static bool apply_protocol_char(char c) {
     }
 }
 
+/**
+ * Parse a JSON nav command string: {"cmd":"NAV","lat":xx.xx,"lon":yy.yy}
+ * or {"cmd":"STOP"}. Uses simple sscanf-based parsing (no JSON library).
+ */
+static void process_json_command(const char *json) {
+    ESP_LOGI(TAG, "JSON cmd: %s", json);
+
+    // NAV command: {"cmd":"NAV","lat":xx.xx,"lon":yy.yy}
+    float lat = 0.0f, lon = 0.0f;
+    if (sscanf(json, "{\"cmd\":\"NAV\",\"lat\":%f,\"lon\":%f}", &lat, &lon) == 2) {
+        if (lat >= -90.0f && lat <= 90.0f && lon >= -180.0f && lon <= 180.0f) {
+            s_nav_lat.store(lat);
+            s_nav_lon.store(lon);
+            s_nav_active.store(true);
+            // Cancel any manual movement when entering nav mode
+            s_forward.store(false);
+            s_backward.store(false);
+            s_left.store(false);
+            s_right.store(false);
+            s_duty.store(0.0f);
+            s_steer.store(STEER_CENTER);
+            ESP_LOGI(TAG, "NAV target set: lat=%.6f lon=%.6f", lat, lon);
+        } else {
+            ESP_LOGW(TAG, "Invalid NAV coords: lat=%.6f lon=%.6f", lat, lon);
+        }
+        return;
+    }
+
+    // STOP command: {"cmd":"STOP"}
+    if (strstr(json, "\"STOP\"") != nullptr) {
+        s_nav_active.store(false);
+        ESP_LOGI(TAG, "NAV stopped via BLE");
+        return;
+    }
+
+    ESP_LOGW(TAG, "Unknown JSON command");
+}
+
 static void parse_and_store(const uint8_t *buf, int len) {
-    // Protocol: F/f/B/b/L/l/R/r/S (1 ASCII char per action)
     if (len <= 0 || buf == nullptr) {
         return;
     }
 
     for (int i = 0; i < len; ++i) {
         const uint8_t b = buf[i];
+
+        // JSON collection mode
+        if (s_json_collecting) {
+            if (s_json_pos < (int)sizeof(s_json_buf) - 1) {
+                s_json_buf[s_json_pos++] = (char)b;
+            }
+            if (b == '}') {
+                s_json_buf[s_json_pos] = '\0';
+                process_json_command(s_json_buf);
+                s_json_collecting = false;
+                s_json_pos = 0;
+            }
+            continue;
+        }
+
+        // Start of JSON object
+        if (b == '{') {
+            s_json_collecting = true;
+            s_json_pos = 0;
+            s_json_buf[s_json_pos++] = '{';
+            continue;
+        }
+
+        // Skip whitespace
         if (b == 0x00 || b == '\n' || b == '\r' || b == ' ' || b == '\t') {
             continue;
         }
-        if (!apply_protocol_char(static_cast<char>(b))) {
-            ESP_LOGW(TAG, "Unknown protocol char: '%c' (0x%02X)", static_cast<char>(b), b);
+
+        // Single-char protocol (existing)
+        // Manual command → cancel nav mode (safety: manual always wins)
+        if (apply_protocol_char(static_cast<char>(b))) {
+            if (s_nav_active.load()) {
+                s_nav_active.store(false);
+                ESP_LOGI(TAG, "NAV cancelled by manual BLE command");
+            }
+        } else {
+            ESP_LOGW(TAG, "Unknown byte: '%c' (0x%02X)", (char)b, b);
         }
     }
 
-    ESP_LOGI(TAG, "State F=%d B=%d L=%d R=%d -> duty=%.3f steer=%.3f",
-             s_forward.load(), s_backward.load(), s_left.load(), s_right.load(),
-             s_duty.load(), s_steer.load());
+    if (!s_json_collecting) {
+        ESP_LOGI(TAG, "State F=%d B=%d L=%d R=%d -> duty=%.3f steer=%.3f",
+                 s_forward.load(), s_backward.load(), s_left.load(), s_right.load(),
+                 s_duty.load(), s_steer.load());
+    }
 }
 
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) {
@@ -263,7 +345,10 @@ void init_bluetooth_receiver() {
     ESP_ERROR_CHECK(esp_ble_gap_register_callback(gap_event_handler));
     ESP_ERROR_CHECK(esp_ble_gatts_app_register(GATTS_APP_ID));
 
-    ESP_LOGI(TAG, "BLE receiver initialized");
+    // Increase MTU to support JSON payloads (default 23 is too small)
+    ESP_ERROR_CHECK(esp_ble_gatt_set_local_mtu(512));
+
+    ESP_LOGI(TAG, "BLE receiver initialized (MTU=512)");
 }
 #else
 void init_bluetooth_receiver() {
@@ -294,4 +379,17 @@ bool get_manual_control(float &duty, float &steer) {
     duty = s_duty.load();
     steer = s_steer.load();
     return true;
+}
+
+/* ---------- Navigation target API ---------- */
+
+bool get_nav_target_ble(float &lat, float &lon) {
+    if (!s_nav_active.load()) return false;
+    lat = s_nav_lat.load();
+    lon = s_nav_lon.load();
+    return true;
+}
+
+void clear_nav_target_ble() {
+    s_nav_active.store(false);
 }

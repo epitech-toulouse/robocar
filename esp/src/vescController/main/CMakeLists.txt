@@ -1,3 +1,15 @@
-idf_component_register(SRCS "main.cpp" "vescController.cpp" "lidarReader.cpp" "bluetooth_receiver.cpp" "vescLidarUart.c" "rmt-uart/rmt_uart.c" "drive.cpp"
-                       PRIV_REQUIRES driver bt nvs_flash
+idf_component_register(SRCS "main.cpp"
+                             "vescController.cpp"
+                             "lidarReader.cpp"
+                             "bluetooth_receiver.cpp"
+                             "vescLidarUart.c"
+                             "rmt-uart/rmt_uart.c"
+                             "drive.cpp"
+                             "gps_reader.cpp"
+                             "target_point.cpp"
+                             "heading_alignment.cpp"
+                             "trajectory_score.cpp"
+                             "obstacle_avoidance.cpp"
+                             "navigation_controller.cpp"
+                       PRIV_REQUIRES driver bt nvs_flash usb_host
                        INCLUDE_DIRS "." "rmt-uart")
