@@ -1,18 +1,21 @@
+#include <cstdint>
 #include <stdio.h>
+#include "config.h"
+#include "driver/gpio.h"
+#include "esp_attr.h"
+#include "esp_intr_alloc.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/projdefs.h"
 #include "freertos/task.h"
+#include "hal/gpio_types.h"
+#include "portmacro.h"
 #include "vescController.hpp"
 #include "lidarReader.hpp"
 #include <iostream>
 
 #include "esp_err.h"
 #include "bluetooth_receiver.hpp"
-
-#define VESC_TX_PIN 17
-#define VESC_RX_PIN 18
-#define LIDAR_UART_NUM 2
-
-#define LIDAR_RX_PIN 16
+#include "vescLidarUart.h"
 
 // LiDAR-only driving parameters.
 static constexpr float FRONT_WINDOW_DEG = 25.0f;
@@ -30,6 +33,8 @@ static constexpr float SPEED_REVERSE = -0.030f;
 static constexpr float STEER_CENTER = 0.50f;
 static constexpr float STEER_LEFT = 0.20f;
 static constexpr float STEER_RIGHT = 0.80f;
+// Set true when the car/sensor mounting makes autonomous left-right decisions mirrored.
+static constexpr bool AUTO_STEER_REVERSED = true;
 
 static constexpr TickType_t REVERSE_DURATION_TICKS = pdMS_TO_TICKS(800);
 static constexpr TickType_t LIDAR_NO_DATA_TIMEOUT_TICKS = pdMS_TO_TICKS(3000);
@@ -58,38 +63,87 @@ static float nearest_in_sector(const std::vector<LidarPoint>& scan, float minDeg
     return nearest;
 }
 
-void vesc_control_task(void *pvParameters) {
-    VescController vesc(VESC_TX_PIN, VESC_RX_PIN);
-    // LD19 sends data from its TX line into ESP RX. We do not need ESP TX for LD19.
-    LidarReader lidar(LIDAR_RX_PIN, -1, LIDAR_UART_NUM);
-    std::cout << "LiDAR UART config: uart=" << LIDAR_UART_NUM << " rx=" << LIDAR_RX_PIN << std::endl;
-    bool lidarEnabled = (lidar.start() == ESP_OK);
-    if (!lidarEnabled) {
-        std::cout << "LiDAR unavailable -> manual BLE mode only" << std::endl;
+static float min_valid_distance(float a, float b) {
+    if (a < 0.0f) return b;
+    if (b < 0.0f) return a;
+    return std::min(a, b);
+}
+
+static float map_auto_steer(float steer) {
+    steer = clampf(steer, STEER_LEFT, STEER_RIGHT);
+    if (AUTO_STEER_REVERSED) {
+        steer = (STEER_LEFT + STEER_RIGHT) - steer;
     }
+    return clampf(steer, STEER_LEFT, STEER_RIGHT);
+}
+
+#include "esp_log.h"
+
+static TaskHandle_t vesc_control_task_handle = nullptr;
+
+void IRAM_ATTR coupe_circuit_handler(void *args)
+{
+    (void) args;
+    BaseType_t priorityTaken = pdFALSE;
+
+    if (vesc_control_task_handle)
+        vTaskNotifyGiveFromISR(vesc_control_task_handle, &priorityTaken);
+    if (priorityTaken != pdFALSE) {
+        portYIELD_FROM_ISR(priorityTaken);
+    }
+/*
+    VescController *vesc = (VescController *) vesc_ptr;
+
+    int level = gpio_get_level(COUPE_CIRCUIT_PIN);
+    // ESP_LOGE("COUPE_CIRCUIT", "Level = %d\n", level);
+    if (level) // HIGH = disconnected
+        vesc->deactivate();
+    else
+        vesc->activate();
+*/
+}
+
+void vesc_control_task(void *pvParameters) {
+    VescController vesc;
+    // LD19 sends data from its TX line into ESP RX. We do not need ESP TX for LD19.
+    LidarReader lidar;
+    bool lidarEnabled = (lidar.start() == ESP_OK);
     TickType_t lidarNoDataSince = 0;
     TickType_t lastLidarLog = 0;
 
     vesc.setDuty(0.0f);
     vesc.setSteering(STEER_CENTER);
+    gpio_set_direction(COUPE_CIRCUIT_PIN, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(COUPE_CIRCUIT_PIN, GPIO_PULLUP_ONLY);
+    gpio_set_intr_type(COUPE_CIRCUIT_PIN, GPIO_INTR_ANYEDGE);
+    ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_EDGE | ESP_INTR_FLAG_IRAM));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(COUPE_CIRCUIT_PIN, &coupe_circuit_handler, nullptr));
+    gpio_intr_enable(COUPE_CIRCUIT_PIN);
     vTaskDelay(pdMS_TO_TICKS(20));
 
     TickType_t reverseUntil = 0;
     float reverseSteer = STEER_CENTER;
+    uint32_t notification_value = 0;
 
     while (1) {
+        if (xTaskNotifyWait(0, 0, &notification_value, pdMS_TO_TICKS(20)) == pdPASS) { // On interrupt on coupe circuit pin
+            if (gpio_get_level(COUPE_CIRCUIT_PIN)) { // HIGH = disconnected
+                vesc.deactivate();
+            } else {
+                vesc.activate();
+            }
+            continue;
+        }
         float manualDuty, manualSteer;
         if (get_manual_control(manualDuty, manualSteer)) {
             vesc.setSteering(manualSteer);
             vesc.setDuty(manualDuty);
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
         if (!lidarEnabled) {
             vesc.setDuty(0.0f);
             vesc.setSteering(STEER_CENTER);
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
@@ -109,7 +163,6 @@ void vesc_control_task(void *pvParameters) {
                 std::cout << "LiDAR timeout (no UART data) -> manual BLE mode only" << std::endl;
                 vesc.setDuty(0.0f);
                 vesc.setSteering(STEER_CENTER);
-                vTaskDelay(pdMS_TO_TICKS(20));
                 continue;
             }
 
@@ -119,23 +172,20 @@ void vesc_control_task(void *pvParameters) {
                 std::cout << "LiDAR scan not ready yet. UART bytes=" << (gotUartBytes ? "yes" : "no") << std::endl;
                 lastLidarLog = now;
             }
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
-        const float frontNear = nearest_in_sector(lastScan, 0.0f, FRONT_WINDOW_DEG) < 0.0f
-                                    ? nearest_in_sector(lastScan, 360.0f - FRONT_WINDOW_DEG, 360.0f)
-                                    : std::min(nearest_in_sector(lastScan, 0.0f, FRONT_WINDOW_DEG),
-                                               nearest_in_sector(lastScan, 360.0f - FRONT_WINDOW_DEG, 360.0f));
+        const float frontLeft = nearest_in_sector(lastScan, 0.0f, FRONT_WINDOW_DEG);
+        const float frontRight = nearest_in_sector(lastScan, 360.0f - FRONT_WINDOW_DEG, 360.0f);
+        const float frontNear = min_valid_distance(frontLeft, frontRight);
 
         const float leftNear = nearest_in_sector(lastScan, SIDE_WINDOW_MIN_DEG, SIDE_WINDOW_MAX_DEG);
         const float rightNear = nearest_in_sector(lastScan, 360.0f - SIDE_WINDOW_MAX_DEG, 360.0f - SIDE_WINDOW_MIN_DEG);
 
         const TickType_t now = xTaskGetTickCount();
         if (now < reverseUntil) {
-            vesc.setSteering(reverseSteer);
+            vesc.setSteering(map_auto_steer(reverseSteer));
             vesc.setDuty(SPEED_REVERSE);
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
@@ -144,25 +194,30 @@ void vesc_control_task(void *pvParameters) {
             const bool leftMoreOpen = (leftNear < 0.0f) || (rightNear > 0.0f && rightNear > leftNear);
             reverseSteer = leftMoreOpen ? STEER_RIGHT : STEER_LEFT;
             reverseUntil = now + REVERSE_DURATION_TICKS;
-            vesc.setSteering(reverseSteer);
+            vesc.setSteering(map_auto_steer(reverseSteer));
             vesc.setDuty(SPEED_REVERSE);
             std::cout << "Reverse: front=" << frontNear << "m left=" << leftNear << "m right=" << rightNear << "m" << std::endl;
-            vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
 
         float steer = STEER_CENTER;
+        
+        // Proportional steering logic to safely avoid obstacles
         if (leftNear > 0.0f && rightNear > 0.0f) {
-            if (leftNear > rightNear) {
-                steer = STEER_LEFT;
-            } else if (rightNear > leftNear) {
-                steer = STEER_RIGHT;
-            }
+            // Both sides have obstacles. Steer away from the closer one.
+            float diff = leftNear - rightNear; // positive if left is further
+            steer = STEER_CENTER - 0.3f * diff;
         } else if (leftNear > 0.0f && rightNear < 0.0f) {
-            steer = STEER_LEFT;
+            // Obstacle on left, right is open. Steer RIGHT to avoid left obstacle.
+            steer = STEER_CENTER + 0.3f / leftNear;
         } else if (rightNear > 0.0f && leftNear < 0.0f) {
+            // Obstacle on right, left is open. Steer LEFT to avoid right obstacle.
+            steer = STEER_CENTER - 0.3f / rightNear;
+        } else if (frontNear > 0.0f && frontNear < SAFE_DISTANCE_M) {
+            // Path clear on sides, but obstacle in front. Dodge to the right.
             steer = STEER_RIGHT;
         }
+        steer = map_auto_steer(steer);
 
         float speed = SPEED_FORWARD;
         if (frontNear > 0.0f) {
@@ -183,13 +238,13 @@ void vesc_control_task(void *pvParameters) {
                   << "m steer=" << steer
                   << " speed=" << speed
                   << " pts=" << lastScan.size() << std::endl;
-
-        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
 extern "C" void app_main(void) {
     printf("Starting VESC Controller on ESP32-S3...\n");
     init_bluetooth_receiver();
-    xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, NULL);
+    init_lidar_uart();
+    init_vesc_rmt_uart();
+    xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, &vesc_control_task_handle);
 }

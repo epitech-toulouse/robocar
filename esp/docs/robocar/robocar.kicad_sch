@@ -10,6 +10,140 @@
 		(rev "v1.4")
 	)
 	(lib_symbols
+		(symbol "Device:CircuitBreaker_1P_US"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "CB"
+				(at 3.175 -1.27 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Value" "CircuitBreaker_1P_US"
+				(at 3.175 0.635 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" "~"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "Single pole circuit breaker, US symbol"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "CB"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "CircuitBreaker_1P_US_0_1"
+				(arc
+					(start 1.905 3.81)
+					(mid 2.8044 0)
+					(end 1.905 -3.81)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 0 4.445)
+					(radius 0.635)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 0 -4.445)
+					(radius 0.635)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "CircuitBreaker_1P_US_1_1"
+				(pin passive line
+					(at 0 7.62 270)
+					(length 2.54)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -7.62 90)
+					(length 2.54)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "ESP32-S3-DEVKITC-1-N16R8V:ESP32-S3-DEVKITC-1-N16R8V"
 			(pin_names
 				(offset 1.016)
@@ -2951,6 +3085,12 @@
 		(color 0 0 0 1)
 		(uuid "1d75ca28-5753-4df5-b296-c9a16bfd8f4d")
 	)
+	(junction
+		(at 172.72 115.57)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "e5f59b37-0d4b-4293-b1f4-2e877d7cc123")
+	)
 	(no_connect
 		(at 59.69 48.26)
 		(uuid "0dd1011d-adc7-43a1-890c-98c70b244890")
@@ -3018,10 +3158,6 @@
 	(no_connect
 		(at 86.36 138.43)
 		(uuid "500bf06d-cf87-4b8b-a312-a805625af0dc")
-	)
-	(no_connect
-		(at 172.72 115.57)
-		(uuid "5234828b-88c4-460f-a935-99287c78e7d4")
 	)
 	(no_connect
 		(at 83.82 54.61)
@@ -3277,6 +3413,26 @@
 	)
 	(wire
 		(pts
+			(xy 172.72 115.57) (xy 186.69 115.57)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2a97d412-1264-49c1-80cf-eb561ffd7c75")
+	)
+	(wire
+		(pts
+			(xy 208.28 72.39) (xy 223.52 72.39)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2e9bd13b-6164-4950-9265-3efecb866fd2")
+	)
+	(wire
+		(pts
 			(xy 114.3 118.11) (xy 120.65 118.11)
 		)
 		(stroke
@@ -3431,6 +3587,16 @@
 	)
 	(wire
 		(pts
+			(xy 208.28 87.63) (xy 223.52 87.63)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "9cb6608b-77e3-4dee-b649-7d76aed04471")
+	)
+	(wire
+		(pts
 			(xy 92.71 146.05) (xy 86.36 146.05)
 		)
 		(stroke
@@ -3474,6 +3640,16 @@
 	)
 	(wire
 		(pts
+			(xy 162.56 115.57) (xy 172.72 115.57)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f8a470c9-bc97-4c72-a03c-748908dd7b98")
+	)
+	(wire
+		(pts
 			(xy 92.71 148.59) (xy 86.36 148.59)
 		)
 		(stroke
@@ -3482,6 +3658,16 @@
 			(color 0 255 255 1)
 		)
 		(uuid "fe4efbf3-3d0d-4016-a413-45522cc2f326")
+	)
+	(label "COUPE_CIRCUIT_INPUT"
+		(at 208.28 72.39 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "07fc2ec5-ecb3-47cd-ab33-2c5913b60a2c")
 	)
 	(label "VESC_UART_RX"
 		(at 91.44 77.47 0)
@@ -3592,6 +3778,16 @@
 			(justify left bottom)
 		)
 		(uuid "d12e1b72-ec44-4239-bc20-b6a4fe8b4665")
+	)
+	(label "COUPE_CIRCUIT_INPUT"
+		(at 186.69 115.57 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "f2560a1b-f168-48e9-8b97-90e8c1db9285")
 	)
 	(label "CAM_UART_RX"
 		(at 114.3 113.03 180)
@@ -3815,6 +4011,76 @@
 			(project ""
 				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
 					(reference "#PWR05")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:CircuitBreaker_1P_US")
+		(at 223.52 80.01 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "1da2f2a4-ba24-4761-9483-5c3d2dcfb2df")
+		(property "Reference" "CB1"
+			(at 227.33 78.7399 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "CircuitBreaker_1P_US"
+			(at 227.33 81.2799 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 223.52 80.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 223.52 80.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Single pole circuit breaker, US symbol"
+			(at 223.52 80.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "b4828d72-a8b0-4655-b17b-8a17cec7ca83")
+		)
+		(pin "1"
+			(uuid "8d0531df-b32d-4da7-a6ab-05a59d946a55")
+		)
+		(instances
+			(project ""
+				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
+					(reference "CB1")
 					(unit 1)
 				)
 			)
@@ -4248,6 +4514,72 @@
 			(project ""
 				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
 					(reference "U1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:Earth")
+		(at 208.28 87.63 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "d7cdc47c-7435-4d7f-9b91-46d4b15eb758")
+		(property "Reference" "#PWR09"
+			(at 208.28 93.98 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "Earth"
+			(at 208.28 92.71 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 208.28 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 208.28 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"Earth\""
+			(at 208.28 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "b9a87ce6-0d98-4158-bc5a-1ae69c51b438")
+		)
+		(instances
+			(project ""
+				(path "/130b88d0-342f-4498-80e1-072526e98ca2"
+					(reference "#PWR09")
 					(unit 1)
 				)
 			)

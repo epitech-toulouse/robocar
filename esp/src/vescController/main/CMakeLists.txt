@@ -1,5 +1,3 @@
-idf_component_register(SRCS "main.cpp" "vescController.cpp" "lidarReader.cpp" "bluetooth_receiver.cpp"
+idf_component_register(SRCS "main.cpp" "vescController.cpp" "lidarReader.cpp" "bluetooth_receiver.cpp" "vescLidarUart.c" "rmt-uart/rmt_uart.c"
                        PRIV_REQUIRES driver bt nvs_flash
-                       INCLUDE_DIRS ".")
-
-                       
+                       INCLUDE_DIRS "." "rmt-uart")
