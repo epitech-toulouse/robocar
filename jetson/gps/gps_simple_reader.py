@@ -10,7 +10,7 @@ import time
 
 
 class SimpleGPSReader:
-    def __init__(self, hostname='localhost', port=25001):
+    def __init__(self, hostname='localhost', port=25000):
         self.hostname = hostname
         self.port = port
         
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     
     # Test du lecteur
     host = sys.argv[1] if len(sys.argv) > 1 else 'localhost'
-    port = int(sys.argv[2]) if len(sys.argv) > 2 else 25001
+    port = int(sys.argv[2]) if len(sys.argv) > 2 else 25000
     
     print(f"Connexion à {host}:{port}...")
     reader = SimpleGPSReader(host, port)

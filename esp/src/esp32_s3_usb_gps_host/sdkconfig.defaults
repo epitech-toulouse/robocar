@@ -1,0 +1,13 @@
+# This file was generated using idf.py save-defconfig. It can be edited manually.
+# Espressif IoT Development Framework (ESP-IDF) Project Minimal Configuration
+#
+CONFIG_USB_HOST_HUBS_SUPPORTED=y
+CONFIG_USB_HOST_CDC_ACM=y
+# Force console output to hardware UART0 (COM port), not USB-CDC
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_UART_NUM=0
+# Keep USB-CDC disabled (USB-OTG is used by USB Host), but enable
+# secondary USB-Serial/JTAG console on the ESP32-S3 second USB interface.
+# CONFIG_ESP_CONSOLE_SECONDARY_NONE is not set
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+
