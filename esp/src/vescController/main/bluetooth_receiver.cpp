@@ -27,6 +27,8 @@ static std::atomic<bool> s_forward{false};
 static std::atomic<bool> s_backward{false};
 static std::atomic<bool> s_left{false};
 static std::atomic<bool> s_right{false};
+static std::atomic<bool> s_emergency{false};
+
 static constexpr float STEER_CENTER = 0.5f;
 static constexpr float STEER_LEFT = 0.2f;
 static constexpr float STEER_RIGHT = 0.8f;
@@ -94,6 +96,7 @@ static void recompute_output_from_state() {
 }
 
 static void emergency_stop() {
+    s_emergency.store(true);
     s_forward.store(false);
     s_backward.store(false);
     s_left.store(false);
@@ -271,13 +274,14 @@ void init_bluetooth_receiver() {
 }
 #endif
 
-bool get_manual_control(float &duty, float &steer) {
+bool get_manual_control(float &duty, float &steer, bool &emergency) {
     const bool hasActiveCommand =
         s_forward.load() || s_backward.load() || s_left.load() || s_right.load();
 
     if (hasActiveCommand) {
         duty = s_duty.load();
         steer = s_steer.load();
+        emergency = s_emergency.load();
         return true;
     }
 
@@ -293,5 +297,6 @@ bool get_manual_control(float &duty, float &steer) {
 
     duty = s_duty.load();
     steer = s_steer.load();
+    emergency = s_emergency.load();
     return true;
 }

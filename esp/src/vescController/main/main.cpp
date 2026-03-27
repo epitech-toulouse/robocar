@@ -69,9 +69,13 @@ void vesc_control_task(void *pvParameters) {
             continue;
         }
         float manualDuty, manualSteer;
-        if (get_manual_control(manualDuty, manualSteer)) {
+        bool s_emergency;
+        if (get_manual_control(manualDuty, manualSteer, s_emergency)) {
             vesc.setSteering(manualSteer);
             vesc.setDuty(manualDuty);
+            if (s_emergency) {
+                vesc.deactivate();
+            }
             continue;
         }
 
