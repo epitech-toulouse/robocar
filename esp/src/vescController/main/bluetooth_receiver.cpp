@@ -298,5 +298,6 @@ bool get_manual_control(float &duty, float &steer, bool &emergency) {
     duty = s_duty.load();
     steer = s_steer.load();
     emergency = s_emergency.load();
+    s_emergency.store(false);
     return true;
 }
