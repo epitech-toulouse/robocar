@@ -6,8 +6,8 @@
 	(paper "A4")
 	(title_block
 		(title "esp_connection")
-		(date "2026-06-02")
-		(rev "v1.2")
+		(date "2026-18-03")
+		(rev "v1.4")
 	)
 	(lib_symbols
 		(symbol "ESP32-S3-DEVKITC-1-N16R8V:ESP32-S3-DEVKITC-1-N16R8V"
