@@ -11,6 +11,7 @@
 #include "portmacro.h"
 #include "vescController.hpp"
 #include "lidarReader.hpp"
+#include "gpsUsbHost.hpp"
 #include <iostream>
 
 #include "esp_err.h"
@@ -23,6 +24,7 @@
 
 static constexpr TickType_t LIDAR_NO_DATA_TIMEOUT_TICKS = pdMS_TO_TICKS(3000);
 static constexpr TickType_t LIDAR_LOG_PERIOD_TICKS = pdMS_TO_TICKS(1000);
+static constexpr TickType_t GPS_LOG_PERIOD_TICKS = pdMS_TO_TICKS(2000);
 
 static TaskHandle_t vesc_control_task_handle = nullptr;
 
@@ -42,10 +44,17 @@ void vesc_control_task(void *pvParameters) {
     VescController vesc;
     // LD19 sends data from its TX line into ESP RX. We do not need ESP TX for LD19.
     LidarReader lidar;
+    UsbGpsHost gps;
     AutonomousDriver driver;
     bool lidarEnabled = (lidar.start() == ESP_OK);
+    bool gpsEnabled = (gps.start() == ESP_OK);
     TickType_t lidarNoDataSince = 0;
     TickType_t lastLidarLog = 0;
+    TickType_t lastGpsLog = 0;
+
+    if (!gpsEnabled) {
+        ESP_LOGW("main", "USB GPS host failed to start");
+    }
 
     vesc.setDuty(0.0f);
     vesc.setSteering(STEER_CENTER);
@@ -60,6 +69,18 @@ void vesc_control_task(void *pvParameters) {
     uint32_t notification_value = 0;
 
     while (1) {
+        const TickType_t now = xTaskGetTickCount();
+        if (gpsEnabled && (now - lastGpsLog) > GPS_LOG_PERIOD_TICKS) {
+            const GpsFix fix = gps.getLatestFix();
+            if (fix.hasFix) {
+                ESP_LOGI("gps", "fix sats=%d lat=%.6f lon=%.6f alt=%.1f",
+                         fix.satellites, fix.latitude, fix.longitude, fix.altitudeMeters);
+            } else {
+                ESP_LOGI("gps", "waiting for fix sats=%d", fix.satellites);
+            }
+            lastGpsLog = now;
+        }
+
         if (xTaskNotifyWait(0, 0, &notification_value, pdMS_TO_TICKS(20)) == pdPASS) { // On interrupt on coupe circuit pin
             if (gpio_get_level(COUPE_CIRCUIT_PIN)) { // HIGH = disconnected
                 vesc.deactivate();
@@ -95,7 +116,6 @@ void vesc_control_task(void *pvParameters) {
         }
 
         if (lastScan.empty()) {
-            const TickType_t now = xTaskGetTickCount();
             if (lidarNoDataSince != 0 && (now - lidarNoDataSince) > LIDAR_NO_DATA_TIMEOUT_TICKS) {
                 lidarEnabled = false;
                 std::cout << "LiDAR timeout (no UART data) -> manual BLE mode only" << std::endl;
