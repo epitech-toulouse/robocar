@@ -1,18 +1,18 @@
-# VESC Controller + BLE (ESP32-S3)
+# VESC Controller + Wi-Fi (ESP32-S3)
 
 Ce composant supporte:
 - Pilotage automatique via LiDAR
-- Override manuel via BLE GATT (ESP32-S3 compatible)
+- Override manuel via Wi-Fi (TCP)
 
-## BLE GATT
+## Transport Wi-Fi
 
-- Device name: `ESP32S3_BLE_CTRL`
-- Service UUID (16-bit): `0xFFE0`
-- Characteristic UUID (16-bit): `0xFFE1`
-- Propriete: Write + Write Without Response
+- Mode Wi-Fi: SoftAP (l'ESP32 cree son propre reseau)
+- SSID: `ROBOCAR_CTRL`
+- Mot de passe: `robocar123`
+- Port TCP: `3333`
 - Payload: 1 caractere ASCII par evenement
 
-Protocole (respecte le document `BluetoothProtocol.md`):
+Le protocole de commande est strictement identique a l'ancien BLE (meme chars, meme semantique):
 - `F` / `f` : avancer press / release
 - `B` / `b` : reculer press / release
 - `L` / `l` : gauche press / release
@@ -26,8 +26,8 @@ Exemples payload:
 - `S` pour arret immediat
 
 Mapping interne actuel:
-- `F` => duty `+0.08`
-- `B` => duty `-0.08`
+- `F` => duty `+0.05`
+- `B` => duty `-0.05`
 - `L` => steering `0.2`
 - `R` => steering `0.8`
 - centre steering `0.5`
@@ -42,15 +42,19 @@ idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
-## Test avec smartphone
+## Test avec smartphone ou PC
 
-1. Ouvrir nRF Connect (ou LightBlue)
-2. Scanner et connecter `ESP32S3_BLE_CTRL`
-3. Ouvrir le service `0xFFE0`
-4. Ecrire dans la caracteristique `0xFFE1`
-5. Envoyer `F` puis `f`
+1. Se connecter au Wi-Fi `ROBOCAR_CTRL`.
+2. Ouvrir une connexion TCP vers `192.168.4.1:3333`.
+3. Envoyer des caracteres ASCII (`F`, `R`, `r`, `f`, `S`, etc.).
+
+Exemple avec netcat:
+
+```bash
+printf "F" | nc 192.168.4.1 3333
+```
 
 Verifier dans les logs serie:
-- `BLE receiver initialized`
-- `BLE advertising started`
-- `Manual BLE cmd duty=... steer=...`
+- `Wi-Fi receiver initialized`
+- `Wi-Fi AP started: ssid=ROBOCAR_CTRL channel=1`
+- `Wi-Fi control server listening on TCP port 3333`

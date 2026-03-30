@@ -1,14 +1,11 @@
-# Robocar BLE Protocol
+# Robocar Control Protocol
 
-Ce document décrit le protocole Bluetooth Low Energy (BLE) utilisé pour communiquer entre l'application mobile et la voiture autonome.
+Ce document décrit le protocole de commande utilise pour communiquer entre l'application mobile et la voiture autonome.
 
-## Architecture BLE
+## Transport
 
-- **Type de communication** : Écriture sans réponse (Write Without Response) pour minimiser la latence (idéal pour le contrôle en temps réel).
-- **Service UUID** : `0000ffe0-0000-1000-8000-00805f9b34fb` (Service par défaut pour beaucoup de modules BLE de type HM-10).
-- **Characteristic UUID** : `0000ffe1-0000-1000-8000-00805f9b34fb` (Caractéristique par défaut pour l'envoi de données TX/RX).
-
-*(NB: Ces UUIDs pourront être modifiés dans le code de l'application selon le hardware réel utilisé sur la voiture).*
+- **Type de communication actuel** : Wi-Fi (TCP), envoi de caracteres ASCII.
+- **Compatibilite protocole** : Les commandes sont identiques a l'ancien transport BLE.
 
 ## Format des Commandes (Payload)
 
@@ -34,12 +31,12 @@ Chaque état (Appui / Relâchement) possède sa propre commande unique :
 3. L'utilisateur relâche "Droite" ➔ L'application envoie `r`. La voiture arrête de tourner mais continue d'avancer.
 4. L'utilisateur relâche "Avancer" ➔ L'application envoie `f`. La voiture s'arrête complètement.
 
-## Intégration côté Microcontrôleur (Exemple Pseudo-code Arduino)
+## Integration cote Microcontroleur (Pseudo-code)
 
 ```cpp
 void loop() {
-  if (bluetooth.available()) {
-    char cmd = bluetooth.read();
+  if (socket.available()) {
+    char cmd = socket.read();
     
     switch(cmd) {
       case 'F': moteur_avant_marche(); break;

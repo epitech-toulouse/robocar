@@ -1,0 +1,253 @@
+#include "wifi_receiver.hpp"
+
+#include <atomic>
+#include <cstring>
+
+#include "esp_err.h"
+#include "esp_event.h"
+#include "esp_log.h"
+#include "esp_netif.h"
+#include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "lwip/inet.h"
+#include "lwip/sockets.h"
+#include "nvs_flash.h"
+
+static const char *TAG = "wifi_recv";
+
+static std::atomic<float> s_duty{0.0f};
+static std::atomic<float> s_steer{0.5f};
+static std::atomic<int> s_last_tick{0};
+static std::atomic<bool> s_forward{false};
+static std::atomic<bool> s_backward{false};
+static std::atomic<bool> s_left{false};
+static std::atomic<bool> s_right{false};
+static std::atomic<bool> s_emergency{false};
+
+static constexpr float STEER_CENTER = 0.5f;
+static constexpr float STEER_LEFT = 0.2f;
+static constexpr float STEER_RIGHT = 0.8f;
+static constexpr float DUTY_FORWARD = 0.05f;
+static constexpr float DUTY_BACKWARD = -0.05f;
+
+static constexpr TickType_t MANUAL_TIMEOUT_MS = 2000;
+
+static constexpr const char *WIFI_AP_SSID = "ROBOCAR_CTRL";
+static constexpr const char *WIFI_AP_PASSWORD = "robocar123";
+static constexpr uint8_t WIFI_AP_CHANNEL = 1;
+static constexpr uint8_t WIFI_AP_MAX_CONN = 1;
+static constexpr int CONTROL_TCP_PORT = 3333;
+static constexpr int RX_BUFFER_SIZE = 64;
+
+static void recompute_output_from_state() {
+    float duty = 0.0f;
+    if (s_forward.load() && !s_backward.load()) {
+        duty = DUTY_FORWARD;
+    } else if (s_backward.load() && !s_forward.load()) {
+        duty = DUTY_BACKWARD;
+    }
+
+    float steer = STEER_CENTER;
+    if (s_left.load() && !s_right.load()) {
+        steer = STEER_LEFT;
+    } else if (s_right.load() && !s_left.load()) {
+        steer = STEER_RIGHT;
+    }
+
+    s_duty.store(duty);
+    s_steer.store(steer);
+    s_last_tick.store(static_cast<int>(xTaskGetTickCount()));
+}
+
+static void emergency_stop() {
+    s_emergency.store(true);
+    s_forward.store(false);
+    s_backward.store(false);
+    s_left.store(false);
+    s_right.store(false);
+    s_duty.store(0.0f);
+    s_steer.store(STEER_CENTER);
+    s_last_tick.store(static_cast<int>(xTaskGetTickCount()));
+}
+
+static bool apply_protocol_char(char c) {
+    switch (c) {
+        case 'F': s_forward.store(true);  recompute_output_from_state(); return true;
+        case 'f': s_forward.store(false); recompute_output_from_state(); return true;
+        case 'B': s_backward.store(true);  recompute_output_from_state(); return true;
+        case 'b': s_backward.store(false); recompute_output_from_state(); return true;
+        case 'L': s_left.store(true);  recompute_output_from_state(); return true;
+        case 'l': s_left.store(false); recompute_output_from_state(); return true;
+        case 'R': s_right.store(true);  recompute_output_from_state(); return true;
+        case 'r': s_right.store(false); recompute_output_from_state(); return true;
+        case 'S': emergency_stop(); return true;
+        default: return false;
+    }
+}
+
+static void parse_and_store(const uint8_t *buf, int len) {
+    // Protocol: F/f/B/b/L/l/R/r/S (1 ASCII char per action)
+    if (len <= 0 || buf == nullptr) {
+        return;
+    }
+
+    for (int i = 0; i < len; ++i) {
+        const uint8_t b = buf[i];
+        if (b == 0x00 || b == '\n' || b == '\r' || b == ' ' || b == '\t') {
+            continue;
+        }
+        if (!apply_protocol_char(static_cast<char>(b))) {
+            ESP_LOGW(TAG, "Unknown protocol char: '%c' (0x%02X)", static_cast<char>(b), b);
+        }
+    }
+
+    ESP_LOGI(TAG, "State F=%d B=%d L=%d R=%d -> duty=%.3f steer=%.3f",
+             s_forward.load(), s_backward.load(), s_left.load(), s_right.load(),
+             s_duty.load(), s_steer.load());
+}
+
+static void wifi_control_server_task(void *arg) {
+    (void)arg;
+    uint8_t rx_buf[RX_BUFFER_SIZE];
+
+    while (true) {
+        int listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+        if (listen_sock < 0) {
+            ESP_LOGE(TAG, "Unable to create socket: errno=%d", errno);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        int opt = 1;
+        setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        sockaddr_in addr = {};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(CONTROL_TCP_PORT);
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+        if (bind(listen_sock, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
+            ESP_LOGE(TAG, "Socket bind failed: errno=%d", errno);
+            close(listen_sock);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        if (listen(listen_sock, 1) < 0) {
+            ESP_LOGE(TAG, "Socket listen failed: errno=%d", errno);
+            close(listen_sock);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        ESP_LOGI(TAG, "Wi-Fi control server listening on TCP port %d", CONTROL_TCP_PORT);
+
+        while (true) {
+            sockaddr_in6 source_addr = {};
+            socklen_t addr_len = sizeof(source_addr);
+            int sock = accept(listen_sock, reinterpret_cast<sockaddr *>(&source_addr), &addr_len);
+            if (sock < 0) {
+                ESP_LOGE(TAG, "Socket accept failed: errno=%d", errno);
+                break;
+            }
+
+            ESP_LOGI(TAG, "Controller connected");
+            while (true) {
+                const int len = recv(sock, rx_buf, sizeof(rx_buf), 0);
+                if (len < 0) {
+                    ESP_LOGE(TAG, "Socket recv failed: errno=%d", errno);
+                    break;
+                }
+                if (len == 0) {
+                    ESP_LOGI(TAG, "Controller disconnected");
+                    break;
+                }
+                parse_and_store(rx_buf, len);
+            }
+
+            emergency_stop();
+            shutdown(sock, 0);
+            close(sock);
+        }
+
+        close(listen_sock);
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+}
+
+static void init_wifi_softap() {
+    esp_netif_create_default_wifi_ap();
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    wifi_config_t wifi_config = {};
+    std::strncpy(reinterpret_cast<char *>(wifi_config.ap.ssid), WIFI_AP_SSID, sizeof(wifi_config.ap.ssid));
+    std::strncpy(reinterpret_cast<char *>(wifi_config.ap.password), WIFI_AP_PASSWORD, sizeof(wifi_config.ap.password));
+    wifi_config.ap.channel = WIFI_AP_CHANNEL;
+    wifi_config.ap.max_connection = WIFI_AP_MAX_CONN;
+    wifi_config.ap.ssid_len = std::strlen(WIFI_AP_SSID);
+    wifi_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+
+    if (std::strlen(WIFI_AP_PASSWORD) == 0) {
+        wifi_config.ap.authmode = WIFI_AUTH_OPEN;
+    }
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "Wi-Fi AP started: ssid=%s channel=%u", WIFI_AP_SSID, WIFI_AP_CHANNEL);
+}
+
+void init_wifi_receiver() {
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    ret = esp_netif_init();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_ERROR_CHECK(ret);
+    }
+
+    ret = esp_event_loop_create_default();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        ESP_ERROR_CHECK(ret);
+    }
+
+    init_wifi_softap();
+    xTaskCreate(wifi_control_server_task, "wifi_ctrl_srv", 4096, nullptr, 5, nullptr);
+    ESP_LOGI(TAG, "Wi-Fi receiver initialized");
+}
+
+bool get_manual_control(float &duty, float &steer, bool &emergency) {
+    const bool hasActiveCommand =
+        s_forward.load() || s_backward.load() || s_left.load() || s_right.load();
+
+    if (hasActiveCommand) {
+        duty = s_duty.load();
+        steer = s_steer.load();
+        emergency = s_emergency.load();
+        return true;
+    }
+
+    int last = s_last_tick.load();
+    if (last == 0) {
+        return false;
+    }
+
+    TickType_t now = xTaskGetTickCount();
+    if ((now - static_cast<TickType_t>(last)) > pdMS_TO_TICKS(MANUAL_TIMEOUT_MS)) {
+        return false;
+    }
+
+    duty = s_duty.load();
+    steer = s_steer.load();
+    emergency = s_emergency.load();
+    s_emergency.store(false);
+    return true;
+}

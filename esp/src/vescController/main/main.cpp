@@ -14,7 +14,7 @@
 #include <iostream>
 
 #include "esp_err.h"
-#include "bluetooth_receiver.hpp"
+#include "wifi_receiver.hpp"
 #include "vescLidarUart.h"
 
 #include "drive.hpp"
@@ -98,7 +98,7 @@ void vesc_control_task(void *pvParameters) {
             const TickType_t now = xTaskGetTickCount();
             if (lidarNoDataSince != 0 && (now - lidarNoDataSince) > LIDAR_NO_DATA_TIMEOUT_TICKS) {
                 lidarEnabled = false;
-                std::cout << "LiDAR timeout (no UART data) -> manual BLE mode only" << std::endl;
+                std::cout << "LiDAR timeout (no UART data) -> manual Wi-Fi mode only" << std::endl;
                 vesc.setDuty(0.0f);
                 vesc.setSteering(STEER_CENTER);
                 continue;
@@ -121,7 +121,7 @@ void vesc_control_task(void *pvParameters) {
 
 extern "C" void app_main(void) {
     printf("Starting VESC Controller on ESP32-S3...\n");
-    init_bluetooth_receiver();
+    init_wifi_receiver();
     init_lidar_uart();
     init_vesc_rmt_uart();
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, &vesc_control_task_handle);
