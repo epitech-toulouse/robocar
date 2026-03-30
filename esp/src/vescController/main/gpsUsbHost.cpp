@@ -126,7 +126,8 @@ void UsbGpsHost::stop() {
     }
 
     if (appQueue != nullptr) {
-        AppMessage quitMsg = {.id = AppMessage::Quit};
+        AppMessage quitMsg = {};
+        quitMsg.id = AppMessage::Quit;
         xQueueSend(appQueue, &quitMsg, 0);
     }
 
@@ -172,10 +173,10 @@ GpsFix UsbGpsHost::getLatestFix() const {
 void UsbGpsHost::usbLibTask(void *arg) {
     auto *self = static_cast<UsbGpsHost *>(arg);
 
-    const usb_host_config_t hostConfig = {
-        .skip_phy_setup = false,
-        .intr_flags = ESP_INTR_FLAG_LOWMED,
-    };
+    usb_host_config_t hostConfig = {};
+    hostConfig.skip_phy_setup = false;
+    hostConfig.intr_flags = ESP_INTR_FLAG_LOWMED;
+    
     ESP_ERROR_CHECK(usb_host_install(&hostConfig));
 
     const cdc_acm_host_driver_config_t driverConfig = {
