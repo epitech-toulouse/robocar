@@ -12,7 +12,7 @@ Ce composant supporte:
 - Port TCP: `3333`
 - Payload: 1 caractere ASCII par evenement
 
-Le protocole de commande est strictement identique a l'ancien BLE (meme chars, meme semantique):
+Le protocole de commande WiFi utilise des caractères ASCII simples pour garantir un décodage rapide:
 - `F` / `f` : avancer press / release
 - `B` / `b` : reculer press / release
 - `L` / `l` : gauche press / release

@@ -2,9 +2,11 @@
 
 #include <atomic>
 #include <cstring>
+#include <cstdio>
 
 #include "esp_err.h"
 #include "esp_event.h"
+#include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
@@ -37,7 +39,8 @@ static constexpr const char *WIFI_AP_SSID = "ROBOCAR_CTRL";
 static constexpr const char *WIFI_AP_PASSWORD = "robocar123";
 static constexpr uint8_t WIFI_AP_CHANNEL = 1;
 static constexpr uint8_t WIFI_AP_MAX_CONN = 1;
-static constexpr int CONTROL_TCP_PORT = 3333;
+static constexpr int CONTROL_HTTP_PORT = 3333;
+static constexpr int CONTROL_TCP_PORT = 3334;
 static constexpr int RX_BUFFER_SIZE = 64;
 
 static void recompute_output_from_state() {
@@ -201,6 +204,35 @@ static void init_wifi_softap() {
     ESP_LOGI(TAG, "Wi-Fi AP started: ssid=%s channel=%u", WIFI_AP_SSID, WIFI_AP_CHANNEL);
 }
 
+// Minimal HTTP handler for /cmd?c=X
+static esp_err_t http_cmd_handler(httpd_req_t *req) {
+    char buf[10] = {0};
+    if (httpd_req_get_url_query_len(req) > 0 && httpd_req_get_url_query_len(req) < sizeof(buf)) {
+        httpd_req_get_url_query_str(req, buf, sizeof(buf));
+        const char* p = strstr(buf, "c=");
+        if (p && p[2] != 0) {
+            parse_and_store(reinterpret_cast<const uint8_t*>(&p[2]), 1);
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+            httpd_resp_sendstr(req, "{\"ok\":true}");
+            return ESP_OK;
+        }
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_or_invalid_c\"}");
+    return ESP_OK;
+}
+
+// Minimal HTTP handler for /status
+static esp_err_t http_status_handler(httpd_req_t *req) {
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_sendstr(req, "{\"ok\":true,\"service\":\"robocar_ctrl\"}");
+    return ESP_OK;
+}
+
 void init_wifi_receiver() {
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -220,6 +252,21 @@ void init_wifi_receiver() {
     }
 
     init_wifi_softap();
+    
+    // Start minimal HTTP server on dedicated control API port.
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = CONTROL_HTTP_PORT;
+    httpd_handle_t server = NULL;
+    if (httpd_start(&server, &config) == ESP_OK) {
+        httpd_uri_t cmd_uri = {.uri = "/cmd", .method = HTTP_GET, .handler = http_cmd_handler, .user_ctx = nullptr};
+        httpd_uri_t status_uri = {.uri = "/status", .method = HTTP_GET, .handler = http_status_handler, .user_ctx = nullptr};
+        httpd_register_uri_handler(server, &cmd_uri);
+        httpd_register_uri_handler(server, &status_uri);
+        ESP_LOGI(TAG, "HTTP control API listening on port %d", CONTROL_HTTP_PORT);
+    } else {
+        ESP_LOGE(TAG, "Failed to start HTTP control API on port %d", CONTROL_HTTP_PORT);
+    }
+    
     xTaskCreate(wifi_control_server_task, "wifi_ctrl_srv", 4096, nullptr, 5, nullptr);
     ESP_LOGI(TAG, "Wi-Fi receiver initialized");
 }

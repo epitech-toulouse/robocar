@@ -1,11 +1,14 @@
-# Robocar Control Protocol
+# Robocar WiFi Control Protocol
 
-Ce document décrit le protocole de commande utilise pour communiquer entre l'application mobile et la voiture autonome.
+Ce document décrit le protocole de commande WiFi utilise pour communiquer entre l'application mobile et la voiture autonome via connexion TCP.
 
-## Transport
+## Transport WiFi
 
-- **Type de communication actuel** : Wi-Fi (TCP), envoi de caracteres ASCII.
-- **Compatibilite protocole** : Les commandes sont identiques a l'ancien transport BLE.
+- **Type de communication** : Wi-Fi (TCP), envoi de caracteres ASCII.
+- **Mode** : SoftAP (l'ESP32 crée son propre réseau)
+- **SSID** : `ROBOCAR_CTRL`
+- **Mot de passe** : `robocar123`
+- **Port** : `3333`
 
 ## Format des Commandes (Payload)
 
