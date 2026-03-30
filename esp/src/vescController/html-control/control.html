@@ -417,9 +417,9 @@
         function httpGetWithXhr(url, timeoutMs) {
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
-                xhr.open('GET', url, true);
+                const cacheBust = `${url}${url.includes('?') ? '&' : '?'}_ts=${Date.now()}`;
+                xhr.open('GET', cacheBust, true);
                 xhr.timeout = timeoutMs;
-                xhr.setRequestHeader('Cache-Control', 'no-cache');
 
                 xhr.onload = () => {
                     if (xhr.status >= 200 && xhr.status < 300) {
