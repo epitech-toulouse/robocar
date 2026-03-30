@@ -4,11 +4,10 @@
 #include "hal/uart_types.h"
 #include "esp_err.h"
 #include "esp_log.h"
-#include "rmt_uart.h"
+#include "driver/uart.h"
 
 void init_lidar_uart(void)
 {
-    uart_driver_delete(0);
     uart_driver_delete(1);
     uart_driver_delete(2);
     uart_config_t config = {
@@ -36,22 +35,22 @@ void delete_vesc_lidar_uart(void)
 
 void init_vesc_rmt_uart(void)
 {
-    rmt_uart_config_t config = {
+    // Replaced RMT with standard hardware UART1 for ESP-IDF v5 compatibility
+    uart_config_t config = {
         .baud_rate = VESC_RMT_UART_BAUDRATE,
-        .mode = RMT_UART_MODE_TX_ONLY,
-        .data_bits = RMT_UART_DATA_8_BITS,
-        .parity = RMT_UART_PARITY_DISABLE,
-        .stop_bits = RMT_UART_STOP_BITS_1,
-        .tx_io_num = VESC_RMT_UART_TX,
-        .rx_io_num = 0,
-        .buffer_size = 10000
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
     };
-    ESP_ERROR_CHECK(rmt_uart_init(VESC_RMT_UART_PORT, &config));
-    ESP_LOGI("vesc rmt uart", "Config done.");
+    ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &config));
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, VESC_RMT_UART_TX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, 1024, 0, 0, NULL, 0));
+    ESP_LOGI("vesc rmt uart", "Hardware UART1 configured for VESC (replacing RMT).");
 }
 
 void delete_vesc_rmt_uart(void)
 {
-    ESP_ERROR_CHECK(rmt_uart_deinit(VESC_RMT_UART_PORT));
+    ESP_ERROR_CHECK(uart_driver_delete(UART_NUM_1));
     ESP_LOGI("vesc rmt uart", "Driver deleted.");
 }
