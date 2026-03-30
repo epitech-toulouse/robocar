@@ -43,6 +43,119 @@ static constexpr int CONTROL_HTTP_PORT = 3333;
 static constexpr int CONTROL_TCP_PORT = 3334;
 static constexpr int RX_BUFFER_SIZE = 64;
 
+static const char *INDEX_HTML = R"HTML(
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RoboCar Control</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; margin: 0; padding: 16px; background: #f3f5f8; }
+        .card { max-width: 560px; margin: 0 auto; background: #fff; border-radius: 14px; box-shadow: 0 10px 24px rgba(0,0,0,.12); padding: 16px; }
+        h1 { margin: 0 0 10px 0; font-size: 22px; }
+        .row { display: flex; gap: 10px; margin-bottom: 10px; }
+        button { border: 0; border-radius: 10px; padding: 14px; font-size: 16px; font-weight: 700; }
+        .ok { background: #2e7d32; color: #fff; }
+        .stop { background: #c62828; color: #fff; }
+        .ctl { background: #1976d2; color: #fff; flex: 1; }
+        .log { margin-top: 10px; height: 160px; overflow: auto; background: #10141a; color: #d7e2ee; border-radius: 10px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+        .muted { color: #556; font-size: 13px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>RoboCar Control</h1>
+        <div class="muted">Open from iPhone: http://192.168.4.1:3333</div>
+        <div class="row"><button id="connect" class="ok" style="flex:1">Connect</button><button id="disconnect" style="flex:1">Disconnect</button></div>
+        <div class="row"><button id="f" class="ctl">Forward</button></div>
+        <div class="row"><button id="l" class="ctl">Left</button><button id="r" class="ctl">Right</button></div>
+        <div class="row"><button id="b" class="ctl">Backward</button></div>
+        <div class="row"><button id="s" class="stop" style="flex:1">EMERGENCY STOP</button></div>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let connected = false;
+        const logEl = document.getElementById('log');
+        function log(msg) {
+            const t = new Date().toLocaleTimeString();
+            logEl.innerHTML += '[' + t + '] ' + msg + '<br>';
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        async function api(path) {
+            const r = await fetch(path, { method: 'GET', cache: 'no-store' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+        }
+
+        async function connect() {
+            try {
+                await api('/status');
+                connected = true;
+                log('Connected');
+            } catch (e) {
+                connected = false;
+                log('Connect failed: ' + (e.message || e));
+            }
+        }
+
+        function disconnect() {
+            connected = false;
+            log('Disconnected');
+        }
+
+        async function send(c) {
+            if (!connected) {
+                log('Not connected');
+                return;
+            }
+            try {
+                await api('/cmd?c=' + encodeURIComponent(c));
+                log('Sent ' + c);
+            } catch (e) {
+                log('Send failed: ' + (e.message || e));
+            }
+        }
+
+        function bindHold(id, down, up) {
+            const el = document.getElementById(id);
+            let pressed = false;
+            const p = (e) => { e.preventDefault(); if (pressed) return; pressed = true; send(down); };
+            const r = (e) => { e.preventDefault(); if (!pressed) return; pressed = false; send(up); };
+            el.addEventListener('pointerdown', p);
+            el.addEventListener('pointerup', r);
+            el.addEventListener('pointercancel', r);
+            el.addEventListener('touchstart', p, { passive: false });
+            el.addEventListener('touchend', r, { passive: false });
+            el.addEventListener('touchcancel', r, { passive: false });
+            el.addEventListener('mousedown', p);
+            el.addEventListener('mouseup', r);
+            el.addEventListener('mouseleave', r);
+        }
+
+        document.getElementById('connect').addEventListener('click', connect);
+        document.getElementById('disconnect').addEventListener('click', disconnect);
+        document.getElementById('s').addEventListener('click', () => send('S'));
+        bindHold('f', 'F', 'f');
+        bindHold('l', 'L', 'l');
+        bindHold('r', 'R', 'r');
+        bindHold('b', 'B', 'b');
+        log('Ready');
+    </script>
+</body>
+</html>
+)HTML";
+
+static void set_http_common_headers(httpd_req_t *req) {
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "GET, OPTIONS");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Private-Network", "true");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+}
+
 static void recompute_output_from_state() {
     float duty = 0.0f;
     if (s_forward.load() && !s_backward.load()) {
@@ -213,23 +326,44 @@ static esp_err_t http_cmd_handler(httpd_req_t *req) {
         if (p && p[2] != 0) {
             parse_and_store(reinterpret_cast<const uint8_t*>(&p[2]), 1);
             httpd_resp_set_type(req, "application/json");
-            httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+            set_http_common_headers(req);
             httpd_resp_sendstr(req, "{\"ok\":true}");
             return ESP_OK;
         }
     }
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    set_http_common_headers(req);
     httpd_resp_set_status(req, "400 Bad Request");
     httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_or_invalid_c\"}");
+    return ESP_OK;
+}
+
+static esp_err_t http_cmd_options_handler(httpd_req_t *req) {
+    set_http_common_headers(req);
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_send(req, nullptr, 0);
     return ESP_OK;
 }
 
 // Minimal HTTP handler for /status
 static esp_err_t http_status_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    set_http_common_headers(req);
     httpd_resp_sendstr(req, "{\"ok\":true,\"service\":\"robocar_ctrl\"}");
+    return ESP_OK;
+}
+
+static esp_err_t http_status_options_handler(httpd_req_t *req) {
+    set_http_common_headers(req);
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_send(req, nullptr, 0);
+    return ESP_OK;
+}
+
+static esp_err_t http_root_handler(httpd_req_t *req) {
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    set_http_common_headers(req);
+    httpd_resp_sendstr(req, INDEX_HTML);
     return ESP_OK;
 }
 
@@ -258,10 +392,16 @@ void init_wifi_receiver() {
     config.server_port = CONTROL_HTTP_PORT;
     httpd_handle_t server = NULL;
     if (httpd_start(&server, &config) == ESP_OK) {
+        httpd_uri_t root_uri = {.uri = "/", .method = HTTP_GET, .handler = http_root_handler, .user_ctx = nullptr};
         httpd_uri_t cmd_uri = {.uri = "/cmd", .method = HTTP_GET, .handler = http_cmd_handler, .user_ctx = nullptr};
         httpd_uri_t status_uri = {.uri = "/status", .method = HTTP_GET, .handler = http_status_handler, .user_ctx = nullptr};
+        httpd_uri_t cmd_options_uri = {.uri = "/cmd", .method = HTTP_OPTIONS, .handler = http_cmd_options_handler, .user_ctx = nullptr};
+        httpd_uri_t status_options_uri = {.uri = "/status", .method = HTTP_OPTIONS, .handler = http_status_options_handler, .user_ctx = nullptr};
+        httpd_register_uri_handler(server, &root_uri);
         httpd_register_uri_handler(server, &cmd_uri);
         httpd_register_uri_handler(server, &status_uri);
+        httpd_register_uri_handler(server, &cmd_options_uri);
+        httpd_register_uri_handler(server, &status_options_uri);
         ESP_LOGI(TAG, "HTTP control API listening on port %d", CONTROL_HTTP_PORT);
     } else {
         ESP_LOGE(TAG, "Failed to start HTTP control API on port %d", CONTROL_HTTP_PORT);
