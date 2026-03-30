@@ -196,6 +196,7 @@
             user-select: none;
             -webkit-user-select: none;
             -webkit-touch-callout: none;
+            touch-action: none;
             background: #e0e0e0;
             color: #999;
         }
@@ -234,6 +235,7 @@
             transition: all 0.2s;
             text-transform: uppercase;
             letter-spacing: 1px;
+            touch-action: none;
             box-shadow: 0 4px 12px rgba(255, 59, 48, 0.3);
         }
 
@@ -349,37 +351,13 @@
             </div>
 
             <div class="controls-grid">
-                <button class="control-button arrow-up" id="forwardBtn" 
-                    onmousedown="startCommand('F')" 
-                    ontouchstart="startCommand('F')" 
-                    onmouseup="endCommand('f')" 
-                    ontouchend="endCommand('f')" 
-                    onmouseleave="endCommand('f')" 
-                    disabled>↑ AVANT</button>
+                <button class="control-button arrow-up" id="forwardBtn" disabled>↑ AVANT</button>
 
-                <button class="control-button arrow-left" id="leftBtn" 
-                    onmousedown="startCommand('L')" 
-                    ontouchstart="startCommand('L')" 
-                    onmouseup="endCommand('l')" 
-                    ontouchend="endCommand('l')" 
-                    onmouseleave="endCommand('l')" 
-                    disabled>← GAUCHE</button>
+                <button class="control-button arrow-left" id="leftBtn" disabled>← GAUCHE</button>
 
-                <button class="control-button arrow-right" id="rightBtn" 
-                    onmousedown="startCommand('R')" 
-                    ontouchstart="startCommand('R')" 
-                    onmouseup="endCommand('r')" 
-                    ontouchend="endCommand('r')" 
-                    onmouseleave="endCommand('r')" 
-                    disabled>DROITE →</button>
+                <button class="control-button arrow-right" id="rightBtn" disabled>DROITE →</button>
 
-                <button class="control-button arrow-down" id="backwardBtn" 
-                    onmousedown="startCommand('B')" 
-                    ontouchstart="startCommand('B')" 
-                    onmouseup="endCommand('b')" 
-                    ontouchend="endCommand('b')" 
-                    onmouseleave="endCommand('b')" 
-                    disabled>↓ ARRIÈRE</button>
+                <button class="control-button arrow-down" id="backwardBtn" disabled>↓ ARRIÈRE</button>
             </div>
         </div>
 
@@ -391,7 +369,53 @@
 
     <script>
         const MAX_LOGS = 20;
+        const REQUEST_TIMEOUT_MS = 3500;
         let logs = [];
+
+        function getDefaultBaseUrl() {
+            const isHttpPage = window.location.protocol === 'http:';
+            if (isHttpPage && window.location.hostname) {
+                return `http://${window.location.hostname}${window.location.port ? `:${window.location.port}` : ''}`;
+            }
+            return null;
+        }
+
+        async function httpGetWithTimeout(url) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return await response.text();
+            } finally {
+                clearTimeout(timeout);
+            }
+        }
+
+        function describeNetworkError(error) {
+            const raw = (error && (error.message || String(error))) ? (error.message || String(error)) : 'Erreur inconnue';
+
+            if (raw.includes('aborted')) {
+                return 'Timeout reseau: verifie que le telephone est bien connecte au WiFi ROBOCAR_CTRL';
+            }
+
+            if (raw.includes('Failed to fetch') || raw.includes('NetworkError')) {
+                if (window.location.protocol === 'https:') {
+                    return 'Safari bloque HTTP depuis une page HTTPS. Ouvre la page en HTTP local (pas en HTTPS).';
+                }
+                return 'Reseau inaccessible. Sur iPhone: rester sur le WiFi ROBOCAR_CTRL et desactiver temporairement Donnees cellulaires/Wi-Fi Assist.';
+            }
+
+            return raw;
+        }
 
         function addLog(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString('fr-FR');
@@ -431,7 +455,7 @@
             }
         }
 
-        function connectWebSocket() {
+        async function connectWebSocket() {
             const ip = document.getElementById('ipInput').value;
             const port = document.getElementById('portInput').value;
 
@@ -442,28 +466,14 @@
 
             try {
                 const baseUrl = `http://${ip}:${port}`;
-                addLog(`Tentative de connexion à ${baseUrl}...`, 'info');
-                
-                // Test de connexion avec un simple GET /status
-                fetch(`${baseUrl}/status`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}`);
-                        }
-                        return response.text();
-                    })
-                    .then(data => {
-                        addLog('✓ Connecté au RoboCar', 'success');
-                        updateStatus(true);
-                        // Stocker l'URL pour les commandes
-                        window.carControlUrl = baseUrl;
-                    })
-                    .catch(error => {
-                        addLog(`Erreur de connexion: ${error}`, 'error');
-                        updateStatus(false);
-                    });
+                addLog(`Tentative de connexion a ${baseUrl}...`, 'info');
+
+                await httpGetWithTimeout(`${baseUrl}/status`);
+                addLog('Connecte au RoboCar', 'success');
+                updateStatus(true);
+                window.carControlUrl = baseUrl;
             } catch (error) {
-                addLog(`Erreur: ${error.message}`, 'error');
+                addLog(`Erreur de connexion: ${describeNetworkError(error)}`, 'error');
                 updateStatus(false);
             }
         }
@@ -474,28 +484,17 @@
             addLog('Déconnecté', 'info');
         }
 
-        function sendCommand(cmd) {
+        async function sendCommand(cmd) {
             if (!window.carControlUrl) {
                 addLog('Erreur: Non connecté', 'error');
                 return;
             }
 
             try {
-                fetch(`${window.carControlUrl}/cmd?c=${cmd}`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}`);
-                        }
-                        return response.text();
-                    })
-                    .then(data => {
-                        addLog(`Envoyé: ${cmd}`, 'success');
-                    })
-                    .catch(error => {
-                        addLog(`Erreur d'envoi: ${error.message}`, 'error');
-                    });
+                await httpGetWithTimeout(`${window.carControlUrl}/cmd?c=${cmd}`);
+                addLog(`Envoye: ${cmd}`, 'success');
             } catch (error) {
-                addLog(`Erreur d'envoi: ${error.message}`, 'error');
+                addLog(`Erreur d'envoi: ${describeNetworkError(error)}`, 'error');
             }
         }
 
@@ -507,7 +506,32 @@
             sendCommand(cmd);
         }
 
-        // Prévenir le scroll par défaut
+        function bindDirectionalButton(id, pressCmd, releaseCmd) {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+
+            btn.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                startCommand(pressCmd);
+            });
+
+            btn.addEventListener('pointerup', (e) => {
+                e.preventDefault();
+                endCommand(releaseCmd);
+            });
+
+            btn.addEventListener('pointercancel', (e) => {
+                e.preventDefault();
+                endCommand(releaseCmd);
+            });
+
+            btn.addEventListener('lostpointercapture', (e) => {
+                e.preventDefault();
+                endCommand(releaseCmd);
+            });
+        }
+
+        // Prevenir le scroll par defaut
         document.addEventListener('touchmove', (e) => {
             if (e.target.closest('.control-button, .emergency-btn')) {
                 e.preventDefault();
@@ -515,8 +539,23 @@
         }, { passive: false });
 
         // Initialize
+        const pageDefaultUrl = getDefaultBaseUrl();
+        if (pageDefaultUrl) {
+            const parsed = new URL(pageDefaultUrl);
+            document.getElementById('ipInput').value = parsed.hostname;
+            document.getElementById('portInput').value = parsed.port || '3333';
+        }
+
+        bindDirectionalButton('forwardBtn', 'F', 'f');
+        bindDirectionalButton('leftBtn', 'L', 'l');
+        bindDirectionalButton('rightBtn', 'R', 'r');
+        bindDirectionalButton('backwardBtn', 'B', 'b');
+
         updateStatus(false);
         addLog('RoboCar Control Interface prête', 'success');
+        if (window.location.protocol === 'https:') {
+            addLog('Attention: page HTTPS detectee. Safari iPhone peut bloquer les appels HTTP vers l\'ESP32.', 'error');
+        }
         document.getElementById('instructions').style.display = 'block';
     </script>
 </body>
