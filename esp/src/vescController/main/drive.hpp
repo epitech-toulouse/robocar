@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lidarReader.hpp"
+#include "usb_gps.hpp"
 
 // LiDAR-only driving parameters.
 constexpr float FRONT_WINDOW_DEG = 45.0f;
@@ -25,8 +26,8 @@ constexpr bool AUTO_STEER_REVERSED = true;
 
 // FTG Parameters
 constexpr float FTG_MAX_RANGE_M = 3.0f; 
-constexpr float FTG_CAR_WIDTH_M = 0.50f; 
-constexpr float FTG_DISPARITY_THRESHOLD_M = 0.15f; 
+constexpr float FTG_CAR_WIDTH_M = 0.45f; // reduced from 0.55 to prevent gap closing on narrow routes
+constexpr float FTG_DISPARITY_THRESHOLD_M = 0.3f; 
 constexpr float FTG_STEER_GAIN = 1.5f;
 
 constexpr uint32_t REVERSE_DURATION_MS = 800;
@@ -40,10 +41,20 @@ class AutonomousDriver {
 public:
     AutonomousDriver() = default;
 
+    void set_target_goal(bool active, float lat, float lon) {
+        goal_active = active;
+        target_lat = lat;
+        target_lon = lon;
+    }
+
     // Computes the next driving commands based on lidar scan.
-    DriveCommands compute_commands(const std::vector<LidarPoint>& scan);
+    DriveCommands compute_commands(const std::vector<LidarPoint>& scan, const GPSPoint& gps);
 
 private:
     TickType_t reverseUntil = 0;
     float reverseSteer = STEER_CENTER;
+    
+    bool goal_active = false;
+    float target_lat = 0.0f;
+    float target_lon = 0.0f;
 };

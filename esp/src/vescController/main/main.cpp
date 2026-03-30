@@ -18,6 +18,7 @@
 #include "vescLidarUart.h"
 
 #include "drive.hpp"
+#include "usb_gps.hpp"
 
 #include "esp_log.h"
 
@@ -43,6 +44,10 @@ void vesc_control_task(void *pvParameters) {
     // LD19 sends data from its TX line into ESP RX. We do not need ESP TX for LD19.
     LidarReader lidar;
     AutonomousDriver driver;
+    
+    // Uncomment and set your GPS coordinates to enable Waypoint Navigation!
+    // driver.set_target_goal(true, 48.8566f, 2.3522f); 
+
     bool lidarEnabled = (lidar.start() == ESP_OK);
     TickType_t lidarNoDataSince = 0;
     TickType_t lastLidarLog = 0;
@@ -113,7 +118,8 @@ void vesc_control_task(void *pvParameters) {
             continue;
         }
 
-        DriveCommands cmds = driver.compute_commands(lastScan);
+        GPSPoint current_gps = get_latest_gps();
+        DriveCommands cmds = driver.compute_commands(lastScan, current_gps);
         vesc.setSteering(cmds.steer);
         vesc.setDuty(cmds.duty);
     }
@@ -121,6 +127,7 @@ void vesc_control_task(void *pvParameters) {
 
 extern "C" void app_main(void) {
     printf("Starting VESC Controller on ESP32-S3...\n");
+    init_usb_gps();
     init_bluetooth_receiver();
     init_lidar_uart();
     init_vesc_rmt_uart();

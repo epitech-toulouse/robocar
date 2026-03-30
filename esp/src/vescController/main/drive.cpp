@@ -54,7 +54,7 @@ static float normalize_angle_rad(float angleDeg) {
     return angleDeg * (float)M_PI / 180.0f; // positive for left
 }
 
-static void compute_ftg_steer_speed(const std::vector<LidarPoint>& scan, float& out_steer, float& out_speed) {
+static void compute_ftg_steer_speed(const std::vector<LidarPoint>& scan, float& out_steer, float& out_speed, bool use_goal, float relative_goal_angle) {
     std::vector<PolarPoint> fov_scan;
     fov_scan.reserve(scan.size());
 
@@ -124,46 +124,61 @@ static void compute_ftg_steer_speed(const std::vector<LidarPoint>& scan, float& 
         }
     }
     
-    // Find the LARGEST continuous gap of points that are close to max_d
-    int largest_gap_start = -1;
-    int largest_gap_end = -1;
+    // Find all gaps of points that are close to max_d
+    struct Gap { int start; int end; int len; };
+    std::vector<Gap> gaps;
     int current_gap_start = -1;
 
     for (int i = 0; i < (int)fov_scan.size(); ++i) {
-        if (processed_dists[i] >= max_d - 0.05f) {
-            if (current_gap_start == -1) {
-                current_gap_start = i;
-            }
+        if (processed_dists[i] >= max_d - 0.1f) {
+            if (current_gap_start == -1) current_gap_start = i;
         } else {
             if (current_gap_start != -1) {
-                int current_gap_len = i - current_gap_start;
-                int largest_gap_len = (largest_gap_start != -1) ? (largest_gap_end - largest_gap_start + 1) : 0;
-                
-                if (current_gap_len > largest_gap_len) {
-                    largest_gap_start = current_gap_start;
-                    largest_gap_end = i - 1;
-                }
+                gaps.push_back({current_gap_start, i - 1, i - current_gap_start});
                 current_gap_start = -1;
             }
         }
     }
-    // Handle gap at the end of the array
     if (current_gap_start != -1) {
-        int current_gap_len = (int)fov_scan.size() - current_gap_start;
-        int largest_gap_len = (largest_gap_start != -1) ? (largest_gap_end - largest_gap_start + 1) : 0;
-        if (current_gap_len > largest_gap_len) {
-            largest_gap_start = current_gap_start;
-            largest_gap_end = (int)fov_scan.size() - 1;
+        gaps.push_back({current_gap_start, (int)fov_scan.size() - 1, (int)fov_scan.size() - current_gap_start});
+    }
+
+    if (gaps.empty()) {
+        gaps.push_back({0, 0, 1}); // Fallback
+    }
+
+    // Identify max gap length to filter out tiny openings
+    int max_len = 0;
+    for (const auto& g : gaps) {
+        if (g.len > max_len) max_len = g.len;
+    }
+
+    Gap best_gap = gaps[0];
+    float min_cost = 999999.0f;
+
+    for (const auto& g : gaps) {
+        if (g.len >= (int)(max_len * 0.4f)) { // Only consider gaps that are at least 40% as wide as the widest gap
+            size_t center_idx = (g.start + g.end) / 2;
+            float angle = fov_scan[center_idx].angle_rad;
+            
+            float cost = 0.0f;
+            if (use_goal) {
+                float target_rad = relative_goal_angle * M_PI / 180.0f;
+                cost = std::abs(angle - target_rad); // Penalize gaps pointing away from GPS Goal
+            } else {
+                cost = std::abs(angle); // Default: penalize gaps far from the front center
+            }
+            
+            cost -= (g.len * 0.005f); // slight reward for wider gaps
+            
+            if (cost < min_cost) {
+                min_cost = cost;
+                best_gap = g;
+            }
         }
     }
 
-    if (largest_gap_start == -1) {
-        // Fallback (shouldn't happen since max_d exists)
-        largest_gap_start = 0;
-        largest_gap_end = 0;
-    }
-
-    size_t center_idx = (largest_gap_start + largest_gap_end) / 2;
+    size_t center_idx = (best_gap.start + best_gap.end) / 2;
     float best_angle = fov_scan[center_idx].angle_rad;
 
     // Compute Steer & Speed
@@ -179,9 +194,23 @@ static void compute_ftg_steer_speed(const std::vector<LidarPoint>& scan, float& 
     out_speed = SPEED_SLOW + (SPEED_FORWARD - SPEED_SLOW) * dist_factor * angle_penalty;
 }
 
-DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& scan) {
+DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& scan, const GPSPoint& gps) {
     if (scan.empty()) {
         return {STEER_CENTER, 0.0f};
+    }
+
+    bool use_goal = false;
+    float relative_goal_angle = 0.0f;
+
+    if (goal_active && gps.has_fix) {
+        float dist = distance_haversine_m(gps.lat, gps.lon, target_lat, target_lon);
+        if (dist < 10.0f) {
+            std::cout << "[GPS] Goal reached! Distance: " << dist << "m" << std::endl;
+            return {STEER_CENTER, 0.0f}; // Stop
+        }
+        float bearing = initial_bearing_deg(gps.lat, gps.lon, target_lat, target_lon);
+        relative_goal_angle = wrap_180(bearing - gps.heading);
+        use_goal = true;
     }
 
     // Clean scan directly to avoid bugs with `-1` representing objects touching the LiDAR,
@@ -223,7 +252,7 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     float speed = SPEED_FORWARD;
     
     // Compute steer and speed using Disparity Extender FTG
-    compute_ftg_steer_speed(clean_scan, steer, speed);
+    compute_ftg_steer_speed(clean_scan, steer, speed, use_goal, relative_goal_angle);
     steer = map_auto_steer(steer);
 
     // Emergency stop override if something is completely blocked right in front
@@ -231,10 +260,14 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
         speed = 0.0f;
     }
 
-    std::cout << "FTG Steer=" << steer
-              << " Speed=" << speed
-              << " front=" << frontNear
-              << "m pts=" << clean_scan.size() << std::endl;
+    if (use_goal) {
+        std::cout << "GPS Steer=" << steer << " RelAng=" << relative_goal_angle << " deg" << std::endl;
+    } else {
+        std::cout << "FTG Steer=" << steer
+                  << " Speed=" << speed
+                  << " front=" << frontNear
+                  << "m pts=" << clean_scan.size() << std::endl;
+    }
 
     return {steer, speed};
 }

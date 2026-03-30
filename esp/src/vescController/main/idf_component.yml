@@ -1,0 +1,5 @@
+dependencies:
+  espressif/usb_host_cdc_acm: "*"
+  espressif/usb_host_ch34x_vcp: "*"
+  espressif/usb_host_cp210x_vcp: "*"
+  espressif/usb_host_ftdi_vcp: "*"
