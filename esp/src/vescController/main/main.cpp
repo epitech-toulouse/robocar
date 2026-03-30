@@ -58,6 +58,8 @@ void vesc_control_task(void *pvParameters) {
 
     vesc.setDuty(0.0f);
     vesc.setSteering(STEER_CENTER);
+    gpio_set_direction(COUPE_CIRCUIT_GND_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(COUPE_CIRCUIT_GND_PIN, 0);
     gpio_set_direction(COUPE_CIRCUIT_PIN, GPIO_MODE_INPUT);
     gpio_set_pull_mode(COUPE_CIRCUIT_PIN, GPIO_PULLUP_ONLY);
     gpio_set_intr_type(COUPE_CIRCUIT_PIN, GPIO_INTR_ANYEDGE);

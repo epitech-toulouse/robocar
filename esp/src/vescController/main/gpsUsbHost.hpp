@@ -34,7 +34,6 @@ private:
 
     static constexpr int EXAMPLE_USB_HOST_PRIORITY = 20;
     static constexpr int MAX_CDC_DEVICES = 5;
-    static constexpr uint32_t GPS_BAUD_RATE = 460800;
 
     static void usbLibTask(void *arg);
     static void appTask(void *arg);

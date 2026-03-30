@@ -27,8 +27,11 @@ static gpio_num_t const CAMERA_UART_RX = GPIO_NUM_18;
 static uart_port_t const GPS_UART_PORT = UART_NUM_0;
 static gpio_num_t const GPS_UART_TX = GPIO_NUM_43;
 static gpio_num_t const GPS_UART_RX = GPIO_NUM_44;
+static uint32_t const GPS_UART_BAUDRATE = 460800;
 
 /* COUPE CIRCUIT */
-static gpio_num_t const COUPE_CIRCUIT_PIN = GPIO_NUM_19;
+// GPIO21/GPIO22 are adjacent and free in this project.
+static gpio_num_t const COUPE_CIRCUIT_PIN = GPIO_NUM_20;
+static gpio_num_t const COUPE_CIRCUIT_GND_PIN = GPIO_NUM_21;
 
 #endif /* CONFIG_H */

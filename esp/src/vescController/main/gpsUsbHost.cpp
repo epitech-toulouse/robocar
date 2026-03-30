@@ -9,6 +9,7 @@
 
 #include "esp_log.h"
 #include "esp_intr_alloc.h"
+#include "config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -367,13 +368,13 @@ void UsbGpsHost::configureGpsUsb(int slot) {
 
     cdc_acm_dev_hdl_t cdcDev = cdcDevices[slot];
 
-    ESP_LOGI(TAG, "Configuring GPS baudrate to %" PRIu32, GPS_BAUD_RATE);
+    ESP_LOGI(TAG, "Configuring GPS baudrate to %" PRIu32, GPS_UART_BAUDRATE);
 
     cdc_acm_host_set_control_line_state(cdcDev, true, true);
     vTaskDelay(pdMS_TO_TICKS(100));
 
     cdc_acm_line_coding_t lineCoding = {
-        .dwDTERate = GPS_BAUD_RATE,
+        .dwDTERate = GPS_UART_BAUDRATE,
         .bCharFormat = 0,
         .bParityType = 0,
         .bDataBits = 8,
@@ -381,7 +382,7 @@ void UsbGpsHost::configureGpsUsb(int slot) {
 
     esp_err_t err = cdc_acm_host_line_coding_get(cdcDev, &lineCoding);
     if (err == ESP_OK) {
-        lineCoding.dwDTERate = GPS_BAUD_RATE;
+        lineCoding.dwDTERate = GPS_UART_BAUDRATE;
         lineCoding.bDataBits = 8;
         lineCoding.bParityType = 0;
         lineCoding.bCharFormat = 0;
