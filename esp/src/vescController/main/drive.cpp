@@ -167,7 +167,7 @@ static void compute_ftg_steer_speed(const std::vector<LidarPoint>& scan, float& 
     float best_angle = fov_scan[center_idx].angle_rad;
 
     // Compute Steer & Speed
-    float steer_val = best_angle / FTG_FOV_RAD;  // -1 to 1 (left to right)
+    float steer_val = (best_angle * FTG_STEER_GAIN) / FTG_FOV_RAD;  // -1 to 1 (left to right)
     
     // Map it to [STEER_LEFT, STEER_RIGHT]
     out_steer = STEER_CENTER + steer_val * (STEER_LEFT - STEER_CENTER);
