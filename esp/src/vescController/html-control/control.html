@@ -372,6 +372,9 @@
         const REQUEST_TIMEOUT_MS = 3500;
         let logs = [];
 
+        // Detect iOS Safari
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
         function getDefaultBaseUrl() {
             const isHttpPage = window.location.protocol === 'http:';
             if (isHttpPage && window.location.hostname) {
@@ -380,40 +383,7 @@
             return null;
         }
 
-        async function httpGetWithTimeout(url) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-            try {
-                const response = await fetch(url, {
-                    method: 'GET',
-                    mode: 'cors',
-                    cache: 'no-store',
-                    signal: controller.signal
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                return await response.text();
-            } catch (error) {
-                const raw = (error && (error.message || String(error))) ? (error.message || String(error)) : '';
-                const rawLower = raw.toLowerCase();
-                const isLikelySafariNetworkFailure =
-                    rawLower.includes('load failed') ||
-                    rawLower.includes('failed to fetch') ||
-                    rawLower.includes('networkerror');
-
-                if (!isLikelySafariNetworkFailure) {
-                    throw error;
-                }
-
-                // Fallback for iPhone Safari where fetch can fail while direct URL still works.
-                return await httpGetWithXhr(url, REQUEST_TIMEOUT_MS);
-            } finally {
-                clearTimeout(timeout);
-            }
-        }
-
+        // XHR-based GET — always used on iOS, fallback elsewhere
         function httpGetWithXhr(url, timeoutMs) {
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
@@ -435,12 +405,51 @@
             });
         }
 
+        // On iOS: skip fetch entirely — XHR avoids Private Network Access blocks
+        // On other browsers: try fetch first, fall back to XHR
+        async function httpGetWithTimeout(url) {
+            if (isIOS) {
+                return await httpGetWithXhr(url, REQUEST_TIMEOUT_MS);
+            }
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return await response.text();
+            } catch (error) {
+                const raw = (error && (error.message || String(error))) ? (error.message || String(error)) : '';
+                const rawLower = raw.toLowerCase();
+                const isNetworkFailure =
+                    rawLower.includes('load failed') ||
+                    rawLower.includes('failed to fetch') ||
+                    rawLower.includes('networkerror');
+
+                if (!isNetworkFailure) {
+                    throw error;
+                }
+
+                return await httpGetWithXhr(url, REQUEST_TIMEOUT_MS);
+            } finally {
+                clearTimeout(timeout);
+            }
+        }
+
         function describeNetworkError(error) {
             const raw = (error && (error.message || String(error))) ? (error.message || String(error)) : 'Erreur inconnue';
             const rawLower = raw.toLowerCase();
 
-            if (rawLower.includes('aborted')) {
-                return 'Timeout reseau: verifie que le telephone est bien connecte au WiFi ROBOCAR_CTRL';
+            if (rawLower.includes('aborted') || rawLower.includes('timeout')) {
+                return 'Timeout réseau: vérifie que le téléphone est bien connecté au WiFi ROBOCAR_CTRL';
             }
 
             if (
@@ -449,9 +458,9 @@
                 rawLower.includes('load failed')
             ) {
                 if (window.location.protocol === 'https:') {
-                    return 'Safari bloque HTTP depuis une page HTTPS. Ouvre la page en HTTP local (pas en HTTPS).';
+                    return 'Safari bloque HTTP depuis une page HTTPS. Ouvre la page en HTTP (pas en HTTPS).';
                 }
-                return 'Reseau inaccessible. Sur iPhone: rester sur le WiFi ROBOCAR_CTRL et desactiver temporairement Donnees cellulaires/Wi-Fi Assist.';
+                return 'Réseau inaccessible. Vérifie que tu es bien connecté au WiFi ROBOCAR_CTRL et que les données cellulaires / Wi-Fi Assist sont désactivées.';
             }
 
             return raw;
@@ -506,10 +515,11 @@
 
             try {
                 const baseUrl = `http://${ip}:${port}`;
-                addLog(`Tentative de connexion a ${baseUrl}...`, 'info');
+                addLog(`Tentative de connexion à ${baseUrl}...`, 'info');
+                if (isIOS) addLog('Mode iOS détecté → XHR direct activé', 'info');
 
                 await httpGetWithTimeout(`${baseUrl}/status`);
-                addLog('Connecte au RoboCar', 'success');
+                addLog('Connecté au RoboCar ✓', 'success');
                 updateStatus(true);
                 window.carControlUrl = baseUrl;
             } catch (error) {
@@ -532,7 +542,7 @@
 
             try {
                 await httpGetWithTimeout(`${window.carControlUrl}/cmd?c=${cmd}`);
-                addLog(`Envoye: ${cmd}`, 'success');
+                addLog(`Envoyé: ${cmd}`, 'success');
             } catch (error) {
                 addLog(`Erreur d'envoi: ${describeNetworkError(error)}`, 'error');
             }
@@ -566,49 +576,22 @@
                 endCommand(releaseCmd);
             };
 
-            btn.addEventListener('pointerdown', (e) => {
-                press(e);
-            });
+            btn.addEventListener('pointerdown', (e) => { press(e); });
+            btn.addEventListener('pointerup', (e) => { release(e); });
+            btn.addEventListener('pointercancel', (e) => { release(e); });
+            btn.addEventListener('lostpointercapture', (e) => { release(e); });
 
-            btn.addEventListener('pointerup', (e) => {
-                release(e);
-            });
+            // iOS Safari fallback
+            btn.addEventListener('touchstart', (e) => { press(e); }, { passive: false });
+            btn.addEventListener('touchend', (e) => { release(e); }, { passive: false });
+            btn.addEventListener('touchcancel', (e) => { release(e); }, { passive: false });
 
-            btn.addEventListener('pointercancel', (e) => {
-                release(e);
-            });
-
-            btn.addEventListener('lostpointercapture', (e) => {
-                release(e);
-            });
-
-            // iOS Safari fallback when Pointer Events behave inconsistently.
-            btn.addEventListener('touchstart', (e) => {
-                press(e);
-            }, { passive: false });
-
-            btn.addEventListener('touchend', (e) => {
-                release(e);
-            }, { passive: false });
-
-            btn.addEventListener('touchcancel', (e) => {
-                release(e);
-            }, { passive: false });
-
-            btn.addEventListener('mousedown', (e) => {
-                press(e);
-            });
-
-            btn.addEventListener('mouseup', (e) => {
-                release(e);
-            });
-
-            btn.addEventListener('mouseleave', (e) => {
-                release(e);
-            });
+            btn.addEventListener('mousedown', (e) => { press(e); });
+            btn.addEventListener('mouseup', (e) => { release(e); });
+            btn.addEventListener('mouseleave', (e) => { release(e); });
         }
 
-        // Prevenir le scroll par defaut
+        // Prevent scroll on control buttons
         document.addEventListener('touchmove', (e) => {
             if (e.target.closest('.control-button, .emergency-btn')) {
                 e.preventDefault();
@@ -630,8 +613,11 @@
 
         updateStatus(false);
         addLog('RoboCar Control Interface prête', 'success');
+        if (isIOS) {
+            addLog('iPhone/iPad détecté → mode XHR activé pour compatibilité Safari', 'info');
+        }
         if (window.location.protocol === 'https:') {
-            addLog('Attention: page HTTPS detectee. Safari iPhone peut bloquer les appels HTTP vers l\'ESP32.', 'error');
+            addLog('⚠️ Page HTTPS détectée — Safari bloquera les appels HTTP. Utilise HTTP.', 'error');
         }
         document.getElementById('instructions').style.display = 'block';
     </script>
