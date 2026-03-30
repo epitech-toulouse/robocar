@@ -6,8 +6,8 @@
 #include "lidarReader.hpp"
 
 // LiDAR-only driving parameters.
-constexpr float FRONT_WINDOW_DEG = 25.0f;
-constexpr float SIDE_WINDOW_MIN_DEG = 25.0f;
+constexpr float FRONT_WINDOW_DEG = 45.0f;
+constexpr float SIDE_WINDOW_MIN_DEG = 45.0f;
 constexpr float SIDE_WINDOW_MAX_DEG = 80.0f;
 
 constexpr float STOP_DISTANCE_M = 0.40f;
@@ -25,8 +25,9 @@ constexpr bool AUTO_STEER_REVERSED = true;
 
 // FTG Parameters
 constexpr float FTG_MAX_RANGE_M = 3.0f; 
-constexpr float FTG_CAR_WIDTH_M = 0.45f; // reduced from 0.55 to prevent gap closing on narrow routes
-constexpr float FTG_DISPARITY_THRESHOLD_M = 0.3f; 
+constexpr float FTG_CAR_WIDTH_M = 0.50f; 
+constexpr float FTG_DISPARITY_THRESHOLD_M = 0.15f; 
+constexpr float FTG_STEER_GAIN = 1.5f;
 
 constexpr uint32_t REVERSE_DURATION_MS = 800;
 
