@@ -395,19 +395,59 @@
                     throw new Error(`HTTP ${response.status}`);
                 }
                 return await response.text();
+            } catch (error) {
+                const raw = (error && (error.message || String(error))) ? (error.message || String(error)) : '';
+                const rawLower = raw.toLowerCase();
+                const isLikelySafariNetworkFailure =
+                    rawLower.includes('load failed') ||
+                    rawLower.includes('failed to fetch') ||
+                    rawLower.includes('networkerror');
+
+                if (!isLikelySafariNetworkFailure) {
+                    throw error;
+                }
+
+                // Fallback for iPhone Safari where fetch can fail while direct URL still works.
+                return await httpGetWithXhr(url, REQUEST_TIMEOUT_MS);
             } finally {
                 clearTimeout(timeout);
             }
         }
 
+        function httpGetWithXhr(url, timeoutMs) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', url, true);
+                xhr.timeout = timeoutMs;
+                xhr.setRequestHeader('Cache-Control', 'no-cache');
+
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(xhr.responseText || '');
+                    } else {
+                        reject(new Error(`HTTP ${xhr.status}`));
+                    }
+                };
+
+                xhr.onerror = () => reject(new Error('XHR NetworkError'));
+                xhr.ontimeout = () => reject(new Error('XHR timeout'));
+                xhr.send();
+            });
+        }
+
         function describeNetworkError(error) {
             const raw = (error && (error.message || String(error))) ? (error.message || String(error)) : 'Erreur inconnue';
+            const rawLower = raw.toLowerCase();
 
-            if (raw.includes('aborted')) {
+            if (rawLower.includes('aborted')) {
                 return 'Timeout reseau: verifie que le telephone est bien connecte au WiFi ROBOCAR_CTRL';
             }
 
-            if (raw.includes('Failed to fetch') || raw.includes('NetworkError')) {
+            if (
+                rawLower.includes('failed to fetch') ||
+                rawLower.includes('networkerror') ||
+                rawLower.includes('load failed')
+            ) {
                 if (window.location.protocol === 'https:') {
                     return 'Safari bloque HTTP depuis une page HTTPS. Ouvre la page en HTTP local (pas en HTTPS).';
                 }
@@ -510,24 +550,61 @@
             const btn = document.getElementById(id);
             if (!btn) return;
 
-            btn.addEventListener('pointerdown', (e) => {
+            let pressed = false;
+
+            const press = (e) => {
                 e.preventDefault();
+                if (pressed) return;
+                pressed = true;
                 startCommand(pressCmd);
+            };
+
+            const release = (e) => {
+                e.preventDefault();
+                if (!pressed) return;
+                pressed = false;
+                endCommand(releaseCmd);
+            };
+
+            btn.addEventListener('pointerdown', (e) => {
+                press(e);
             });
 
             btn.addEventListener('pointerup', (e) => {
-                e.preventDefault();
-                endCommand(releaseCmd);
+                release(e);
             });
 
             btn.addEventListener('pointercancel', (e) => {
-                e.preventDefault();
-                endCommand(releaseCmd);
+                release(e);
             });
 
             btn.addEventListener('lostpointercapture', (e) => {
-                e.preventDefault();
-                endCommand(releaseCmd);
+                release(e);
+            });
+
+            // iOS Safari fallback when Pointer Events behave inconsistently.
+            btn.addEventListener('touchstart', (e) => {
+                press(e);
+            }, { passive: false });
+
+            btn.addEventListener('touchend', (e) => {
+                release(e);
+            }, { passive: false });
+
+            btn.addEventListener('touchcancel', (e) => {
+                release(e);
+            }, { passive: false });
+
+            btn.addEventListener('mousedown', (e) => {
+                press(e);
+            });
+
+            btn.addEventListener('mouseup', (e) => {
+                release(e);
+            });
+
+            btn.addEventListener('mouseleave', (e) => {
+                release(e);
             });
         }
 
