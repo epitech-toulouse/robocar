@@ -32,12 +32,15 @@ static const char *TAG = "USB_GPS";
 static cdc_acm_dev_hdl_t cdc_devices[MAX_CDC_DEVICES] = {0};
 
 static QueueHandle_t app_queue;
-typedef struct {
-  enum {
+
+enum app_msg_id_t {
     APP_QUIT,
     APP_DEVICE_CONNECTED,
     APP_DEVICE_DISCONNECTED,
-  } id;
+};
+
+typedef struct {
+  enum app_msg_id_t id;
   union {
     struct {
       uint16_t vid;
@@ -157,12 +160,15 @@ static void parse_nmea(char *line) {
         latest_gps_state.lat = lat;
         latest_gps_state.lon = lon;
         latest_gps_state.has_fix = true;
+        printf("\r[ USB GPS ] ✅ Fix OK | Sats: %d | Lat: %.6f | Lon: %.6f | Alt: %.1fm \n", sats, lat, lon, alt);
       } else {
         latest_gps_state.has_fix = false;
+        printf("\r[ USB GPS ] ⏳ Fix Pending... | Sats visible: %d                    ", sats);
       }
     } else if (count >= 8) {
       latest_gps_state.sats = atoi(tokens[7]);
       latest_gps_state.has_fix = false;
+      printf("\r[ USB GPS ] ⏳ Searching Sats... | Sats visible: %d                    ", latest_gps_state.sats);
     }
   } 
   else if (strncmp(tokens[0], "$GNRMC", 6) == 0 || strncmp(tokens[0], "$GPRMC", 6) == 0) {
@@ -224,10 +230,9 @@ static void handle_event(const cdc_acm_host_dev_event_data_t *event, void *user_
     break;
   case CDC_ACM_HOST_DEVICE_DISCONNECTED:
     if (app_queue) {
-      app_message_t msg = {
-          .id = APP_DEVICE_DISCONNECTED,
-          .data = { .device_slot = (int)(intptr_t)user_ctx }
-      };
+  app_message_t msg = {};
+      msg.id = APP_DEVICE_DISCONNECTED;
+      msg.data.device_slot = (int)(intptr_t)user_ctx;
       xQueueSend(app_queue, &msg, 0);
     } else {
       cdc_acm_host_close(event->data.cdc_hdl);
@@ -242,11 +247,13 @@ static void new_dev_cb(usb_device_handle_t usb_dev) {
   const usb_device_desc_t *device_desc;
   if (usb_host_get_device_descriptor(usb_dev, &device_desc) != ESP_OK) return;
 
+  ESP_LOGI(TAG, "USB Device Plugged In! VID=0x%04X PID=0x%04X", device_desc->idVendor, device_desc->idProduct);
+
   if (app_queue) {
-    app_message_t msg = {
-        .id = APP_DEVICE_CONNECTED,
-        .data = { .new_dev = { .vid = device_desc->idVendor, .pid = device_desc->idProduct } }
-    };
+  app_message_t msg = {};
+    msg.id = APP_DEVICE_CONNECTED;
+    msg.data.new_dev.vid = device_desc->idVendor;
+    msg.data.new_dev.pid = device_desc->idProduct;
     xQueueSend(app_queue, &msg, 0);
   }
 }
@@ -278,6 +285,7 @@ static void free_all_cdc_devices(void) {
 
 static void configure_gps_usb(int slot) {
   cdc_acm_dev_hdl_t cdc_dev = cdc_devices[slot];
+  ESP_LOGI(TAG, "Applying GPS Baudrate...");
   cdc_acm_host_set_control_line_state(cdc_dev, true, true);
   vTaskDelay(pdMS_TO_TICKS(100));
 
@@ -302,17 +310,18 @@ static void configure_gps_usb(int slot) {
 // ----------------------------------------------------------------------------
 
 static void usb_lib_task(void *arg) {
-  const usb_host_config_t host_config = { .skip_phy_setup = false, .intr_flags = ESP_INTR_FLAG_LOWMED };
+  usb_host_config_t host_config = {};
+  host_config.skip_phy_setup = false;
+  host_config.intr_flags = ESP_INTR_FLAG_LOWMED;
   ESP_ERROR_CHECK(usb_host_install(&host_config));
 
-  const cdc_acm_host_driver_config_t driver_config = {
-      .driver_task_stack_size = 4096,
-      .driver_task_priority = EXAMPLE_USB_HOST_PRIORITY + 1,
-      .xCoreID = 0,
-      .new_dev_cb = new_dev_cb,
-  };
+  cdc_acm_host_driver_config_t driver_config = {};
+  driver_config.driver_task_stack_size = 4096;
+  driver_config.driver_task_priority = EXAMPLE_USB_HOST_PRIORITY + 1;
+  driver_config.xCoreID = 0;
+  driver_config.new_dev_cb = new_dev_cb;
   ESP_ERROR_CHECK(cdc_acm_host_install(&driver_config));
-  xTaskNotifyGive(arg);
+  xTaskNotifyGive((TaskHandle_t)arg);
 
   bool has_clients = true;
   while (1) {
@@ -340,14 +349,13 @@ static void gps_usb_manager_task(void *arg) {
   assert(task_created == pdTRUE);
   ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-  cdc_acm_host_device_config_t dev_config = {
-      .connection_timeout_ms = 0,
-      .out_buffer_size = 512,
-      .in_buffer_size = 2048, 
-      .user_arg = NULL,
-      .event_cb = handle_event,
-      .data_cb = handle_rx
-  };
+  cdc_acm_host_device_config_t dev_config = {};
+  dev_config.connection_timeout_ms = 0;
+  dev_config.out_buffer_size = 512;
+  dev_config.in_buffer_size = 2048; 
+  dev_config.event_cb = handle_event;
+  dev_config.data_cb = handle_rx;
+  dev_config.user_arg = NULL;
 
   while (true) {
     app_message_t msg;
@@ -367,6 +375,7 @@ static void gps_usb_manager_task(void *arg) {
       break;
     }
     case APP_DEVICE_DISCONNECTED: {
+      ESP_LOGI(TAG, "USB GPS Disconnected!");
       free_cdc_device(msg.data.device_slot);
       break;
     }
@@ -384,5 +393,6 @@ exit:
 }
 
 void init_usb_gps(void) {
+    ESP_LOGI(TAG, "Starting USB GPS Background Task...");
     xTaskCreate(gps_usb_manager_task, "gps_manager", 4096, NULL, 5, NULL);
 }

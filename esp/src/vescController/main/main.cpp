@@ -46,7 +46,7 @@ void vesc_control_task(void *pvParameters) {
     AutonomousDriver driver;
     
     // Uncomment and set your GPS coordinates to enable Waypoint Navigation!
-    // driver.set_target_goal(true, 48.8566f, 2.3522f); 
+    driver.set_target_goal(true, 43.6120155f, 1.4294402f);
 
     bool lidarEnabled = (lidar.start() == ESP_OK);
     TickType_t lidarNoDataSince = 0;
