@@ -16,6 +16,8 @@ struct GpsFix {
     double latitude = 0.0;
     double longitude = 0.0;
     float altitudeMeters = 0.0f;
+    uint32_t updateCounter = 0;
+    TickType_t updateTick = 0;
 };
 
 class UsbGpsHost {
@@ -66,5 +68,6 @@ private:
     int linePos;
 
     bool running;
+    uint32_t fixUpdateCounter;
     GpsFix latestFix;
 };
