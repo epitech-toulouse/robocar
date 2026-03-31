@@ -34,7 +34,11 @@ static constexpr TickType_t GPS_STALE_WARN_PERIOD_TICKS = pdMS_TO_TICKS(2000);
 static constexpr float GPS_GOAL_ACCEPTANCE_RADIUS_M = 2.0f;
 static constexpr float GPS_HEADING_MIN_MOVEMENT_M = 1.5f;
 static constexpr float GPS_HEADING_SEGMENT_MIN_MOVEMENT_M = 0.35f;
-static constexpr size_t GPS_HEADING_HISTORY_POINTS = 6;
+// Keep a wider history so low-speed runs can still accumulate usable motion.
+static constexpr size_t GPS_HEADING_HISTORY_POINTS = 40;
+static constexpr size_t GPS_HEADING_GROUP_STRIDE = 3;
+static constexpr int GPS_HEADING_MIN_GROUPS = 3;
+static constexpr float GPS_HEADING_MIN_DIRECTION_CONFIDENCE = 0.55f;
 
 static TaskHandle_t vesc_control_task_handle = nullptr;
 
@@ -199,13 +203,15 @@ static bool build_gps_drive_input(UsbGpsHost& gps,
         state.headingHistory.pop_front();
     }
 
-    if (!gpsInput.goalReached && state.headingHistory.size() >= 2) {
+    if (!gpsInput.goalReached && state.headingHistory.size() > GPS_HEADING_GROUP_STRIDE) {
         double sumSin = 0.0;
         double sumCos = 0.0;
         double totalMovedM = 0.0;
+        int usedGroups = 0;
 
-        for (size_t i = 1; i < state.headingHistory.size(); ++i) {
-            const GpsFix& p0 = state.headingHistory[i - 1];
+        // Use grouped points (not immediate neighbors) to reduce high-frequency GPS jitter impact.
+        for (size_t i = GPS_HEADING_GROUP_STRIDE; i < state.headingHistory.size(); ++i) {
+            const GpsFix& p0 = state.headingHistory[i - GPS_HEADING_GROUP_STRIDE];
             const GpsFix& p1 = state.headingHistory[i];
             const double movedM = haversine_distance_m(
                 p0.latitude,
@@ -226,9 +232,16 @@ static bool build_gps_drive_input(UsbGpsHost& gps,
             sumSin += std::sin(segHeadingRad) * movedM;
             sumCos += std::cos(segHeadingRad) * movedM;
             totalMovedM += movedM;
+            ++usedGroups;
         }
 
+        const double headingVectorNorm = std::hypot(sumSin, sumCos);
+        const double headingConfidence =
+            (totalMovedM > 1e-6) ? (headingVectorNorm / totalMovedM) : 0.0;
+
         if (totalMovedM >= GPS_HEADING_MIN_MOVEMENT_M &&
+            usedGroups >= GPS_HEADING_MIN_GROUPS &&
+            headingConfidence >= GPS_HEADING_MIN_DIRECTION_CONFIDENCE &&
             (std::fabs(sumSin) > 1e-6 || std::fabs(sumCos) > 1e-6)) {
             const double headingDeg = std::fmod(rad_to_deg(std::atan2(sumSin, sumCos)) + 360.0, 360.0);
             const double bearingToGoalDeg = initial_bearing_deg(
@@ -239,6 +252,15 @@ static bool build_gps_drive_input(UsbGpsHost& gps,
             gpsInput.headingErrorDeg = static_cast<float>(
                 wrap180(bearingToGoalDeg - headingDeg));
             gpsInput.headingValid = true;
+        } else {
+            ESP_LOGI("gps",
+                     "heading invalid moved=%.2fm groups=%d conf=%.2f (need moved>=%.2f groups>=%d conf>=%.2f)",
+                     totalMovedM,
+                     usedGroups,
+                     headingConfidence,
+                     static_cast<double>(GPS_HEADING_MIN_MOVEMENT_M),
+                     GPS_HEADING_MIN_GROUPS,
+                     static_cast<double>(GPS_HEADING_MIN_DIRECTION_CONFIDENCE));
         }
     }
 
