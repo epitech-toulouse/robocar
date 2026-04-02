@@ -1,12 +1,7 @@
 # Robocar UML Explication
 
-[
-
-drive.google.com
-
 https://drive.google.com/file/d/1jeNW8suWbgOqkJSxqye2-hnbD7rjB7U2/view?usp=drive\_link
 
-](https://drive.google.com/file/d/1jeNW8suWbgOqkJSxqye2-hnbD7rjB7U2/view?usp=drive_link)
 
 ## Notes:
 Les fonctions internes aux drivers ne sont pas encore complete, manque de visibilité sur la base de code, de meme pour les interfaces
