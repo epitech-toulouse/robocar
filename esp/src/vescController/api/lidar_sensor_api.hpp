@@ -13,12 +13,12 @@
 #include <cstdint>
 
 // A number of meter
-typedef uint16_t meter_t;
-static meter_t const UNDEFINED_LIDAR_VALUE = 0;
+typedef uint16_t centimeter_t;
+static centimeter_t const UNDEFINED_LIDAR_VALUE = 0;
 // One per degree, wow !
 #define LIDAR_POINT_NUMBER 360
 
-typedef std::array<meter_t, LIDAR_POINT_NUMBER> lidar_array_t;
+typedef std::array<centimeter_t, LIDAR_POINT_NUMBER> lidar_array_t;
 
 static uint32_t const LIDAR_HZ = 10;
 static uint32_t const LIDAR_MAX_SKIP_RENEWAL = 3;
