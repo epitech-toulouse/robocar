@@ -105,7 +105,25 @@ source ~/robocar_ws/install/setup.bash
 ros2 launch robocar_sim robocar_sim.launch.py
 ```
 
-## 4.1) If you get "package robocar_sim not found"
+## 4.1) Run with interactive menu (recommended)
+
+Terminal 1 (Gazebo + bridge only):
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/robocar_ws/install/setup.bash
+ros2 launch robocar_sim robocar_sim.launch.py start_controller:=false
+```
+
+Terminal 2 (controller with menu):
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/robocar_ws/install/setup.bash
+ros2 run robocar_sim robocar_sim_controller
+```
+
+## 4.2) If you get "package robocar_sim not found"
 
 This usually means the symlink target path is wrong or broken.
 
@@ -140,21 +158,61 @@ ros2 pkg list | grep robocar_sim
 
 - `package.xml`
 - `CMakeLists.txt`
-- `main.cpp` (controller placeholder)
+- `main.cpp` (ROS controller with LiDAR conversion + menu)
 - `launch/robocar_sim.launch.py`
 - `config/controller.yaml`
 - `worlds/robocar_empty.sdf`
 
 ## Current scope
 
-- Starts Gazebo with an empty world
-- Starts ROS-Gazebo bridge for `/clock`, `/scan`, `/gps/fix`, `/cmd_vel`
-- Starts `robocar_sim_controller` placeholder executable
+- Starts Gazebo world with floor, a simple car model, and obstacles
+- Car has a top-mounted LiDAR sensor publishing `/scan` at 10 Hz
+- Starts ROS-Gazebo bridge for `/clock`, `/scan`, `/cmd_vel`
+- Starts `robocar_sim_controller` ROS node
+- Converts LaserScan into point list similar to project LiDAR parsing style:
+	- angle normalized to `[0, 360)`
+	- range filtered to `(0.05m, 12.0m)`
+	- intensity filtering when available
+	- sorted by angle
+- Publishes converted points as flat triples on `/robocar/lidar_points_flat`
 
 Note:
 
-- `main.cpp` is currently a placeholder to keep the scaffold portable on non-ROS setups.
-- The ROS topic controller logic will be added in a next step from an Ubuntu ROS environment.
+- A simple terminal menu is available in the controller node.
+- `cmd_vel` publishing is available from the menu (`cmd v w`), but world motion plugins can be expanded later.
+
+## Menu commands
+
+When the node starts, use:
+
+- `h` : show menu
+- `s` : print status (point count, LiDAR Hz, current cmd_vel)
+- `a` : toggle auto LiDAR summary print
+- `cmd <linear> <angular>` : set command velocity values
+- `stop` : set command velocity to `0 0`
+- `q` : stop menu input thread
+
+## Quick topic checks
+
+```bash
+ros2 topic hz /scan
+ros2 topic echo /robocar/lidar_points_flat --once
+```
+
+Expected:
+
+- `/scan` should be around `10 Hz`.
+- `/robocar/lidar_points_flat` packs points by triples:
+	- index `0`: angle in degrees
+	- index `1`: distance in meters
+	- index `2`: intensity (0..255)
+
+The conversion logic follows your LiDAR parsing behavior:
+
+- angle normalized to `[0, 360)`
+- min/max range filter `(0.05m, 12.0m)`
+- intensity filtering when intensity data is available
+- sorted by angle
 
 ## Next steps
 

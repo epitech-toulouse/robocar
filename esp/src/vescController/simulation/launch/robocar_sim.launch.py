@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -17,6 +18,14 @@ def generate_launch_description():
 
     world = LaunchConfiguration("world")
 
+    start_controller_arg = DeclareLaunchArgument(
+        "start_controller",
+        default_value="true",
+        description="Start robocar_sim_controller from launch",
+    )
+
+    start_controller = LaunchConfiguration("start_controller")
+
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("ros_gz_sim"), "launch", "gz_sim.launch.py"])
@@ -32,7 +41,6 @@ def generate_launch_description():
         arguments=[
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
             "/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
-            "/gps/fix@sensor_msgs/msg/NavSatFix[gz.msgs.NavSat",
             "/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist",
         ],
     )
@@ -42,6 +50,7 @@ def generate_launch_description():
         executable="robocar_sim_controller",
         name="robocar_sim_controller",
         output="screen",
+        condition=IfCondition(start_controller),
         parameters=[
             PathJoinSubstitution([package_share, "config", "controller.yaml"]),
         ],
@@ -49,6 +58,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         world_arg,
+        start_controller_arg,
         gazebo,
         bridge,
         controller,
