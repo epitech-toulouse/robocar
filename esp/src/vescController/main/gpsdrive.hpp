@@ -16,7 +16,7 @@ class GpsAutonomousDriver {
 public:
     GpsAutonomousDriver() = default;
 
-    // GPS-biased autonomous commands: avoid obstacles first, then prefer goal direction.
+    // Temporary GPS-only autonomous commands: drive toward goal heading and distance.
     DriveCommands compute_commands(const std::vector<LidarPoint>& scan, const GpsDriveInput& gpsInput);
 
 private:

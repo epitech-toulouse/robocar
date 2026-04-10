@@ -15,7 +15,7 @@
 #include <iostream>
 
 #include "esp_err.h"
-#include "wifi_receiver.hpp"
+#include "api/wifi_control_api.hpp"
 #include "vescLidarUart.h"
 
 #include "drive.hpp"
@@ -23,13 +23,22 @@
 
 #include "esp_log.h"
 #include <cmath>
+#include <deque>
 
 static constexpr TickType_t LIDAR_NO_DATA_TIMEOUT_TICKS = pdMS_TO_TICKS(3000);
 static constexpr TickType_t LIDAR_LOG_PERIOD_TICKS = pdMS_TO_TICKS(1000);
 static constexpr TickType_t GPS_LOG_PERIOD_TICKS = pdMS_TO_TICKS(2000);
 static constexpr TickType_t GPS_DRIVE_LOG_PERIOD_TICKS = pdMS_TO_TICKS(1000);
-static constexpr float GPS_GOAL_ACCEPTANCE_RADIUS_M = 10.0f;
+static constexpr TickType_t GPS_POLL_LOG_PERIOD_TICKS = pdMS_TO_TICKS(1000);
+static constexpr TickType_t GPS_STALE_WARN_PERIOD_TICKS = pdMS_TO_TICKS(2000);
+static constexpr float GPS_GOAL_ACCEPTANCE_RADIUS_M = 2.0f;
 static constexpr float GPS_HEADING_MIN_MOVEMENT_M = 1.5f;
+static constexpr float GPS_HEADING_SEGMENT_MIN_MOVEMENT_M = 0.35f;
+// Keep a wider history so low-speed runs can still accumulate usable motion.
+static constexpr size_t GPS_HEADING_HISTORY_POINTS = 40;
+static constexpr size_t GPS_HEADING_GROUP_STRIDE = 3;
+static constexpr int GPS_HEADING_MIN_GROUPS = 3;
+static constexpr float GPS_HEADING_MIN_DIRECTION_CONFIDENCE = 0.55f;
 
 static TaskHandle_t vesc_control_task_handle = nullptr;
 
@@ -37,6 +46,26 @@ struct gps_goal_t {
     double lat;
     double lon;
     bool enabled;
+};
+
+struct GpsRuntimeState {
+    TickType_t lastGpsLog = 0;
+    TickType_t lastGpsPollLog = 0;
+    TickType_t lastGpsStaleWarnLog = 0;
+    uint32_t lastGpsUpdateCounterSeen = 0;
+    std::deque<GpsFix> headingHistory;
+};
+
+struct LidarRuntimeState {
+    bool enabled = false;
+    TickType_t noDataSince = 0;
+    TickType_t lastLog = 0;
+};
+
+enum class LidarPollStatus {
+    Ready,
+    Waiting,
+    TimedOut,
 };
 
 static double deg_to_rad(double deg)
@@ -88,6 +117,188 @@ static double initial_bearing_deg(double lat1, double lon1, double lat2, double 
     return std::fmod(brng + 360.0, 360.0);
 }
 
+static void setup_gps_log_levels(bool gpsEnabled)
+{
+    if (!gpsEnabled) {
+        ESP_LOGW("main", "USB GPS host failed to start");
+        return;
+    }
+
+    // Force these tags to be visible even when global log level is stricter.
+    esp_log_level_set("gps", ESP_LOG_INFO);
+    esp_log_level_set("gps_drive", ESP_LOG_INFO);
+    esp_log_level_set("UsbGpsHost", ESP_LOG_INFO);
+}
+
+static void log_periodic_gps_status(UsbGpsHost& gps, TickType_t now, GpsRuntimeState& state)
+{
+    if ((now - state.lastGpsLog) > GPS_LOG_PERIOD_TICKS) {
+        const GpsFix fix = gps.getLatestFix();
+        if (fix.hasFix) {
+            ESP_LOGI("gps", "fix sats=%d lat=%.6f lon=%.6f alt=%.1f",
+                     fix.satellites, fix.latitude, fix.longitude, fix.altitudeMeters);
+        } else {
+            ESP_LOGI("gps", "waiting for fix sats=%d", fix.satellites);
+        }
+        state.lastGpsLog = now;
+    }
+}
+
+static bool build_gps_drive_input(UsbGpsHost& gps,
+                                  const gps_goal_t& goal,
+                                  TickType_t now,
+                                  GpsRuntimeState& state,
+                                  GpsDriveInput& gpsInput)
+{
+    gpsInput = GpsDriveInput{};
+
+    if (!goal.enabled) {
+        return false;
+    }
+
+    const GpsFix currentFix = gps.getLatestFix();
+
+    if ((now - state.lastGpsPollLog) > GPS_POLL_LOG_PERIOD_TICKS) {
+        ESP_LOGI("gps", "polled hasFix=%d sats=%d lat=%.6f lon=%.6f",
+                 currentFix.hasFix,
+                 currentFix.satellites,
+                 currentFix.latitude,
+                 currentFix.longitude);
+        state.lastGpsPollLog = now;
+    }
+
+    if (currentFix.updateCounter != 0 && currentFix.updateCounter != state.lastGpsUpdateCounterSeen) {
+        state.lastGpsUpdateCounterSeen = currentFix.updateCounter;
+        const uint32_t ageMs = static_cast<uint32_t>(pdTICKS_TO_MS(now - currentFix.updateTick));
+        ESP_LOGI("gps", "NEW fix #%lu age=%lums hasFix=%d sats=%d lat=%.6f lon=%.6f",
+                 static_cast<unsigned long>(currentFix.updateCounter),
+                 static_cast<unsigned long>(ageMs),
+                 currentFix.hasFix,
+                 currentFix.satellites,
+                 currentFix.latitude,
+                 currentFix.longitude);
+    } else if ((now - state.lastGpsStaleWarnLog) > GPS_STALE_WARN_PERIOD_TICKS) {
+        const uint32_t ageMs = static_cast<uint32_t>(pdTICKS_TO_MS(now - currentFix.updateTick));
+        ESP_LOGW("gps", "no new fix yet (counter=%lu age=%lums)",
+                 static_cast<unsigned long>(currentFix.updateCounter),
+                 static_cast<unsigned long>(ageMs));
+        state.lastGpsStaleWarnLog = now;
+    }
+
+    if (!currentFix.hasFix) {
+        return false;
+    }
+
+    const double distToGoal = haversine_distance_m(
+        currentFix.latitude,
+        currentFix.longitude,
+        goal.lat,
+        goal.lon);
+
+    gpsInput.distanceToGoalM = static_cast<float>(distToGoal);
+    gpsInput.goalReached = (distToGoal <= GPS_GOAL_ACCEPTANCE_RADIUS_M);
+
+    state.headingHistory.push_back(currentFix);
+    while (state.headingHistory.size() > GPS_HEADING_HISTORY_POINTS) {
+        state.headingHistory.pop_front();
+    }
+
+    if (!gpsInput.goalReached && state.headingHistory.size() > GPS_HEADING_GROUP_STRIDE) {
+        double sumSin = 0.0;
+        double sumCos = 0.0;
+        double totalMovedM = 0.0;
+        int usedGroups = 0;
+
+        // Use grouped points (not immediate neighbors) to reduce high-frequency GPS jitter impact.
+        for (size_t i = GPS_HEADING_GROUP_STRIDE; i < state.headingHistory.size(); ++i) {
+            const GpsFix& p0 = state.headingHistory[i - GPS_HEADING_GROUP_STRIDE];
+            const GpsFix& p1 = state.headingHistory[i];
+            const double movedM = haversine_distance_m(
+                p0.latitude,
+                p0.longitude,
+                p1.latitude,
+                p1.longitude);
+
+            if (movedM < GPS_HEADING_SEGMENT_MIN_MOVEMENT_M) {
+                continue;
+            }
+
+            const double segHeadingDeg = initial_bearing_deg(
+                p0.latitude,
+                p0.longitude,
+                p1.latitude,
+                p1.longitude);
+            const double segHeadingRad = deg_to_rad(segHeadingDeg);
+            sumSin += std::sin(segHeadingRad) * movedM;
+            sumCos += std::cos(segHeadingRad) * movedM;
+            totalMovedM += movedM;
+            ++usedGroups;
+        }
+
+        const double headingVectorNorm = std::hypot(sumSin, sumCos);
+        const double headingConfidence =
+            (totalMovedM > 1e-6) ? (headingVectorNorm / totalMovedM) : 0.0;
+
+        if (totalMovedM >= GPS_HEADING_MIN_MOVEMENT_M &&
+            usedGroups >= GPS_HEADING_MIN_GROUPS &&
+            headingConfidence >= GPS_HEADING_MIN_DIRECTION_CONFIDENCE &&
+            (std::fabs(sumSin) > 1e-6 || std::fabs(sumCos) > 1e-6)) {
+            const double headingDeg = std::fmod(rad_to_deg(std::atan2(sumSin, sumCos)) + 360.0, 360.0);
+            const double bearingToGoalDeg = initial_bearing_deg(
+                currentFix.latitude,
+                currentFix.longitude,
+                goal.lat,
+                goal.lon);
+            gpsInput.headingErrorDeg = static_cast<float>(
+                wrap180(bearingToGoalDeg - headingDeg));
+            gpsInput.headingValid = true;
+        } else {
+            ESP_LOGI("gps",
+                     "heading invalid moved=%.2fm groups=%d conf=%.2f (need moved>=%.2f groups>=%d conf>=%.2f)",
+                     totalMovedM,
+                     usedGroups,
+                     headingConfidence,
+                     static_cast<double>(GPS_HEADING_MIN_MOVEMENT_M),
+                     GPS_HEADING_MIN_GROUPS,
+                     static_cast<double>(GPS_HEADING_MIN_DIRECTION_CONFIDENCE));
+        }
+    }
+
+    return true;
+}
+
+static LidarPollStatus poll_lidar_scan(LidarReader& lidar,
+                                       TickType_t now,
+                                       LidarRuntimeState& state,
+                                       std::vector<LidarPoint>& lastScan)
+{
+    const bool gotUartBytes = lidar.poll();
+    lastScan = lidar.getLatestScanPoints();
+
+    if (gotUartBytes) {
+        state.noDataSince = 0;
+    } else if (state.noDataSince == 0) {
+        state.noDataSince = now;
+    }
+
+    if (!lastScan.empty()) {
+        return LidarPollStatus::Ready;
+    }
+
+    if (state.noDataSince != 0 && (now - state.noDataSince) > LIDAR_NO_DATA_TIMEOUT_TICKS) {
+        state.enabled = false;
+        std::cout << "LiDAR timeout (no UART data) -> manual BLE mode only" << std::endl;
+        return LidarPollStatus::TimedOut;
+    }
+
+    if ((now - state.lastLog) > LIDAR_LOG_PERIOD_TICKS) {
+        std::cout << "LiDAR scan not ready yet. UART bytes=" << (gotUartBytes ? "yes" : "no") << std::endl;
+        state.lastLog = now;
+    }
+
+    return LidarPollStatus::Waiting;
+}
+
 void IRAM_ATTR coupe_circuit_handler(void *args)
 {
     (void) args;
@@ -101,31 +312,29 @@ void IRAM_ATTR coupe_circuit_handler(void *args)
 }
 
 void vesc_control_task(void *pvParameters) {
+    (void)pvParameters;
     VescController vesc;
     // LD19 sends data from its TX line into ESP RX. We do not need ESP TX for LD19.
     LidarReader lidar;
     UsbGpsHost gps;
     AutonomousDriver driver;
     GpsAutonomousDriver gpsDriver;
-    bool lidarEnabled = (lidar.start() == ESP_OK);
-    bool gpsEnabled = (gps.start() == ESP_OK);
-    TickType_t lidarNoDataSince = 0;
-    TickType_t lastLidarLog = 0;
-    TickType_t lastGpsLog = 0;
+    LidarRuntimeState lidarState;
+    WifiControlApi &manualControl = wifiControlServer();
 
-    gps_goal_t goal = {
-        .lat = 0.0,
-        .lon = 0.0,
-        .enabled = false,
+    lidarState.enabled = (lidar.start() == ESP_OK);
+    const bool gpsEnabled = (gps.start() == ESP_OK);
+    GpsRuntimeState gpsState;
+
+    gps_goal_t goal = { //43.612139, 1.430194
+
+        .lat = 43.612139,
+        .lon = 1.430194,
+        .enabled = true,
     };
 
-    GpsFix previousFix = {};
-    bool havePreviousFix = false;
     TickType_t lastGpsDriveLog = 0;
-
-    if (!gpsEnabled) {
-        ESP_LOGW("main", "USB GPS host failed to start");
-    }
+    setup_gps_log_levels(gpsEnabled);
 
     vesc.setDuty(0.0f);
     vesc.setSteering(STEER_CENTER);
@@ -143,59 +352,13 @@ void vesc_control_task(void *pvParameters) {
 
     while (1) {
         const TickType_t now = xTaskGetTickCount();
-        if (gpsEnabled && (now - lastGpsLog) > GPS_LOG_PERIOD_TICKS) {
-            const GpsFix fix = gps.getLatestFix();
-            if (fix.hasFix) {
-                ESP_LOGI("gps", "fix sats=%d lat=%.6f lon=%.6f alt=%.1f",
-                         fix.satellites, fix.latitude, fix.longitude, fix.altitudeMeters);
-            } else {
-                ESP_LOGI("gps", "waiting for fix sats=%d", fix.satellites);
-            }
-            lastGpsLog = now;
+        if (gpsEnabled) {
+            log_periodic_gps_status(gps, now, gpsState);
         }
 
         GpsDriveInput gpsInput = {};
-        bool gpsModeActive = false;
-        if (goal.enabled && gpsEnabled) {
-            const GpsFix currentFix = gps.getLatestFix();
-            if (currentFix.hasFix) {
-                const double distToGoal = haversine_distance_m(
-                    currentFix.latitude,
-                    currentFix.longitude,
-                    goal.lat,
-                    goal.lon);
-
-                gpsInput.distanceToGoalM = static_cast<float>(distToGoal);
-                gpsInput.goalReached = (distToGoal <= GPS_GOAL_ACCEPTANCE_RADIUS_M);
-
-                if (!gpsInput.goalReached && havePreviousFix && previousFix.hasFix) {
-                    const double movedM = haversine_distance_m(
-                        previousFix.latitude,
-                        previousFix.longitude,
-                        currentFix.latitude,
-                        currentFix.longitude);
-                    if (movedM >= GPS_HEADING_MIN_MOVEMENT_M) {
-                        const double headingDeg = initial_bearing_deg(
-                            previousFix.latitude,
-                            previousFix.longitude,
-                            currentFix.latitude,
-                            currentFix.longitude);
-                        const double bearingToGoalDeg = initial_bearing_deg(
-                            currentFix.latitude,
-                            currentFix.longitude,
-                            goal.lat,
-                            goal.lon);
-                        gpsInput.headingErrorDeg = static_cast<float>(
-                            wrap180(bearingToGoalDeg - headingDeg));
-                        gpsInput.headingValid = true;
-                    }
-                }
-
-                previousFix = currentFix;
-                havePreviousFix = true;
-                gpsModeActive = true;
-            }
-        }
+        const bool gpsModeActive = gpsEnabled &&
+                                   build_gps_drive_input(gps, goal, now, gpsState, gpsInput);
 
         if (xTaskNotifyWait(0, 0, &notification_value, pdMS_TO_TICKS(20)) == pdPASS) { // On interrupt on coupe circuit pin
             if (gpio_get_level(COUPE_CIRCUIT_PIN)) { // HIGH = disconnected
@@ -207,7 +370,7 @@ void vesc_control_task(void *pvParameters) {
         }
         float manualDuty, manualSteer;
         bool s_emergency;
-        if (get_manual_control(manualDuty, manualSteer, s_emergency)) {
+        if (manualControl.isActivated() && manualControl.getManualControl(manualDuty, manualSteer, s_emergency)) {
             vesc.setSteering(manualSteer);
             vesc.setDuty(manualDuty);
             if (s_emergency) {
@@ -216,71 +379,53 @@ void vesc_control_task(void *pvParameters) {
             continue;
         }
 
-        if (!lidarEnabled) {
-            vesc.setDuty(0.0f);
-            vesc.setSteering(STEER_CENTER);
-            continue;
-        }
+    //     if (!lidarState.enabled) {
+    //         vesc.setDuty(0.0f);
+    //         vesc.setSteering(STEER_CENTER);
+    //         continue;
+    //     }
 
-        const bool gotUartBytes = lidar.poll();
-        std::vector<LidarPoint> lastScan = lidar.getLatestScanPoints();
+    //     std::vector<LidarPoint> lastScan;
+    //     const LidarPollStatus lidarStatus = poll_lidar_scan(lidar, now, lidarState, lastScan);
+    //     if (lidarStatus != LidarPollStatus::Ready) {
+    //         vesc.setDuty(0.0f);
+    //         vesc.setSteering(STEER_CENTER);
+    //         continue;
+    //     }
 
-        if (gotUartBytes) {
-            lidarNoDataSince = 0;
-        } else if (lidarNoDataSince == 0) {
-            lidarNoDataSince = xTaskGetTickCount();
-        }
+    //     DriveCommands cmds;
+    //     if (gpsModeActive) {
+    //         if (gpsInput.goalReached) {
+    //             vesc.setSteering(STEER_CENTER);
+    //             vesc.setDuty(0.0f);
+    //             if ((now - lastGpsDriveLog) > GPS_DRIVE_LOG_PERIOD_TICKS) {
+    //                 ESP_LOGI("gps_drive", "Goal reached (<= %.1fm), holding position",
+    //                          GPS_GOAL_ACCEPTANCE_RADIUS_M);
+    //                 lastGpsDriveLog = now;
+    //             }
+    //             continue;
+    //         }
 
-        if (lastScan.empty()) {
-            if (lidarNoDataSince != 0 && (now - lidarNoDataSince) > LIDAR_NO_DATA_TIMEOUT_TICKS) {
-                lidarEnabled = false;
-                std::cout << "LiDAR timeout (no UART data) -> manual Wi-Fi mode only" << std::endl;
-                vesc.setDuty(0.0f);
-                vesc.setSteering(STEER_CENTER);
-                continue;
-            }
-
-            vesc.setDuty(0.0f);
-            vesc.setSteering(STEER_CENTER);
-            if ((now - lastLidarLog) > LIDAR_LOG_PERIOD_TICKS) {
-                std::cout << "LiDAR scan not ready yet. UART bytes=" << (gotUartBytes ? "yes" : "no") << std::endl;
-                lastLidarLog = now;
-            }
-            continue;
-        }
-
-        DriveCommands cmds;
-        if (gpsModeActive) {
-            if (gpsInput.goalReached) {
-                vesc.setSteering(STEER_CENTER);
-                vesc.setDuty(0.0f);
-                if ((now - lastGpsDriveLog) > GPS_DRIVE_LOG_PERIOD_TICKS) {
-                    ESP_LOGI("gps_drive", "Goal reached (<= %.1fm), holding position",
-                             GPS_GOAL_ACCEPTANCE_RADIUS_M);
-                    lastGpsDriveLog = now;
-                }
-                continue;
-            }
-
-            cmds = gpsDriver.compute_commands(lastScan, gpsInput);
-            if ((now - lastGpsDriveLog) > GPS_DRIVE_LOG_PERIOD_TICKS) {
-                ESP_LOGI("gps_drive", "active dist=%.1fm headingErr=%.1fdeg headingValid=%d",
-                         gpsInput.distanceToGoalM,
-                         gpsInput.headingErrorDeg,
-                         gpsInput.headingValid);
-                lastGpsDriveLog = now;
-            }
-        } else {
-            cmds = driver.compute_commands(lastScan);
-        }
-        vesc.setSteering(cmds.steer);
-        vesc.setDuty(cmds.duty);
+    //         cmds = gpsDriver.compute_commands(lastScan, gpsInput);
+    //         if ((now - lastGpsDriveLog) > GPS_DRIVE_LOG_PERIOD_TICKS) {
+    //             ESP_LOGI("gps_drive", "active dist=%.1fm headingErr=%.1fdeg headingValid=%d",
+    //                      gpsInput.distanceToGoalM,
+    //                      gpsInput.headingErrorDeg,
+    //                      gpsInput.headingValid);
+    //             lastGpsDriveLog = now;
+    //         }
+    //     } else {
+    //         cmds = driver.compute_commands(lastScan);
+    //     }
+    //     vesc.setSteering(cmds.steer);
+    //     vesc.setDuty(cmds.duty);
     }
 }
 
 extern "C" void app_main(void) {
     printf("Starting VESC Controller on ESP32-S3...\n");
-    init_wifi_receiver();
+    WifiControlApi &manualControl = wifiControlServer();
+    manualControl.start();
     init_lidar_uart();
     init_vesc_rmt_uart();
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, &vesc_control_task_handle);
