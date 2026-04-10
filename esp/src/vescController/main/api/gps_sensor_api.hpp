@@ -24,9 +24,10 @@ static TickType_t const GPS_MUTEX_TIMEOUT_TICK = pdMS_TO_TICKS(5);
 // The GPS should use a task to update it's data
 // The data should be accessed through a mutex using the timeout
 
-class GpsSensorApi {
+class IGpsSensor {
 public:
-    virtual ~GpsSensorApi() = default;
+    IGpsSensor() = default;
+    virtual ~IGpsSensor() = default;
 
     // Return false if the GPS is not implemented or too old
     virtual bool isActive(void) = 0;

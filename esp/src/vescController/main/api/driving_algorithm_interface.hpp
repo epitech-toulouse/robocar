@@ -22,9 +22,10 @@ static DrivingAlgorithmOutput const DEFAULT_DRIVING_ALGORITHM_OUTPUT = {
     .target_steering = 0.5
 };
 
-class DrivingAlgorithmApi {
+class IDrivingAlgorithm {
 public:
-    virtual ~DrivingAlgorithmApi() = default;
+    IDrivingAlgorithm() = default;
+    virtual ~IDrivingAlgorithm() = default;
 
     // Test if necessary inputs are present (but not if correct)
     virtual bool available(void) = 0;

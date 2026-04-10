@@ -14,9 +14,10 @@
 
 static TickType_t const VESC_MUTEX_TIMEOUT_TICK = pdMS_TO_TICKS(5);
 
-class VescControllerApi {
+class IVescController {
 public:
-    virtual ~VescControllerApi() = default;
+    IVescController() = default;
+    virtual ~IVescController() = default;
 
     // Return false if the VESC is not implemented or too old
     virtual bool isActive(void) = 0;

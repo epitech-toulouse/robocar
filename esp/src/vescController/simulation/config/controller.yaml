@@ -1,0 +1,4 @@
+robocar_sim_controller:
+  ros__parameters:
+    cmd_topic: "/cmd_vel"
+    status_topic: "/robocar/sim_status"

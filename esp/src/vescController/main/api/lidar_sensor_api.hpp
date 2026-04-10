@@ -33,9 +33,10 @@ static TickType_t const LIDAR_MUTEX_TIMEOUT_TICK = pdMS_TO_TICKS(5);
 // The LIDAR should use a task to update it's data
 // The data should be accessed through a mutex using the timeout
 
-class LidarSensorApi {
+class ILidarSensor {
 public:
-    virtual ~LidarSensorApi() = default;
+    ILidarSensor() = default;
+    virtual ~ILidarSensor() = default;
 
     // Return false if the LIDAR is not implemented or too old
     virtual bool isActive(void) = 0;
@@ -44,7 +45,7 @@ public:
     // The purpose of this simple output is to simplify later treatment
     // 360° of distance is a great way to represent lidar output
     // with 0m representing either 0m or undefined value
-    virtual bool getData(lidar_array_t &output);
+    virtual bool getData(lidar_array_t &output) = 0;
 };
 
 #endif /* LIDAR_SENSOR_API_HPP */

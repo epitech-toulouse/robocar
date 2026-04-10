@@ -37,9 +37,10 @@ inline char const *driving_mode_str(driving_mode_t mode)
     return "UNKNOWN";
 }
 
-class UserControllerApi {
+class IUserController {
 public:
-    virtual ~UserControllerApi() = default;
+    IUserController() = default;
+    virtual ~IUserController() = default;
 
     virtual bool isConnected(void) = 0;
 

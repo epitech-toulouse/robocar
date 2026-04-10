@@ -1,0 +1,129 @@
+# ROS 2 + Gazebo Setup (Scaffold)
+
+This folder contains a first ROS 2 simulation scaffold for Ubuntu.
+
+## Target versions
+
+- ROS 2 Jazzy
+- Gazebo Harmonic
+- Ubuntu 24.04
+
+## Important
+
+Do these steps inside Ubuntu 24.04 (native or VM).
+
+## 1) Install ROS 2 Jazzy (Ubuntu 24.04)
+
+### 1.1 System prep
+
+```bash
+sudo apt update
+sudo apt install -y software-properties-common curl gnupg2 lsb-release
+sudo add-apt-repository universe -y
+```
+
+### 1.2 Add ROS 2 apt repository
+
+```bash
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+```
+
+### 1.3 Install ROS 2 Jazzy desktop + tools
+
+```bash
+sudo apt update
+sudo apt install -y ros-jazzy-desktop ros-dev-tools
+```
+
+### 1.4 Source ROS automatically
+
+```bash
+echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+```
+
+### 1.5 Quick check
+
+```bash
+ros2 --version
+```
+
+## 2) Install Gazebo Harmonic
+
+### 2.1 Add Gazebo apt repository
+
+```bash
+sudo curl -fsSL https://packages.osrfoundation.org/gazebo.gpg -o /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null
+```
+
+### 2.2 Install Gazebo Harmonic
+
+```bash
+sudo apt update
+sudo apt install -y gz-harmonic
+```
+
+### 2.3 Install ROS <-> Gazebo bridge packages
+
+```bash
+sudo apt install -y ros-jazzy-ros-gz ros-jazzy-ros-gz-sim ros-jazzy-ros-gz-bridge
+```
+
+### 2.4 Quick checks
+
+```bash
+gz sim --version
+ros2 pkg list | grep ros_gz
+```
+
+## 3) Build this simulation package
+
+From a ROS 2 workspace:
+
+```bash
+mkdir -p ~/robocar_ws/src
+cd ~/robocar_ws/src
+ln -s /path/to/vescController/simulation robocar_sim
+
+cd ~/robocar_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select robocar_sim
+source install/setup.bash
+```
+
+## 4) Run
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/robocar_ws/install/setup.bash
+ros2 launch robocar_sim robocar_sim.launch.py
+```
+
+## Added files
+
+- `package.xml`
+- `CMakeLists.txt`
+- `main.cpp` (controller placeholder)
+- `launch/robocar_sim.launch.py`
+- `config/controller.yaml`
+- `worlds/robocar_empty.sdf`
+
+## Current scope
+
+- Starts Gazebo with an empty world
+- Starts ROS-Gazebo bridge for `/clock`, `/scan`, `/gps/fix`, `/cmd_vel`
+- Starts `robocar_sim_controller` placeholder executable
+
+Note:
+
+- `main.cpp` is currently a placeholder to keep the scaffold portable on non-ROS setups.
+- The ROS topic controller logic will be added in a next step from an Ubuntu ROS environment.
+
+## Next steps
+
+- Add robot model (SDF/URDF)
+- Plug LiDAR/GPS topics from model sensors
+- Connect controller to real algorithm wrapper (`IDrivingAlgorithm` path)
+- Add scenario worlds
