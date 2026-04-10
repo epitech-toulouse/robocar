@@ -85,11 +85,15 @@ From a ROS 2 workspace:
 ```bash
 mkdir -p ~/robocar_ws/src
 cd ~/robocar_ws/src
-ln -s /path/to/vescController/simulation robocar_sim
+
+# IMPORTANT: replace this with your real absolute path
+# Example for this project layout:
+ln -s ~/Desktop/robocar/esp/src/vescController/simulation robocar_sim
 
 cd ~/robocar_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select robocar_sim
+colcon list
+colcon build --packages-select robocar_sim --symlink-install
 source install/setup.bash
 ```
 
@@ -99,6 +103,37 @@ source install/setup.bash
 source /opt/ros/jazzy/setup.bash
 source ~/robocar_ws/install/setup.bash
 ros2 launch robocar_sim robocar_sim.launch.py
+```
+
+## 4.1) If you get "package robocar_sim not found"
+
+This usually means the symlink target path is wrong or broken.
+
+Check the package link:
+
+```bash
+ls -la ~/robocar_ws/src
+readlink -f ~/robocar_ws/src/robocar_sim
+test -f ~/robocar_ws/src/robocar_sim/package.xml && echo OK || echo BROKEN
+```
+
+If broken, recreate it with the correct path:
+
+```bash
+cd ~/robocar_ws/src
+rm -f robocar_sim
+ln -s ~/Desktop/robocar/esp/src/vescController/simulation robocar_sim
+```
+
+Then rebuild and source again:
+
+```bash
+cd ~/robocar_ws
+source /opt/ros/jazzy/setup.bash
+colcon list
+colcon build --packages-select robocar_sim --symlink-install
+source install/setup.bash
+ros2 pkg list | grep robocar_sim
 ```
 
 ## Added files
