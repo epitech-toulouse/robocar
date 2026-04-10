@@ -80,7 +80,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 6.1.0
+    version: 5.5.3
 direct_dependencies:
 - espressif/usb_host_cdc_acm
 - espressif/usb_host_ch34x_vcp
