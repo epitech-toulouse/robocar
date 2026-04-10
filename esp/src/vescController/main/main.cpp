@@ -379,46 +379,46 @@ void vesc_control_task(void *pvParameters) {
             continue;
         }
 
-    //     if (!lidarState.enabled) {
-    //         vesc.setDuty(0.0f);
-    //         vesc.setSteering(STEER_CENTER);
-    //         continue;
-    //     }
+        if (!lidarState.enabled) {
+            vesc.setDuty(0.0f);
+            vesc.setSteering(STEER_CENTER);
+            continue;
+        }
 
-    //     std::vector<LidarPoint> lastScan;
-    //     const LidarPollStatus lidarStatus = poll_lidar_scan(lidar, now, lidarState, lastScan);
-    //     if (lidarStatus != LidarPollStatus::Ready) {
-    //         vesc.setDuty(0.0f);
-    //         vesc.setSteering(STEER_CENTER);
-    //         continue;
-    //     }
+        std::vector<LidarPoint> lastScan;
+        const LidarPollStatus lidarStatus = poll_lidar_scan(lidar, now, lidarState, lastScan);
+        if (lidarStatus != LidarPollStatus::Ready) {
+            vesc.setDuty(0.0f);
+            vesc.setSteering(STEER_CENTER);
+            continue;
+        }
 
-    //     DriveCommands cmds;
-    //     if (gpsModeActive) {
-    //         if (gpsInput.goalReached) {
-    //             vesc.setSteering(STEER_CENTER);
-    //             vesc.setDuty(0.0f);
-    //             if ((now - lastGpsDriveLog) > GPS_DRIVE_LOG_PERIOD_TICKS) {
-    //                 ESP_LOGI("gps_drive", "Goal reached (<= %.1fm), holding position",
-    //                          GPS_GOAL_ACCEPTANCE_RADIUS_M);
-    //                 lastGpsDriveLog = now;
-    //             }
-    //             continue;
-    //         }
+        DriveCommands cmds;
+        if (gpsModeActive) {
+            if (gpsInput.goalReached) {
+                vesc.setSteering(STEER_CENTER);
+                vesc.setDuty(0.0f);
+                if ((now - lastGpsDriveLog) > GPS_DRIVE_LOG_PERIOD_TICKS) {
+                    ESP_LOGI("gps_drive", "Goal reached (<= %.1fm), holding position",
+                             GPS_GOAL_ACCEPTANCE_RADIUS_M);
+                    lastGpsDriveLog = now;
+                }
+                continue;
+            }
 
-    //         cmds = gpsDriver.compute_commands(lastScan, gpsInput);
-    //         if ((now - lastGpsDriveLog) > GPS_DRIVE_LOG_PERIOD_TICKS) {
-    //             ESP_LOGI("gps_drive", "active dist=%.1fm headingErr=%.1fdeg headingValid=%d",
-    //                      gpsInput.distanceToGoalM,
-    //                      gpsInput.headingErrorDeg,
-    //                      gpsInput.headingValid);
-    //             lastGpsDriveLog = now;
-    //         }
-    //     } else {
-    //         cmds = driver.compute_commands(lastScan);
-    //     }
-    //     vesc.setSteering(cmds.steer);
-    //     vesc.setDuty(cmds.duty);
+            cmds = gpsDriver.compute_commands(lastScan, gpsInput);
+            if ((now - lastGpsDriveLog) > GPS_DRIVE_LOG_PERIOD_TICKS) {
+                ESP_LOGI("gps_drive", "active dist=%.1fm headingErr=%.1fdeg headingValid=%d",
+                         gpsInput.distanceToGoalM,
+                         gpsInput.headingErrorDeg,
+                         gpsInput.headingValid);
+                lastGpsDriveLog = now;
+            }
+        } else {
+            cmds = driver.compute_commands(lastScan);
+        }
+        vesc.setSteering(cmds.steer);
+        vesc.setDuty(cmds.duty);
     }
 }
 
