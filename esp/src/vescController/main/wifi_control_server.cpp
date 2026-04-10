@@ -288,7 +288,12 @@ WifiControlServer &serviceInstance()
 
 } // namespace
 
-WifiControlApi &wifiControlServer()
+UserControllerApi &wifiControlServer()
+{
+    return serviceInstance();
+}
+
+WifiControlServer &wifiControlService()
 {
     return serviceInstance();
 }
@@ -576,6 +581,51 @@ bool WifiControlServer::isActivated(void)
     return active_.load();
 }
 
+bool WifiControlServer::isConnected(void)
+{
+    if (!active_.load()) {
+        return false;
+    }
+
+    const bool hasActiveCommand =
+        forward_.load() || backward_.load() || left_.load() || right_.load();
+    if (hasActiveCommand) {
+        return true;
+    }
+
+    const int last = lastTick_.load();
+    if (last == 0) {
+        return false;
+    }
+
+    TickType_t now = xTaskGetTickCount();
+    return (now - static_cast<TickType_t>(last)) <= pdMS_TO_TICKS(MANUAL_TIMEOUT_MS);
+}
+
+driving_mode_t WifiControlServer::getDrivingMode(void)
+{
+    if (!isConnected()) {
+        return DRIVING_MODE_DISABLED;
+    }
+    return DRIVING_MODE_USER;
+}
+
+float WifiControlServer::getSpeed(void)
+{
+    if (!isConnected()) {
+        return 0.0f;
+    }
+    return duty_.load();
+}
+
+float WifiControlServer::getSteering(void)
+{
+    if (!isConnected()) {
+        return STEER_CENTER;
+    }
+    return steer_.load();
+}
+
 esp_err_t WifiControlServer::httpCmdHandler(httpd_req_t *req)
 {
     auto *self = fromRequest(req);
@@ -591,6 +641,7 @@ esp_err_t WifiControlServer::httpCmdHandler(httpd_req_t *req)
             return ESP_OK;
         }
     }
+
     httpd_resp_set_type(req, "application/json");
     setHttpCommonHeaders(req);
     httpd_resp_set_status(req, "400 Bad Request");
@@ -657,37 +708,4 @@ esp_err_t WifiControlServer::httpRootHandler(httpd_req_t *req)
     setHttpCommonHeaders(req);
     httpd_resp_sendstr(req, INDEX_HTML);
     return ESP_OK;
-}
-
-bool WifiControlServer::getManualControl(float &duty, float &steer, bool &emergency)
-{
-    if (!active_.load()) {
-        return false;
-    }
-
-    const bool hasActiveCommand =
-        forward_.load() || backward_.load() || left_.load() || right_.load();
-
-    if (hasActiveCommand) {
-        duty = duty_.load();
-        steer = steer_.load();
-        emergency = emergency_.load();
-        return true;
-    }
-
-    int last = lastTick_.load();
-    if (last == 0) {
-        return false;
-    }
-
-    TickType_t now = xTaskGetTickCount();
-    if ((now - static_cast<TickType_t>(last)) > pdMS_TO_TICKS(MANUAL_TIMEOUT_MS)) {
-        return false;
-    }
-
-    duty = duty_.load();
-    steer = steer_.load();
-    emergency = emergency_.load();
-    emergency_.store(false);
-    return true;
 }

@@ -15,7 +15,8 @@
 #include <iostream>
 
 #include "esp_err.h"
-#include "api/wifi_control_api.hpp"
+#include "api/user_controller_api.hpp"
+#include "wifi_control_server.hpp"
 #include "vescLidarUart.h"
 
 #include "drive.hpp"
@@ -320,7 +321,7 @@ void vesc_control_task(void *pvParameters) {
     AutonomousDriver driver;
     GpsAutonomousDriver gpsDriver;
     LidarRuntimeState lidarState;
-    WifiControlApi &manualControl = wifiControlServer();
+    UserControllerApi &manualControl = wifiControlServer();
 
     lidarState.enabled = (lidar.start() == ESP_OK);
     const bool gpsEnabled = (gps.start() == ESP_OK);
@@ -368,14 +369,9 @@ void vesc_control_task(void *pvParameters) {
             }
             continue;
         }
-        float manualDuty, manualSteer;
-        bool s_emergency;
-        if (manualControl.isActivated() && manualControl.getManualControl(manualDuty, manualSteer, s_emergency)) {
-            vesc.setSteering(manualSteer);
-            vesc.setDuty(manualDuty);
-            if (s_emergency) {
-                vesc.deactivate();
-            }
+        if (manualControl.isConnected() && manualControl.getDrivingMode() == DRIVING_MODE_USER) {
+            vesc.setSteering(manualControl.getSteering());
+            vesc.setDuty(manualControl.getSpeed());
             continue;
         }
 
@@ -424,8 +420,7 @@ void vesc_control_task(void *pvParameters) {
 
 extern "C" void app_main(void) {
     printf("Starting VESC Controller on ESP32-S3...\n");
-    WifiControlApi &manualControl = wifiControlServer();
-    manualControl.start();
+    wifiControlService().start();
     init_lidar_uart();
     init_vesc_rmt_uart();
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, &vesc_control_task_handle);

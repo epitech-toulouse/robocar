@@ -3,18 +3,22 @@
 #include <atomic>
 #include <cstdint>
 
-#include "api/wifi_control_api.hpp"
+#include "api/user_controller_api.hpp"
 #include "esp_err.h"
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-class WifiControlServer : public WifiControlApi {
+class WifiControlServer : public UserControllerApi {
 public:
-    void start(void) override;
-    void stop(void) override;
-    bool isActivated(void) override;
-    bool getManualControl(float &duty, float &steer, bool &emergency) override;
+    void start(void);
+    void stop(void);
+    bool isActivated(void);
+
+    bool isConnected(void) override;
+    driving_mode_t getDrivingMode(void) override;
+    float getSpeed(void) override;
+    float getSteering(void) override;
 
 private:
     static constexpr float STEER_CENTER = 0.5f;
@@ -62,3 +66,6 @@ private:
     httpd_handle_t httpServer_ = nullptr;
     TaskHandle_t tcpTaskHandle_ = nullptr;
 };
+
+UserControllerApi &wifiControlServer();
+WifiControlServer &wifiControlService();
