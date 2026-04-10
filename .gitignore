@@ -16,3 +16,5 @@ dist
 ws/
 *vscode*
 /esp/src/vescController/.cache/
+.DS_Store
+.gitignore
