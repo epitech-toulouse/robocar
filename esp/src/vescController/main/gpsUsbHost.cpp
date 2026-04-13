@@ -143,7 +143,8 @@ void UsbGpsHost::stop() {
     }
 
     if (appQueue != nullptr) {
-        AppMessage quitMsg = {.id = AppMessage::Quit};
+        AppMessage quitMsg{};
+        quitMsg.id = AppMessage::Quit;
         const BaseType_t sent = xQueueSend(appQueue, &quitMsg, 0);
         ESP_LOGD(TAG, "Queued Quit message result=%ld", static_cast<long>(sent));
     }
@@ -205,10 +206,9 @@ void UsbGpsHost::usbLibTask(void *arg) {
     auto *self = static_cast<UsbGpsHost *>(arg);
     ESP_LOGD(TAG, "usbLibTask started self=%p", static_cast<void *>(self));
 
-    const usb_host_config_t hostConfig = {
-        .skip_phy_setup = false,
-        .intr_flags = ESP_INTR_FLAG_LOWMED,
-    };
+    usb_host_config_t hostConfig{};
+    hostConfig.skip_phy_setup = false;
+    hostConfig.intr_flags = ESP_INTR_FLAG_LOWMED;
     ESP_LOGD(TAG, "Installing USB host library");
     ESP_ERROR_CHECK(usb_host_install(&hostConfig));
     ESP_LOGD(TAG, "USB host library installed");
