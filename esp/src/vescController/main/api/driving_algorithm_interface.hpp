@@ -21,7 +21,9 @@ static DrivingAlgorithmOutput const DEFAULT_DRIVING_ALGORITHM_OUTPUT = {
     // Stop car
     .target_speed = 0.0,
     // Center direction
-    .target_steering = 0.5
+    .target_steering = 0.5,
+    // Null weight
+    .computed_weight = 0.0
 };
 
 class DrivingAlgorithmApi {
