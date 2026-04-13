@@ -19,11 +19,12 @@ public:
     driving_mode_t getDrivingMode(void) override;
     float getSpeed(void) override;
     float getSteering(void) override;
+    bool getEmergencyStop() override;
 
 private:
     static constexpr float STEER_CENTER = 0.5f;
-    static constexpr float STEER_LEFT = 0.2f;
-    static constexpr float STEER_RIGHT = 0.8f;
+    static constexpr float STEER_LEFT = 0.0f;
+    static constexpr float STEER_RIGHT = 1.0f;
     static constexpr float DUTY_FORWARD = 0.05f;
     static constexpr float DUTY_BACKWARD = -0.05f;
     static constexpr TickType_t MANUAL_TIMEOUT_MS = 2000;

@@ -24,7 +24,6 @@ typedef enum driving_mode_e driving_mode_t;
 
 static TickType_t const USER_MUTEX_TIMEOUT_TICK = pdMS_TO_TICKS(5);
 
-static TickType_t const DATA_LIFESPAN = pdMS_TO_TICKS(20);
 
 inline char const *driving_mode_str(driving_mode_t mode)
 {
@@ -51,6 +50,8 @@ public:
 
     // [0.0;1.0]
     virtual float getSteering(void) = 0;
+
+    virtual bool getEmergencyStop() = 0;
 };
 
 #endif /* USER_USER_CONTROLLER_HPP */
