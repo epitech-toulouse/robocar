@@ -1,3 +1,4 @@
+/*
 #include <cstdint>
 #include <stdio.h>
 #include "config.h"
@@ -424,4 +425,17 @@ extern "C" void app_main(void) {
     init_lidar_uart();
     init_vesc_rmt_uart();
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, &vesc_control_task_handle);
+}
+*/
+#include <stdio.h>
+#include <esp_log.h>
+
+#include "manager/MasterManager.hpp"
+
+static char const *const tag = "MAIN";
+
+extern "C" void app_main(void) {
+    ESP_LOGI(tag, "Starting program.");
+
+    MasterManager master;
 }
