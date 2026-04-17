@@ -19,11 +19,11 @@ struct DrivingAlgorithmOutput {
 
 static DrivingAlgorithmOutput const DEFAULT_DRIVING_ALGORITHM_OUTPUT = {
     // Stop car
-    .target_speed = 0.0,
+    0.0, // target_speed
     // Center direction
-    .target_steering = 0.5,
+    0.5, // target_steering
     // Null weight
-    .computed_weight = 0.0
+    0.0  // computed_weight
 };
 
 class IDrivingAlgorithm {

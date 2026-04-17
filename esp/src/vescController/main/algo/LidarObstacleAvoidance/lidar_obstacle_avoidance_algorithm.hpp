@@ -11,6 +11,7 @@ public:
 
     bool available(void) override;
     bool compute(DrivingAlgorithmOutput& output) override;
+    float getPriority() override;
 
 private:
     ILidarSensor& lidarSensor;

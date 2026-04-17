@@ -43,3 +43,8 @@ bool LidarObstacleAvoidanceAlgorithm::compute(DrivingAlgorithmOutput& output)
     output.target_steering = commands.steer;
     return true;
 }
+
+float LidarObstacleAvoidanceAlgorithm::getPriority()
+{
+    return 1.0f;
+}
