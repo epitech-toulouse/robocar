@@ -15,8 +15,25 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
+get_filename_component(SIM_DIR_REAL "${CMAKE_CURRENT_SOURCE_DIR}" REALPATH)
+get_filename_component(VESC_CONTROLLER_ROOT "${SIM_DIR_REAL}/.." REALPATH)
+
+set(SHARED_LIDAR_ALGO_DIR "${VESC_CONTROLLER_ROOT}/main/algo/LidarObstacleAvoidance")
+set(SHARED_MAIN_DIR "${VESC_CONTROLLER_ROOT}/main")
+
 add_executable(robocar_sim_controller
 	main.cpp
+	robocar_sim_controller_node.cpp
+	sensors/sim_lidar_sensor.cpp
+	output/sim_vesc_controller.cpp
+	${SHARED_LIDAR_ALGO_DIR}/drive.cpp
+	${SHARED_LIDAR_ALGO_DIR}/lidar_obstacle_avoidance_algorithm.cpp
+)
+
+target_include_directories(robocar_sim_controller PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}
+	${CMAKE_CURRENT_SOURCE_DIR}/include
+	${SHARED_MAIN_DIR}
 )
 
 ament_target_dependencies(robocar_sim_controller
@@ -28,6 +45,12 @@ ament_target_dependencies(robocar_sim_controller
 
 install(TARGETS robocar_sim_controller
 	DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+	tools/robocar_menu_qt.py
+	DESTINATION lib/${PROJECT_NAME}
+	RENAME robocar_menu_qt
 )
 
 install(DIRECTORY

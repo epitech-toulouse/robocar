@@ -26,6 +26,29 @@ def generate_launch_description():
 
     start_controller = LaunchConfiguration("start_controller")
 
+    controller_menu_enabled_arg = DeclareLaunchArgument(
+        "controller_menu_enabled",
+        default_value="true",
+        description="Enable stdin menu in robocar_sim_controller",
+    )
+
+    controller_menu_enabled = LaunchConfiguration("controller_menu_enabled")
+
+    start_rviz_arg = DeclareLaunchArgument(
+        "start_rviz",
+        default_value="false",
+        description="Start RViz with LiDAR view",
+    )
+
+    rviz_config_arg = DeclareLaunchArgument(
+        "rviz_config",
+        default_value=PathJoinSubstitution([package_share, "config", "robocar_lidar.rviz"]),
+        description="Path to RViz config",
+    )
+
+    start_rviz = LaunchConfiguration("start_rviz")
+    rviz_config = LaunchConfiguration("rviz_config")
+
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("ros_gz_sim"), "launch", "gz_sim.launch.py"])
@@ -41,6 +64,7 @@ def generate_launch_description():
         arguments=[
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
             "/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
+            "/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
             "/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist",
         ],
     )
@@ -53,13 +77,37 @@ def generate_launch_description():
         condition=IfCondition(start_controller),
         parameters=[
             PathJoinSubstitution([package_share, "config", "controller.yaml"]),
+            {"menu_enabled": controller_menu_enabled},
         ],
+    )
+
+    rviz = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="robocar_rviz",
+        output="screen",
+        condition=IfCondition(start_rviz),
+        parameters=[{"use_sim_time": True}],
+        arguments=["-d", rviz_config],
+    )
+
+    static_tf_lidar = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="robocar_lidar_static_tf",
+        output="screen",
+        arguments=["0", "0", "0", "0", "0", "0", "map", "robocar/lidar_link/top_lidar"],
     )
 
     return LaunchDescription([
         world_arg,
         start_controller_arg,
+        controller_menu_enabled_arg,
+        start_rviz_arg,
+        rviz_config_arg,
         gazebo,
         bridge,
         controller,
+        static_tf_lidar,
+        rviz,
     ])

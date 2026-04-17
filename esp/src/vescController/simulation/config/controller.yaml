@@ -3,5 +3,10 @@ robocar_sim_controller:
     scan_topic: "/scan"
     cmd_topic: "/cmd_vel"
     points_topic: "/robocar/lidar_points_flat"
+    autonomous_enabled: true
+    sim_auto_speed_scale: 8.0
+    sim_max_linear_speed_mps: 1.8
+    sim_max_angular_speed_radps: 2.2
+    sim_reverse_steering: false
     menu_enabled: true
     auto_print: false

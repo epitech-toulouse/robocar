@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
+  <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
@@ -19,6 +20,8 @@
   <exec_depend>rosgraph_msgs</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>python3-pyqt5</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

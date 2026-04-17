@@ -39,14 +39,24 @@ sudo apt install -y ros-jazzy-desktop ros-dev-tools
 ### 1.4 Source ROS automatically
 
 ```bash
+# Bash users
 echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
 source ~/.bashrc
+
+# Zsh users
+echo "source /opt/ros/jazzy/setup.zsh" >> ~/.zshrc
+source ~/.zshrc
 ```
+
+Important:
+
+- Do not run `source ~/.bashrc` from a `zsh` shell.
+- In `zsh`, always source `setup.zsh` (not `setup.bash`).
 
 ### 1.5 Quick check
 
 ```bash
-ros2 --version
+ros2 -h
 ```
 
 ## 2) Install Gazebo Harmonic
@@ -121,6 +131,12 @@ Terminal 2 (controller with menu):
 source /opt/ros/jazzy/setup.bash
 source ~/robocar_ws/install/setup.bash
 ros2 run robocar_sim robocar_sim_controller
+```
+
+Or with helper script (menu + RViz LiDAR window):
+
+```bash
+./alexis.sh --menu --rviz
 ```
 
 ## 4.2) If you get "package robocar_sim not found"
