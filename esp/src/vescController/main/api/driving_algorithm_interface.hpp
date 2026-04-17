@@ -13,13 +13,17 @@ struct DrivingAlgorithmOutput {
     float target_speed;
     // [0.0;1.0]
     float target_steering;
+    // [0.0;+inf]
+    float computed_weight;
 };
 
 static DrivingAlgorithmOutput const DEFAULT_DRIVING_ALGORITHM_OUTPUT = {
     // Stop car
     .target_speed = 0.0,
     // Center direction
-    .target_steering = 0.5
+    .target_steering = 0.5,
+    // Null weight
+    .computed_weight = 0.0
 };
 
 class IDrivingAlgorithm {
@@ -35,6 +39,8 @@ public:
     // => output set to DEFAULT_DRIVING_ALGORITHM_OUTPUT
     // Returns true if output can be computer
     virtual bool compute(DrivingAlgorithmOutput &output) = 0;
+
+    virtual float getPriority() = 0;
 };
 
 #endif /* DRIVING_ALGO_API_HPP */

@@ -1,7 +1,7 @@
 #include "vescController.hpp"
 #include "config.h"
 #include "esp_system.h"
-#include "rmt_uart.h"
+#include "driver/uart.h"
 #include <cstring>
 
 VescController::VescController() {}
@@ -22,7 +22,7 @@ void VescController::sendPacket(const uint8_t* payload, int len) {
     frame[idx++] = (uint8_t)(crc & 0xFF);
     frame[idx++] = END_BYTE;
 
-    rmt_uart_write_bytes(VESC_RMT_UART_PORT, (const uint8_t*)frame, (size_t) idx);
+    uart_write_bytes(UART_NUM_1, (const char*)frame, (size_t) idx);
 }
 
 void VescController::activate() {
