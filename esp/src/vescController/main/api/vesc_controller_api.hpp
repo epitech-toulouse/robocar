@@ -8,7 +8,15 @@
 #ifndef VESC_CONTROLLER_API_HPP
 #define VESC_CONTROLLER_API_HPP
 
+#if __has_include("freertos/FreeRTOS.h")
 #include "freertos/FreeRTOS.h"
+#else
+#include <cstdint>
+using TickType_t = uint32_t;
+#ifndef pdMS_TO_TICKS
+#define pdMS_TO_TICKS(ms) (static_cast<TickType_t>(ms))
+#endif
+#endif
 #include <array>
 #include <cstdint>
 

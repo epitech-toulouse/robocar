@@ -1,7 +1,19 @@
 #include "drive.hpp"
-#include <iostream>
 #include <cmath>
 #include <algorithm>
+#if !__has_include("freertos/task.h")
+#include <chrono>
+#endif
+
+static TickType_t get_tick_count()
+{
+#if __has_include("freertos/task.h")
+    return xTaskGetTickCount();
+#else
+    using namespace std::chrono;
+    return static_cast<TickType_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+#endif
+}
 
 static float clampf(float value, float lo, float hi) {
     if (value < lo) return lo;
@@ -205,7 +217,7 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     const float leftNear = nearest_in_sector(clean_scan, SIDE_WINDOW_MIN_DEG, SIDE_WINDOW_MAX_DEG);
     const float rightNear = nearest_in_sector(clean_scan, 360.0f - SIDE_WINDOW_MAX_DEG, 360.0f - SIDE_WINDOW_MIN_DEG);
 
-    const TickType_t now = xTaskGetTickCount();
+    const TickType_t now = get_tick_count();
     if (now < reverseUntil) {
         return {map_auto_steer(reverseSteer), SPEED_REVERSE};
     }
@@ -215,7 +227,6 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
         const bool leftMoreOpen = (leftNear < 0.0f) || (rightNear > 0.0f && rightNear > leftNear);
         reverseSteer = leftMoreOpen ? STEER_RIGHT : STEER_LEFT;
         reverseUntil = now + pdMS_TO_TICKS(REVERSE_DURATION_MS);
-        std::cout << "Reverse: front=" << frontNear << "m left=" << leftNear << "m right=" << rightNear << "m" << std::endl;
         return {map_auto_steer(reverseSteer), SPEED_REVERSE};
     }
 
@@ -230,11 +241,6 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     if (frontNear > 0.0f && frontNear <= STOP_DISTANCE_M) {
         speed = 0.0f;
     }
-
-    std::cout << "FTG Steer=" << steer
-              << " Speed=" << speed
-              << " front=" << frontNear
-              << "m pts=" << clean_scan.size() << std::endl;
 
     return {steer, speed};
 }

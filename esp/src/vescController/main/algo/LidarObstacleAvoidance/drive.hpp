@@ -1,8 +1,16 @@
 #pragma once
 
 #include <vector>
+#if __has_include("freertos/FreeRTOS.h")
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#else
+#include <cstdint>
+using TickType_t = uint32_t;
+#ifndef pdMS_TO_TICKS
+#define pdMS_TO_TICKS(ms) (static_cast<TickType_t>(ms))
+#endif
+#endif
 #include "lidarReader.hpp"
 
 // LiDAR-only driving parameters.
