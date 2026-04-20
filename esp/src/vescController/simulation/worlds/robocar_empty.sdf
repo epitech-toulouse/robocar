@@ -50,69 +50,50 @@
       </link>
     </model>
 
-    <!-- MUR EXTÉRIEUR NORD -->
-    <model name="outer_wall_n">
-      <static>true</static>
-      <pose>10 6 0.5 0 0 0</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>25 1 1</size></box></geometry></collision>
-        <visual name="visual">
-          <geometry><box><size>25 1 1</size></box></geometry>
-          <material><ambient>0.8 0.4 0.2 1</ambient><diffuse>0.8 0.4 0.2 1</diffuse></material>
-        </visual>
-      </link>
+    <!-- CIRCUIT DE FORMULE 1 (Échelle Robocar) -->
+    
+    <!-- BORDURES EXTERIEURES ROUGES -->
+    <model name="f1_border_n">
+      <static>true</static><pose>10 7 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>25 0.2 1</size></box></geometry></collision><visual name="v"><geometry><box><size>25 0.2 1</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
+    </model>
+    <model name="f1_border_s">
+      <static>true</static><pose>10 -7 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>25 0.2 1</size></box></geometry></collision><visual name="v"><geometry><box><size>25 0.2 1</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
+    </model>
+    <model name="f1_border_e">
+      <static>true</static><pose>22.5 0 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>0.2 14 1</size></box></geometry></collision><visual name="v"><geometry><box><size>0.2 14 1</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
+    </model>
+    <model name="f1_border_w">
+      <static>true</static><pose>-2.5 0 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>0.2 14 1</size></box></geometry></collision><visual name="v"><geometry><box><size>0.2 14 1</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
     </model>
 
-    <!-- MUR EXTÉRIEUR SUD -->
-    <model name="outer_wall_s">
-      <static>true</static>
-      <pose>10 -6 0.5 0 0 0</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>25 1 1</size></box></geometry></collision>
-        <visual name="visual">
-          <geometry><box><size>25 1 1</size></box></geometry>
-          <material><ambient>0.8 0.4 0.2 1</ambient><diffuse>0.8 0.4 0.2 1</diffuse></material>
-        </visual>
-      </link>
+    <!-- LES CHICANES EN BIAIS (Vibreurs Blancs et Bleus) -->
+    <model name="chicane_1">
+      <static>true</static><pose>5 2.5 0.5 0 0 -0.785</pose>
+      <link name="link"><collision name="c"><geometry><box><size>6 0.2 1</size></box></geometry></collision><visual name="v"><geometry><box><size>6 0.2 1</size></box></geometry><material><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse></material></visual></link>
+    </model>
+    <model name="chicane_2">
+      <static>true</static><pose>9 -2.5 0.5 0 0 0.785</pose>
+      <link name="link"><collision name="c"><geometry><box><size>6 0.2 1</size></box></geometry></collision><visual name="v"><geometry><box><size>6 0.2 1</size></box></geometry><material><ambient>0.2 0.4 1 1</ambient><diffuse>0.2 0.4 1 1</diffuse></material></visual></link>
     </model>
 
-    <!-- MUR EXTÉRIEUR OUEST -->
-    <model name="outer_wall_w">
-      <static>true</static>
-      <pose>-3 0 0.5 0 0 0</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>1 13 1</size></box></geometry></collision>
-        <visual name="visual">
-          <geometry><box><size>1 13 1</size></box></geometry>
-          <material><ambient>0.8 0.4 0.2 1</ambient><diffuse>0.8 0.4 0.2 1</diffuse></material>
-        </visual>
-      </link>
+    <!-- OBSTACLE DE LA GRANDE EPINGLE (Vibreurs Jaunes) -->
+    <model name="hairpin_island">
+      <static>true</static><pose>17.5 0 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>6 8 1</size></box></geometry></collision><visual name="v"><geometry><box><size>6 8 1</size></box></geometry><material><ambient>0.9 0.7 0.1 1</ambient><diffuse>0.9 0.7 0.1 1</diffuse></material></visual></link>
     </model>
 
-    <!-- MUR EXTÉRIEUR EST -->
-    <model name="outer_wall_e">
-      <static>true</static>
-      <pose>23 0 0.5 0 0 0</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>1 13 1</size></box></geometry></collision>
-        <visual name="visual">
-          <geometry><box><size>1 13 1</size></box></geometry>
-          <material><ambient>0.8 0.4 0.2 1</ambient><diffuse>0.8 0.4 0.2 1</diffuse></material>
-        </visual>
-      </link>
+    <!-- SÉPARATEURS DROITS -->
+    <model name="straight_block_1">
+      <static>true</static><pose>10 4.5 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>8 0.5 1</size></box></geometry></collision><visual name="v"><geometry><box><size>8 0.5 1</size></box></geometry><material><ambient>0.3 0.8 0.3 1</ambient><diffuse>0.3 0.8 0.3 1</diffuse></material></visual></link>
     </model>
-
-    <!-- ÎLOT CENTRAL -->
-    <model name="inner_island">
-      <static>true</static>
-      <pose>12 0 0.5 0 0 0</pose>
-      <link name="link">
-        <collision name="collision"><geometry><box><size>15 4 1</size></box></geometry></collision>
-        <visual name="visual">
-          <geometry><box><size>15 4 1</size></box></geometry>
-          <material><ambient>0.2 0.6 0.8 1</ambient><diffuse>0.2 0.6 0.8 1</diffuse></material>
-        </visual>
-      </link>
+    <model name="straight_block_2">
+      <static>true</static><pose>2 -4.5 0.5 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>6 0.5 1</size></box></geometry></collision><visual name="v"><geometry><box><size>6 0.5 1</size></box></geometry><material><ambient>0.3 0.8 0.3 1</ambient><diffuse>0.3 0.8 0.3 1</diffuse></material></visual></link>
     </model>
 
     <model name="robocar">
@@ -121,25 +102,26 @@
       <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
         <left_joint>left_wheel_joint</left_joint>
         <right_joint>right_wheel_joint</right_joint>
-        <wheel_separation>0.26</wheel_separation>
+        <wheel_separation>0.15</wheel_separation>
         <wheel_radius>0.05</wheel_radius>
         <topic>/cmd_vel</topic>
         <odom_topic>/odom</odom_topic>
         <tf_topic>/tf</tf_topic>
-        <max_linear_velocity>1.8</max_linear_velocity>
-        <min_linear_velocity>-1.8</min_linear_velocity>
-        <max_angular_velocity>2.0</max_angular_velocity>
-        <min_angular_velocity>-2.0</min_angular_velocity>
+        <max_linear_velocity>3.5</max_linear_velocity>
+        <min_linear_velocity>-3.5</min_linear_velocity>
+        <!-- L'angle max (45 degrés) pour la rotation sur un empattement de ~30cm donne une angular velocity max très spécifique. 45 deg = 0.785 rad -->
+        <max_angular_velocity>5.5</max_angular_velocity>
+        <min_angular_velocity>-5.5</min_angular_velocity>
       </plugin>
 
       <link name="base_link">
         <pose>0 0 0.1 0 0 0</pose>
         <inertial>
-          <mass>8.0</mass>
+          <mass>2.0</mass>
           <inertia>
-            <ixx>0.12</ixx>
-            <iyy>0.15</iyy>
-            <izz>0.20</izz>
+            <ixx>0.05</ixx>
+            <iyy>0.05</iyy>
+            <izz>0.05</izz>
             <ixy>0.0</ixy>
             <ixz>0.0</ixz>
             <iyz>0.0</iyz>
@@ -149,7 +131,7 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.45 0.30 0.12</size>
+              <size>0.30 0.15 0.10</size>
             </box>
           </geometry>
         </collision>
@@ -157,7 +139,7 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.45 0.30 0.12</size>
+              <size>0.30 0.15 0.10</size>
             </box>
           </geometry>
           <material>
@@ -168,7 +150,7 @@
       </link>
 
       <link name="left_wheel_link">
-        <pose>0 0.13 0.05 1.57079632679 0 0</pose>
+        <pose>0 0.085 0.05 1.57079632679 0 0</pose>
         <inertial>
           <mass>0.35</mass>
           <inertia>
@@ -211,7 +193,7 @@
       </link>
 
       <link name="right_wheel_link">
-        <pose>0 -0.13 0.05 1.57079632679 0 0</pose>
+        <pose>0 -0.085 0.05 1.57079632679 0 0</pose>
         <inertial>
           <mass>0.35</mass>
           <inertia>
@@ -284,7 +266,7 @@
       </joint>
 
       <link name="front_caster_link">
-        <pose>0.18 0 0.03 0 0 0</pose>
+        <pose>0.12 0 0.03 0 0 0</pose>
         <inertial>
           <mass>0.08</mass>
           <inertia>
