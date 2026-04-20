@@ -66,7 +66,8 @@ geometry_msgs::msg::Twist SimVescController::toTwistCommand() const
 	const float signedSteering = (steeringCmd - 0.5f) * 2.0f;
 	const float steer = config.reverseSteering ? -signedSteering : signedSteering;
 	const float linear = speedCmd * config.maxLinearSpeedMps;
-	const float curvatureScale = std::clamp(std::abs(speedCmd), 0.0f, 1.0f);
+	// Maintenir un peu de braquage même à basse vitesse (évite la pénalité x0)
+	const float curvatureScale = std::clamp(std::abs(speedCmd), 0.1f, 1.0f);
 	const float angular = steer * config.maxAngularSpeedRadps * curvatureScale;
 
 	cmd.linear.x = linear;
