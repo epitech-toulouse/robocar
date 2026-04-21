@@ -8,8 +8,10 @@
 #ifndef ADVANCED_FUSION_ENGINE_HPP
 #define ADVANCED_FUSION_ENGINE_HPP
 
-#include "api/driving_algorithm_interface.hpp"
+#include <memory>
 #include <vector>
+
+#include "api/driving_algorithm_interface.hpp"
 
 class AdvancedFusionEngine
 {
@@ -17,10 +19,10 @@ public:
     AdvancedFusionEngine() = default;
     ~AdvancedFusionEngine() = default;
 
-    void addDrivingAlgorithm(DrivingAlgorithmApi *algorithm);
+    void addDrivingAlgorithm(std::unique_ptr<DrivingAlgorithmApi> algorithm);
     DrivingAlgorithmOutput computeOutput(void);
 private:
-    std::vector<DrivingAlgorithmApi *> driving_algorithms;
+    std::vector<std::unique_ptr<DrivingAlgorithmApi>> driving_algorithms;
 };
 
 #endif /* ADVANCED_FUSION_ENGINE_HPP */

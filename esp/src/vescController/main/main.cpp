@@ -427,15 +427,28 @@ extern "C" void app_main(void) {
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, &vesc_control_task_handle);
 }
 */
-#include <stdio.h>
+
 #include <esp_log.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "manager/MasterManager.hpp"
+#include <cstddef>
 
-static char const *const tag = "MAIN";
+static char const *const TAG = "MAIN";
 
-extern "C" void app_main(void) {
-    ESP_LOGI(tag, "Starting program.");
+static TaskHandle_t main_loop_task_handle = nullptr;
+
+void main_loop(void *) {
+    ESP_LOGI(TAG, "Initiating master manager.");
 
     MasterManager master;
+}
+
+extern "C" {
+void app_main(void) {
+    ESP_LOGI(TAG, "Starting program.");
+
+    xTaskCreate(main_loop, "main_loop", 4096, NULL, 5, &main_loop_task_handle);
+}
 }

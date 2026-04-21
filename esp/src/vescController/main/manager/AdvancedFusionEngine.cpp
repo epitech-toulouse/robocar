@@ -10,9 +10,9 @@
 #include <vector>
 
 void AdvancedFusionEngine::addDrivingAlgorithm
-(DrivingAlgorithmApi *algorithm)
+(std::unique_ptr<DrivingAlgorithmApi> algorithm)
 {
-    this->driving_algorithms.push_back(algorithm);
+    this->driving_algorithms.push_back(std::move(algorithm));
 }
 
 DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
@@ -20,7 +20,7 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
     std::vector<DrivingAlgorithmOutput> outputs;
 
     outputs.reserve(this->driving_algorithms.size());
-    for (DrivingAlgorithmApi *driving_algo : this->driving_algorithms) {
+    for (std::unique_ptr<DrivingAlgorithmApi> &driving_algo : this->driving_algorithms) {
         if (!driving_algo->available())
             continue;
         float priority = driving_algo->getPriority();
@@ -38,15 +38,16 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
     DrivingAlgorithmOutput final_output = {
         .target_speed = 0.0,
         .target_steering = 0.5,
-        .computed_weight = 0
+        .computed_weight = 0.0
     };
     for (DrivingAlgorithmOutput &output : outputs) {
         final_output.target_speed += output.target_speed;
         final_output.target_steering += output.target_steering;
         final_output.computed_weight += output.computed_weight;
     }
-    if (final_output.computed_weight <= 0.0)
+    if (final_output.computed_weight <= 0.0) {
         return {0.0, 0.5, 0.0}; // Return null output
+    }
     final_output.target_speed /= final_output.computed_weight;
     final_output.target_steering /= final_output.computed_weight;
     // Offset back
