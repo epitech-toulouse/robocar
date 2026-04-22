@@ -5,6 +5,7 @@
 ** master manager
 */
 
+#include <memory>
 #include "manager/MasterManager.hpp"
 
 #include "wifi_control_server.hpp"

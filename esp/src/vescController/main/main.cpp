@@ -429,13 +429,14 @@ extern "C" void app_main(void) {
 */
 
 #include <esp_log.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include <freertos/FreeRTOS.h>
 
 #include "manager/MasterManager.hpp"
 #include <cstddef>
 
 static char const *const TAG = "MAIN";
+
+static TickType_t const MAIN_LOOP_DELAY = 0;
 
 static TaskHandle_t main_loop_task_handle = nullptr;
 
@@ -443,6 +444,13 @@ void main_loop(void *) {
     ESP_LOGI(TAG, "Initiating master manager.");
 
     MasterManager master;
+
+    while (true) {
+        master.iterate();
+
+        if (MAIN_LOOP_DELAY)
+            vTaskDelay(MAIN_LOOP_DELAY);
+    }
 }
 
 extern "C" {
