@@ -1,3 +1,4 @@
+/*
 #include <cstdint>
 #include <stdio.h>
 #include "config.h"
@@ -424,4 +425,38 @@ extern "C" void app_main(void) {
     init_lidar_uart();
     init_vesc_rmt_uart();
     xTaskCreate(vesc_control_task, "vesc_task", 4096, NULL, 5, &vesc_control_task_handle);
+}
+*/
+
+#include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+
+#include "manager/MasterManager.hpp"
+#include <cstddef>
+
+static char const *const TAG = "MAIN";
+
+static TickType_t const MAIN_LOOP_DELAY = 0;
+
+static TaskHandle_t main_loop_task_handle = nullptr;
+
+void main_loop(void *) {
+    ESP_LOGI(TAG, "Initiating master manager.");
+
+    MasterManager master;
+
+    while (true) {
+        master.iterate();
+
+        if (MAIN_LOOP_DELAY)
+            vTaskDelay(MAIN_LOOP_DELAY);
+    }
+}
+
+extern "C" {
+void app_main(void) {
+    ESP_LOGI(TAG, "Starting program.");
+
+    xTaskCreate(main_loop, "main_loop", 4096, NULL, 5, &main_loop_task_handle);
+}
 }
