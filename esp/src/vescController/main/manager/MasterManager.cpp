@@ -12,7 +12,7 @@
 #include "tmp/vescController.hpp"
 #include "tmp/gpsSensor.hpp"
 #include "tmp/lidarSensor.hpp"
-#include "tmp/demoAlgo.hpp"
+#include "tmp/lidarDrivingAlgo.hpp"
 
 MasterManager::MasterManager()
 {
@@ -24,7 +24,7 @@ MasterManager::MasterManager()
     this->gps_sensor_api = std::make_unique<GpsSensor>();
     this->lidar_sensor_api = std::make_unique<LidarSensor>();
 
-    this->fusionEngine.addDrivingAlgorithm(std::make_unique<DemoAlgo>(*this->gps_sensor_api));
+    this->fusionEngine.addDrivingAlgorithm(std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
 }
 
 void MasterManager::iterate(void)
