@@ -11,8 +11,8 @@
 #include "wifi_control_server.hpp"
 #include "tmp/vescController.hpp"
 #include "tmp/gpsSensor.hpp"
-#include "tmp/lidarSensor.hpp"
-#include "tmp/lidarDrivingAlgo.hpp"
+#include "sensors/lidarSensor.hpp"
+#include "algo/lidarDrivingAlgo.hpp"
 
 MasterManager::MasterManager()
 {
