@@ -6,6 +6,8 @@ get_filename_component(PROJECT_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 
 message(STATUS "PROJECT_DIR: ${PROJECT_DIR}")
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(ROOT_DIR ${PROJECT_DIR})
 
 include(${ROOT_DIR}/cmake/toolchain-riscv64-linux-musl-x86_64.cmake)

@@ -17,3 +17,8 @@ ws/
 *vscode*
 .DS_Store
 /esp/src/vescController/.cache/
+compile_commands.json
+sg2002_recamera_emmc/
+host-tools/
+components/
+.cache/

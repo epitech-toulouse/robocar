@@ -1,0 +1,6 @@
+CompileFlags:
+  Remove: [-march=*, -mabi=*, -mcpu=*]
+  Add: 
+    - --target=riscv64-unknown-linux-musl
+    - --sysroot=/home/loris/Delivery/tek-3/robocar/recamera/host-tools/gcc/riscv64-linux-musl-x86_64/sysroot
+  Compiler: /home/loris/Delivery/tek-3/robocar/recamera/host-tools/gcc/riscv64-linux-musl-x86_64/bin/riscv64-unknown-linux-musl-gcc
