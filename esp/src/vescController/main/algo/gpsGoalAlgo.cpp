@@ -1,4 +1,4 @@
-#include "gps/gpsGoalAlgo.hpp"
+#include "gpsGoalAlgo.hpp"
 
 #include <cmath>
 

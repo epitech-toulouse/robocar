@@ -1,4 +1,4 @@
-#include "gps/gpsSensor.hpp"
+#include "gpsSensor.hpp"
 
 #include <cmath>
 

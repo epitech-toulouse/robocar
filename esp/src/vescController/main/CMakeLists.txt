@@ -2,11 +2,16 @@ idf_component_register(
   SRCS
   "main.cpp"
   "gps/gpsUsbHost.cpp"
-  "gps/gpsSensor.cpp"
-  "gps/gpsGoalAlgo.cpp"
+  "sensors/gpsSensor.cpp"
+  "algo/gpsGoalAlgo.cpp"
   "manager/MasterManager.cpp"
   "manager/AdvancedFusionEngine.cpp"
+  "manager/CoupeCircuitManager.cpp"
   "wifi_control_server.cpp"
+  "lidarReader.cpp"
+  "drive.cpp"
+  "vesc/PhysicalVescController.cpp"
+  "vescLidarUart.c"
 
   PRIV_REQUIRES
   driver
