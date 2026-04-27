@@ -3,6 +3,7 @@ idf_component_register(
   "main.cpp"
   "manager/MasterManager.cpp"
   "manager/AdvancedFusionEngine.cpp"
+  "manager/CoupeCircuitManager.cpp"
   "wifi_control_server.cpp"
 
   PRIV_REQUIRES

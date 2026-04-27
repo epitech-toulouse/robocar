@@ -8,6 +8,7 @@
 #include <memory>
 #include "manager/MasterManager.hpp"
 
+#include "CoupeCircuitManager.hpp"
 #include "wifi_control_server.hpp"
 #include "tmp/vescController.hpp"
 #include "tmp/gpsSensor.hpp"
@@ -21,6 +22,7 @@ MasterManager::MasterManager()
     static_cast<WifiControlServer *>(user_controller_api.get())->start();
 
     this->vesc_controller_api = std::make_unique<VescController>();
+    this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>(*this->vesc_controller_api);
     this->gps_sensor_api = std::make_unique<GpsSensor>();
     this->lidar_sensor_api = std::make_unique<LidarSensor>();
 
