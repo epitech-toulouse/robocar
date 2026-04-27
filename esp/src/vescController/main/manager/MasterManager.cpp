@@ -14,15 +14,19 @@
 #include "sensors/lidarSensor.hpp"
 #include "algo/lidarDrivingAlgo.hpp"
 
+#include "vesc/PhysicalVescController.hpp"
+
 MasterManager::MasterManager()
 {
     this->user_controller_api = std::make_unique<WifiControlServer>();
     // Start WIFI (please put this inside the constructor :D)
     static_cast<WifiControlServer *>(user_controller_api.get())->start();
 
-    this->vesc_controller_api = std::make_unique<VescController>();
+    this->vesc_controller_api = std::make_unique<PhysicalVescController>();
     this->gps_sensor_api = std::make_unique<GpsSensor>();
     this->lidar_sensor_api = std::make_unique<LidarSensor>();
+
+    this->vesc_controller_api->activate();
 
     this->fusionEngine.addDrivingAlgorithm(std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
 }

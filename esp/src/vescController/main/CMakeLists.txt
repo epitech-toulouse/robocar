@@ -6,6 +6,7 @@ idf_component_register(
   "wifi_control_server.cpp"
   "lidarReader.cpp"
   "drive.cpp"
+  "vesc/PhysicalVescController.cpp"
   "vescLidarUart.c"
 
   PRIV_REQUIRES

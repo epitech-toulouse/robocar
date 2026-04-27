@@ -1,4 +1,7 @@
 #include "PhysicalVescController.hpp"
+#include <cstring>
+#include "config.h"
+#include "driver/uart.h"
 
 PhysicalVescController::PhysicalVescController() {}
 
@@ -66,7 +69,7 @@ void PhysicalVescController::sendPacket(const uint8_t* payload, int len) {
     frame[idx++] = (uint8_t)(crc & 0xFF);
     frame[idx++] = END_BYTE;
 
-    rmt_uart_write_bytes(VESC_RMT_UART_PORT, (const uint8_t*)frame, (size_t) idx);
+    uart_write_bytes((uart_port_t)VESC_RMT_UART_TX, (const uint8_t*)frame, (size_t) idx);
 }
 
 void PhysicalVescController::sendInt32Cmd(CommPacketId cmd, int32_t value) {
