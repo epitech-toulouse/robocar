@@ -12,6 +12,7 @@ idf_component_register(
   "drive.cpp"
   "vesc/PhysicalVescController.cpp"
   "vescLidarUart.c"
+  "rmt-uart/rmt_uart.c"
 
   PRIV_REQUIRES
   driver
@@ -29,4 +30,5 @@ idf_component_register(
   "."
   "manager"
   "gps"
+  "rmt-uart"
 )

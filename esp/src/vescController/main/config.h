@@ -2,6 +2,7 @@
 #define CONFIG_H
 
 #include "hal/uart_types.h"
+#include "rmt_uart.h"
 #include "soc/gpio_num.h"
 #include <stdint.h>
 
@@ -15,6 +16,7 @@ static uint32_t const LIDAR_UART_BAUDRATE = 230400;
 /* VESC CONTROLER */
 static uint32_t const VESC_RMT_UART_BAUDRATE = 115200;
 static gpio_num_t const VESC_RMT_UART_TX = GPIO_NUM_15;
+static uint8_t const VESC_RMT_UART_PORT = RMT_UART_NUM_0;
 
 /* CAMERA */
 static uart_port_t const CAMERA_UART_PORT = UART_NUM_1;
