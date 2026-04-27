@@ -457,6 +457,6 @@ extern "C" {
 void app_main(void) {
     ESP_LOGI(TAG, "Starting program.");
 
-    xTaskCreate(main_loop, "main_loop", 4096, NULL, 5, &main_loop_task_handle);
+    xTaskCreatePinnedToCore(main_loop, "main_loop", 4096, NULL, 5, &main_loop_task_handle, 0);
 }
 }
