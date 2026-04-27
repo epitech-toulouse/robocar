@@ -10,9 +10,10 @@
 
 #include "wifi_control_server.hpp"
 #include "tmp/vescController.hpp"
-#include "tmp/gpsSensor.hpp"
+#include "gps/gpsSensor.hpp"
 #include "tmp/lidarSensor.hpp"
-#include "tmp/demoAlgo.hpp"
+#include "gps/gpsGoalAlgo.hpp"
+#include "esp_log.h"
 
 MasterManager::MasterManager()
 {
@@ -24,7 +25,7 @@ MasterManager::MasterManager()
     this->gps_sensor_api = std::make_unique<GpsSensor>();
     this->lidar_sensor_api = std::make_unique<LidarSensor>();
 
-    this->fusionEngine.addDrivingAlgorithm(std::make_unique<DemoAlgo>(*this->gps_sensor_api));
+    this->fusionEngine.addDrivingAlgorithm(std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
 }
 
 void MasterManager::iterate(void)

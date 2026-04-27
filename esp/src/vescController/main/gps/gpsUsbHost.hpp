@@ -13,6 +13,9 @@
 struct GpsFix {
     bool hasFix = false;
     int satellites = 0;
+    int fixQuality = 0;
+    bool isRtkFloat = false;
+    bool isRtkFixed = false;
     double latitude = 0.0;
     double longitude = 0.0;
     float altitudeMeters = 0.0f;
@@ -64,7 +67,7 @@ private:
 
     cdc_acm_dev_hdl_t cdcDevices[MAX_CDC_DEVICES];
 
-    char lineBuffer[256];
+    char lineBuffer[512];
     int linePos;
 
     bool running;

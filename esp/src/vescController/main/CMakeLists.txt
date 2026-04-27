@@ -1,6 +1,9 @@
 idf_component_register(
   SRCS
   "main.cpp"
+  "gps/gpsUsbHost.cpp"
+  "gps/gpsSensor.cpp"
+  "gps/gpsGoalAlgo.cpp"
   "manager/MasterManager.cpp"
   "manager/AdvancedFusionEngine.cpp"
   "wifi_control_server.cpp"
@@ -20,4 +23,5 @@ idf_component_register(
   INCLUDE_DIRS
   "."
   "manager"
+  "gps"
 )

@@ -578,6 +578,8 @@ void UsbGpsHost::parseNmeaLine(char *line) {
         return;
     }
 
+    ESP_LOGD(TAG, "GGA sentence received: %s", line);
+
     char *tokens[20] = {nullptr};
     int count = 0;
 
@@ -592,22 +594,38 @@ void UsbGpsHost::parseNmeaLine(char *line) {
     }
 
     if (count < 10 || std::strlen(tokens[2]) == 0 || std::strlen(tokens[4]) == 0) {
-        ESP_LOGD(TAG, "GGA sentence missing required fields count=%d", count);
+        ESP_LOGW(TAG, "GGA sentence missing required fields count=%d: %s", count, line);
         return;
     }
 
     GpsFix nextFix;
+    const int fixQuality = std::atoi(tokens[6]);
     nextFix.latitude = static_cast<double>(nmeaToDecimal(tokens[2], tokens[3][0]));
     nextFix.longitude = static_cast<double>(nmeaToDecimal(tokens[4], tokens[5][0]));
-    nextFix.hasFix = (std::atoi(tokens[6]) > 0);
+    nextFix.fixQuality = fixQuality;
+    nextFix.hasFix = (fixQuality > 0);
+    nextFix.isRtkFixed = (fixQuality == 4);
+    nextFix.isRtkFloat = (fixQuality == 5);
     nextFix.satellites = std::atoi(tokens[7]);
     nextFix.altitudeMeters = static_cast<float>(std::atof(tokens[9]));
     nextFix.updateCounter = fixUpdateCounter + 1;
     nextFix.updateTick = xTaskGetTickCount();
 
-    ESP_LOGI(TAG,
-             "Parsed fix hasFix=%d sats=%d lat=%.6f lon=%.6f alt=%.2f",
+    if (!nextFix.hasFix) {
+        ESP_LOGW(TAG,
+                 "Parsed GGA but no fix q=%d sats=%d lat=%.6f lon=%.6f",
+                 nextFix.fixQuality,
+                 nextFix.satellites,
+                 nextFix.latitude,
+                 nextFix.longitude);
+    }
+
+    ESP_LOGD(TAG,
+             "Parsed fix hasFix=%d q=%d rtkFixed=%d rtkFloat=%d sats=%d lat=%.6f lon=%.6f alt=%.2f",
              nextFix.hasFix,
+             nextFix.fixQuality,
+             nextFix.isRtkFixed,
+             nextFix.isRtkFloat,
              nextFix.satellites,
              nextFix.latitude,
              nextFix.longitude,
@@ -655,7 +673,7 @@ void UsbGpsHost::processIncomingBytes(const uint8_t *data, size_t len) {
                 ESP_LOGD(TAG, "Discarded short line (%d chars)", linePos);
             }
             if (linePos >= static_cast<int>(sizeof(lineBuffer) - 1)) {
-                ESP_LOGW(TAG, "Line buffer reached capacity and was flushed");
+                ESP_LOGD(TAG, "Line buffer reached capacity (%d) and was flushed", linePos);
             }
             linePos = 0;
             continue;

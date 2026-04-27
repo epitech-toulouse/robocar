@@ -8,6 +8,7 @@
 #include "AdvancedFusionEngine.hpp"
 #include "api/driving_algorithm_interface.hpp"
 #include <vector>
+#include <esp_log.h>
 
 void AdvancedFusionEngine::addDrivingAlgorithm
 (std::unique_ptr<DrivingAlgorithmApi> algorithm)
@@ -27,6 +28,7 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
         DrivingAlgorithmOutput output;
         if (!driving_algo->compute(output))
             continue;
+
         float coef = priority * output.computed_weight;
         // Offset to allow computations
         output.target_steering -= 0.5;
