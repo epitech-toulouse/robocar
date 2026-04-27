@@ -5,6 +5,10 @@ idf_component_register(
   "manager/AdvancedFusionEngine.cpp"
   "manager/CoupeCircuitManager.cpp"
   "wifi_control_server.cpp"
+  "lidarReader.cpp"
+  "drive.cpp"
+  "vesc/PhysicalVescController.cpp"
+  "vescLidarUart.c"
 
   PRIV_REQUIRES
   driver

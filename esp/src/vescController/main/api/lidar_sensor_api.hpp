@@ -44,7 +44,7 @@ public:
     // The purpose of this simple output is to simplify later treatment
     // 360° of distance is a great way to represent lidar output
     // with 0m representing either 0m or undefined value
-    virtual bool getData(lidar_array_t &output);
+    virtual bool getData(lidar_array_t &output) = 0;
 };
 
 #endif /* LIDAR_SENSOR_API_HPP */

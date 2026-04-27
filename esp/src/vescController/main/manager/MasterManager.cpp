@@ -12,8 +12,10 @@
 #include "wifi_control_server.hpp"
 #include "tmp/vescController.hpp"
 #include "tmp/gpsSensor.hpp"
-#include "tmp/lidarSensor.hpp"
-#include "tmp/demoAlgo.hpp"
+#include "sensors/lidarSensor.hpp"
+#include "algo/lidarDrivingAlgo.hpp"
+
+#include "vesc/PhysicalVescController.hpp"
 
 MasterManager::MasterManager()
 {
@@ -21,12 +23,14 @@ MasterManager::MasterManager()
     // Start WIFI (please put this inside the constructor :D)
     static_cast<WifiControlServer *>(user_controller_api.get())->start();
 
-    this->vesc_controller_api = std::make_unique<VescController>();
+    this->vesc_controller_api = std::make_unique<PhysicalVescController>();
     this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>(*this->vesc_controller_api);
     this->gps_sensor_api = std::make_unique<GpsSensor>();
     this->lidar_sensor_api = std::make_unique<LidarSensor>();
 
-    this->fusionEngine.addDrivingAlgorithm(std::make_unique<DemoAlgo>(*this->gps_sensor_api));
+    this->vesc_controller_api->activate();
+
+    this->fusionEngine.addDrivingAlgorithm(std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
 }
 
 void MasterManager::iterate(void)
