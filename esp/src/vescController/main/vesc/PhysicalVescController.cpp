@@ -1,9 +1,23 @@
 #include "PhysicalVescController.hpp"
 #include <cstring>
 #include "config.h"
-#include "driver/uart.h"
+#include "rmt-uart/rmt_uart.h"
+#include <esp_log.h>
 
-PhysicalVescController::PhysicalVescController() {}
+PhysicalVescController::PhysicalVescController() {
+    rmt_uart_config_t config = {
+        .baud_rate = VESC_RMT_UART_BAUDRATE,
+        .mode = RMT_UART_MODE_TX_ONLY,
+        .data_bits = RMT_UART_DATA_8_BITS,
+        .parity = RMT_UART_PARITY_DISABLE,
+        .stop_bits = RMT_UART_STOP_BITS_1,
+        .tx_io_num = VESC_RMT_UART_TX,
+        .rx_io_num = (gpio_num_t) 0,
+        .buffer_size = 10000
+    };  
+    ESP_ERROR_CHECK(rmt_uart_init(VESC_RMT_UART_PORT, &config));
+    ESP_LOGI("vesc rmt uart", "Config done.");
+}
 
 PhysicalVescController::~PhysicalVescController() {}
 
@@ -69,7 +83,8 @@ void PhysicalVescController::sendPacket(const uint8_t* payload, int len) {
     frame[idx++] = (uint8_t)(crc & 0xFF);
     frame[idx++] = END_BYTE;
 
-    uart_write_bytes((uart_port_t)VESC_RMT_UART_TX, (const uint8_t*)frame, (size_t) idx);
+    rmt_uart_write_bytes(VESC_RMT_UART_PORT, (const uint8_t*)frame, (size_t) idx);
+    //uart_write_bytes((uart_port_t)VESC_RMT_UART_TX, (const uint8_t*)frame, (size_t) idx);
 }
 
 void PhysicalVescController::sendInt32Cmd(CommPacketId cmd, int32_t value) {
