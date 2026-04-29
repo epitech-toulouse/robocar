@@ -8,5 +8,5 @@ component_register(
     COMPONENT_NAME src
     SRCS ${srcs}
     INCLUDE_DIRS ${incs}
-    PRIVATE_REQUIREDS sscma-micro cvi_rtsp
+    PRIVATE_REQUIREDS sscma-micro cvi_rtsp opencv_imgcodecs opencv_imgproc opencv_core
 )
