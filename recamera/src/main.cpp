@@ -37,10 +37,18 @@ constexpr int kDefaultLaneTick = 1;
 constexpr int kDefaultStopTick = 5;
 constexpr float kDefaultStopThreshold = 0.5f;
 constexpr float kBarricadeThreshold = 0.40f;
+constexpr float kLaneSweepEndAt512 = 100.0f;
+constexpr int kLaneMinCenteredRows = 4;
+constexpr float kLaneFallbackDeadbandPercent = 12.5f;
+constexpr float kLaneFallbackScale = 0.85f;
+constexpr float kLaneBoundaryFallbackCenterFactor = 0.30f;
+constexpr float kLaneFallbackMaxSteerPercent = 60.0f;
+constexpr float kDefaultLaneWidthAt512 = 280.0f;
 constexpr float kLaneMean[3] = {123.675f, 116.28f, 103.53f};
 constexpr float kLaneScale[3] = {0.01712475f, 0.01750700f, 0.01742919f};
 constexpr float kLaneMaskThreshold = 0.35f;
 int g_current_frame_count = 0;
+int g_last_known_lane_width = 0;
 
 struct LoadedModel {
     ma::engine::EngineCVI* engine = nullptr;
@@ -186,7 +194,6 @@ void send_uart(int uart_fd, const std::string& command) {
 LoadedModel load_model(const char* path, const char* label, size_t algorithm_id = 0) {
     LoadedModel loaded;
     if (model_disabled(path)) {
-        MA_LOGI(TAG, "%s model disabled", label);
         return loaded;
     }
     if (access(path, R_OK) != 0) {
@@ -195,18 +202,12 @@ LoadedModel load_model(const char* path, const char* label, size_t algorithm_id 
     }
     loaded.engine = new ma::engine::EngineCVI();
     const size_t shared_memory = cvi_shared_memory_bytes();
-    if (shared_memory > 0) {
-        MA_LOGI(TAG, "%s engine shared memory request: %zu bytes", label, shared_memory);
-    } else {
-        MA_LOGI(TAG, "%s engine using cvimodel default shared memory", label);
-    }
     ma_err_t ret = loaded.engine->init(shared_memory);
     if (ret != MA_OK) {
         MA_LOGE(TAG, "%s engine init failed", label);
         return loaded;
     }
     ret = loaded.engine->load(path);
-    MA_LOGI(TAG, "%s engine load model %s", label, path);
     if (ret != MA_OK) {
         MA_LOGE(TAG, "%s engine load model failed", label);
         return loaded;
@@ -225,8 +226,6 @@ LoadedModel load_model(const char* path, const char* label, size_t algorithm_id 
     const ma_img_t* model_input = static_cast<const ma_img_t*>(loaded.model->getInput());
     loaded.input_width = model_input->width;
     loaded.input_height = model_input->height;
-    MA_LOGI(TAG, "%s model type: %d", label, loaded.model->getType());
-    MA_LOGI(TAG, "%s input size: %dx%d", label, loaded.input_width, loaded.input_height);
     return loaded;
 }
 
@@ -472,17 +471,6 @@ bool dump_rgb_frame_to_path(const ma_img_t& frame, const char* dump_path, const 
     }
 
     ::cv::Mat rgb(prepared.frame.height, prepared.frame.width, CV_8UC3, prepared.frame.data);
-    std::vector<::cv::Mat> channels;
-    ::cv::split(rgb, channels);
-    for (size_t i = 0; i < channels.size(); ++i) {
-        double min_val = 0.0;
-        double max_val = 0.0;
-        ::cv::minMaxLoc(channels[i], &min_val, &max_val);
-        const ::cv::Scalar mean_val = ::cv::mean(channels[i]);
-        printf("[DEBUG] %s channel=%zu min=%.1f max=%.1f mean=%.2f\n", label, i, min_val, max_val, mean_val[0]);
-    }
-    std::fflush(stdout);
-
     ::cv::Mat bgr;
     ::cv::cvtColor(rgb, bgr, ::cv::COLOR_RGB2BGR);
     if (!::cv::imwrite(dump_path, bgr)) {
@@ -495,13 +483,7 @@ bool dump_rgb_frame_to_path(const ma_img_t& frame, const char* dump_path, const 
         (base_path.parent_path() / (base_path.stem().string() + "_raw_bgr" + base_path.extension().string())).string();
     if (!::cv::imwrite(raw_bgr_path, rgb)) {
         MA_LOGW(TAG, "failed to dump %s raw-bgr view to %s", label, raw_bgr_path.c_str());
-    } else {
-        printf("[DEBUG] dumped %s raw-bgr view to %s\n", label, raw_bgr_path.c_str());
-        std::fflush(stdout);
     }
-
-    printf("[DEBUG] dumped %s %ux%u to %s\n", label, prepared.frame.width, prepared.frame.height, dump_path);
-    std::fflush(stdout);
     return true;
 }
 
@@ -511,17 +493,6 @@ bool dump_mat_to_path(const ::cv::Mat& rgb, const char* dump_path, const char* l
         return false;
     }
 
-    std::vector<::cv::Mat> channels;
-    ::cv::split(rgb, channels);
-    for (size_t i = 0; i < channels.size(); ++i) {
-        double min_val = 0.0;
-        double max_val = 0.0;
-        ::cv::minMaxLoc(channels[i], &min_val, &max_val);
-        const ::cv::Scalar mean_val = ::cv::mean(channels[i]);
-        printf("[DEBUG] %s channel=%zu min=%.1f max=%.1f mean=%.2f\n", label, i, min_val, max_val, mean_val[0]);
-    }
-    std::fflush(stdout);
-
     ::cv::Mat bgr;
     ::cv::cvtColor(rgb, bgr, ::cv::COLOR_RGB2BGR);
     if (!::cv::imwrite(dump_path, bgr)) {
@@ -534,13 +505,7 @@ bool dump_mat_to_path(const ::cv::Mat& rgb, const char* dump_path, const char* l
         (base_path.parent_path() / (base_path.stem().string() + "_raw_bgr" + base_path.extension().string())).string();
     if (!::cv::imwrite(raw_bgr_path, rgb)) {
         MA_LOGW(TAG, "failed to dump %s raw-bgr view to %s", label, raw_bgr_path.c_str());
-    } else {
-        printf("[DEBUG] dumped %s raw-bgr view to %s\n", label, raw_bgr_path.c_str());
-        std::fflush(stdout);
     }
-
-    printf("[DEBUG] dumped %s %dx%d to %s\n", label, rgb.cols, rgb.rows, dump_path);
-    std::fflush(stdout);
     return true;
 }
 
@@ -608,11 +573,6 @@ void dump_lane_mask_once_if_requested(const std::vector<uint8_t>& lane_mask, int
         return;
     }
 
-    const int lane_pixels = static_cast<int>(std::count_if(lane_mask.begin(), lane_mask.end(), [](uint8_t value) {
-        return value != 0;
-    }));
-    printf("[DEBUG] dumped lane_mask %dx%d pixels=%d to %s\n", width, height, lane_pixels, dump_path);
-    std::fflush(stdout);
 }
 
 void dump_encoded_frame_once_if_requested(const ma_img_t& frame) {
@@ -644,19 +604,6 @@ void dump_encoded_frame_once_if_requested(const ma_img_t& frame) {
         return;
     }
 
-    const bool looks_like_jpeg = frame.size >= 2 &&
-                                 frame.data[0] == 0xFF &&
-                                 frame.data[1] == 0xD8;
-    printf("[DEBUG] dumped encoded frame size=%u format=%d to %s first_bytes=%02X %02X %02X %02X jpeg_soi=%d\n",
-           frame.size,
-           static_cast<int>(frame.format),
-           dump_path,
-           frame.size > 0 ? frame.data[0] : 0,
-           frame.size > 1 ? frame.data[1] : 0,
-           frame.size > 2 ? frame.data[2] : 0,
-           frame.size > 3 ? frame.data[3] : 0,
-           looks_like_jpeg ? 1 : 0);
-    std::fflush(stdout);
 }
 
 bool mask_get(const std::vector<uint8_t>& mask, int width, int x, int y) {
@@ -775,37 +722,64 @@ void close_5x5(std::vector<uint8_t>& mask, int width, int height) {
 }
 
 bool is_valid_lane_row(const std::vector<uint8_t>& mask, int width, int y, int* lx, int* rx) {
-    int first = -1;
-    int last = -1;
-    int count = 0;
+    struct Run {
+        int start = 0;
+        int end = 0;
+    };
+
+    std::vector<Run> runs;
+    int run_start = -1;
     for (int x = 0; x < width; ++x) {
         if (mask_get(mask, width, x, y)) {
-            if (first < 0) {
-                first = x;
+            if (run_start < 0) {
+                run_start = x;
             }
-            last = x;
-            ++count;
+            continue;
+        }
+        if (run_start >= 0) {
+            runs.push_back({run_start, x - 1});
+            run_start = -1;
+        }
+    }
+    if (run_start >= 0) {
+        runs.push_back({run_start, width - 1});
+    }
+
+    const int min_run_width = std::max(2, static_cast<int>(width * 8.0f / 512.0f));
+    std::vector<Run> filtered_runs;
+    filtered_runs.reserve(runs.size());
+    for (const Run& run : runs) {
+        if (run.end - run.start + 1 >= min_run_width) {
+            filtered_runs.push_back(run);
         }
     }
 
-    if (count < 5) {
+    if (filtered_runs.size() < 2) {
         return false;
     }
 
     const int min_gap = std::max(20, static_cast<int>(width * 140.0f / 512.0f));
     const int max_gap = std::max(min_gap + 1, static_cast<int>(width * 470.0f / 512.0f));
-    const int gap = last - first;
+    const Run& left_run = filtered_runs.front();
+    const Run& right_run = filtered_runs.back();
+    if (left_run.end >= right_run.start) {
+        return false;
+    }
+
+    const int inner_left = left_run.end;
+    const int inner_right = right_run.start;
+    const int gap = inner_right - inner_left;
     if (gap <= min_gap || gap >= max_gap) {
         return false;
     }
 
-    const int mid = (first + last) / 2;
+    const int mid = (inner_left + inner_right) / 2;
     if (mask_get(mask, width, mid, y)) {
         return false;
     }
 
-    *lx = first;
-    *rx = last;
+    *lx = inner_left;
+    *rx = inner_right;
     return true;
 }
 
@@ -826,29 +800,41 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
     int rx = -1;
     int found_y = -1;
     const int sweep_start = std::max(0, height - 15);
-    const int sweep_end = std::min(height - 1, static_cast<int>(height * 100.0f / 512.0f));
+    const int sweep_end = std::min(height - 1, static_cast<int>(height * kLaneSweepEndAt512 / 512.0f));
+    int current_count = 0;
+    int current_sum_lx = 0;
+    int current_sum_rx = 0;
+    int current_start_y = -1;
     for (int y = sweep_start; y > sweep_end; --y) {
         int cur_lx = -1;
         int cur_rx = -1;
-        if (!is_valid_lane_row(mask, width, y, &cur_lx, &cur_rx)) {
+        const bool valid = is_valid_lane_row(mask, width, y, &cur_lx, &cur_rx);
+        if (!valid) {
+            if (current_count >= kLaneMinCenteredRows) {
+                lx = current_sum_lx / current_count;
+                rx = current_sum_rx / current_count;
+                found_y = current_start_y;
+                g_last_known_lane_width = rx - lx;
+                break;
+            }
+            current_count = 0;
+            current_sum_lx = 0;
+            current_sum_rx = 0;
+            current_start_y = -1;
             continue;
         }
-
-        int confirm_count = 0;
-        for (int check_y = y - 1; check_y >= y - 10 && check_y >= 0; --check_y) {
-            int ignored_lx = -1;
-            int ignored_rx = -1;
-            if (is_valid_lane_row(mask, width, check_y, &ignored_lx, &ignored_rx)) {
-                ++confirm_count;
-            }
+        if (current_count == 0) {
+            current_start_y = y;
         }
-
-        if (confirm_count >= 8) {
-            lx = cur_lx;
-            rx = cur_rx;
-            found_y = y;
-            break;
-        }
+        current_sum_lx += cur_lx;
+        current_sum_rx += cur_rx;
+        ++current_count;
+    }
+    if (lx < 0 && current_count >= kLaneMinCenteredRows) {
+        lx = current_sum_lx / current_count;
+        rx = current_sum_rx / current_count;
+        found_y = current_start_y;
+        g_last_known_lane_width = rx - lx;
     }
 
     float target_x = static_cast<float>(mid_x);
@@ -888,8 +874,31 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
 
         if (count > 0) {
             const float avg_x = static_cast<float>(sum_x) / static_cast<float>(count);
-            decision.steering_percent = (avg_x < mid_x) ? 100.0f : -100.0f;
-            decision.status = (avg_x < mid_x) ? "FULL_RIGHT_TURN" : "FULL_LEFT_TURN";
+            const int default_lane_width = std::max(1, static_cast<int>(width * kDefaultLaneWidthAt512 / 512.0f));
+            const int fallback_lane_width =
+                (g_last_known_lane_width > 0 && g_last_known_lane_width < width) ? g_last_known_lane_width
+                                                                                  : default_lane_width;
+            float target_from_boundary = avg_x;
+            if (avg_x < mid_x) {
+                target_from_boundary =
+                    std::min(static_cast<float>(width - 1), avg_x + fallback_lane_width * kLaneBoundaryFallbackCenterFactor);
+                decision.status = "LEFT_BOUNDARY_TRACK";
+            } else {
+                target_from_boundary =
+                    std::max(0.0f, avg_x - fallback_lane_width * kLaneBoundaryFallbackCenterFactor);
+                decision.status = "RIGHT_BOUNDARY_TRACK";
+            }
+
+            const float denom = std::max(1.0f, static_cast<float>(mid_x));
+            const float deviation = ((target_from_boundary - mid_x) / denom) * 100.0f;
+            if (std::fabs(deviation) <= kLaneFallbackDeadbandPercent) {
+                decision.steering_percent = 0.0f;
+                decision.status = "SEARCHING";
+                return decision;
+            }
+
+            decision.steering_percent =
+                std::clamp(deviation * kLaneFallbackScale, -kLaneFallbackMaxSteerPercent, kLaneFallbackMaxSteerPercent);
             return decision;
         }
 
@@ -921,29 +930,10 @@ void unpack_segment_mask(const ma_segm2f_t& segment, std::vector<uint8_t>& mask,
 }
 
 bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) {
-    printf("[LANE_TICK] begin frame_size=%zu\n", frame.size);
-    std::fflush(stdout);
-
     const ma_output_type_t output_type = lane.model->getOutputType();
     if (output_type != MA_OUTPUT_TYPE_SEGMENT) {
-        printf("[LANE_TICK] wrong output type=%d expected=%d\n",
-               static_cast<int>(output_type),
-               static_cast<int>(MA_OUTPUT_TYPE_SEGMENT));
-        std::fflush(stdout);
         MA_LOGW(TAG, "Lane model output type must be MA_OUTPUT_TYPE_SEGMENT");
         return false;
-    }
-
-    if (frame.physical ||
-        frame.width != static_cast<uint16_t>(lane.input_width) ||
-        frame.height != static_cast<uint16_t>(lane.input_height)) {
-        printf("[LANE_TICK] prepared cpu frame %ux%u -> %dx%d physical=%d\n",
-               frame.width,
-               frame.height,
-               lane.input_width,
-               lane.input_height,
-               frame.physical ? 1 : 0);
-        std::fflush(stdout);
     }
 
     const ma_tensor_t input_tensor = lane.engine->getInput(0);
@@ -956,16 +946,14 @@ bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) 
         MA_LOGW(TAG, "Lane model engine run failed");
         return false;
     }
-    printf("[LANE_TICK] inference done\n");
-    std::fflush(stdout);
 
     std::vector<uint8_t> lane_mask;
     int mask_width = 0;
     int mask_height = 0;
     if (!build_lane_mask_from_output(lane, &lane_mask, &mask_width, &mask_height)) {
-        printf("[LANE_TICK] no lane mask\n");
-        std::fflush(stdout);
         *decision = LaneDecision{};
+        printf("[LANE_TICK] decision=%s steer=%+.1f no_lane_mask\n", decision->status, decision->steering_percent);
+        std::fflush(stdout);
         return true;
     }
 
@@ -988,9 +976,6 @@ bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) 
 }
 
 bool run_stop_model(LoadedModel& stop, ma_img_t& frame, float threshold, bool* should_stop, int frame_count) {
-    printf("[STOP_TICK] begin frame_size=%zu threshold=%.2f\n", frame.size, threshold);
-    std::fflush(stdout);
-
     *should_stop = false;
     if (stop.model->getOutputType() != MA_OUTPUT_TYPE_BBOX) {
         MA_LOGW(TAG, "Stop model output type must be MA_OUTPUT_TYPE_BBOX");
@@ -1002,14 +987,6 @@ bool run_stop_model(LoadedModel& stop, ma_img_t& frame, float threshold, bool* s
         MA_LOGW(TAG, "Stop model frame prepare failed");
         return false;
     }
-    if (frame.physical ||
-        frame.width != static_cast<uint16_t>(stop.input_width) ||
-        frame.height != static_cast<uint16_t>(stop.input_height)) {
-        printf("[STOP_TICK] resized %dx%d -> %dx%d\n",
-               frame.width, frame.height, stop.input_width, stop.input_height);
-        std::fflush(stdout);
-    }
-
     dump_stop_frame_once_if_requested(prepared.frame, frame_count);
 
     ma::model::Detector* detector = static_cast<ma::model::Detector*>(stop.model);
@@ -1018,8 +995,6 @@ bool run_stop_model(LoadedModel& stop, ma_img_t& frame, float threshold, bool* s
         MA_LOGW(TAG, "Stop model inference failed");
         return false;
     }
-    printf("[STOP_TICK] inference done\n");
-    std::fflush(stdout);
 
     auto results = detector->getResults();
     int detection_count = 0;
@@ -1030,9 +1005,10 @@ bool run_stop_model(LoadedModel& stop, ma_img_t& frame, float threshold, bool* s
         }
 
         const float distance_cm = kStopSignDistanceConstant / result.h;
-        printf("[STOP_SIGN] score=%.2f distance=%.2fcm\n", result.score, distance_cm);
         if (distance_cm < kStopDistanceCm) {
             *should_stop = true;
+            printf("[STOP_TICK] detections=%d should_stop=1\n", detection_count);
+            std::fflush(stdout);
             return true;
         }
     }
