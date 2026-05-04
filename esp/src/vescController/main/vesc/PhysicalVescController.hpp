@@ -1,6 +1,8 @@
 #include "../api/vesc_controller_api.hpp"
 #include <cstdint>
 
+#include "manager/CoupeCircuitManager.hpp"
+
 #ifndef VESC_CONTROLLER_HPP
 #define VESC_CONTROLLER_HPP
 
@@ -20,7 +22,6 @@ class PhysicalVescController : public VescControllerApi {
         bool isActive() override;
 
     private:
-
         static constexpr uint8_t START_BYTE = 0x02;
         static constexpr uint8_t END_BYTE   = 0x03;
 

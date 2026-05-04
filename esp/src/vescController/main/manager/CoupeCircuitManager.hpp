@@ -8,17 +8,16 @@
 #ifndef COUPE_CIRCUIT_MANAGER_HPP
 #define COUPE_CIRCUIT_MANAGER_HPP
 
-#include "api/vesc_controller_api.hpp"
+#include <atomic>
+#include <freertos/FreeRTOS.h>
+
+extern std::atomic_bool coupe_circuit_connected;
 
 class CoupeCircuitManager
 {
 public:
-    CoupeCircuitManager(VescControllerApi &vesc);
-    ~CoupeCircuitManager();
-
-    static void task(void *args);
+    CoupeCircuitManager();
 private:
-    VescControllerApi &vesc;
 };
 
 #endif /* COUPE_CIRCUIT_MANAGER_HPP */

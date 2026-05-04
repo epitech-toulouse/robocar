@@ -1,5 +1,6 @@
 #include "PhysicalVescController.hpp"
 #include <cstring>
+#include "CoupeCircuitManager.hpp"
 #include "config.h"
 #include "rmt-uart/rmt_uart.h"
 #include <esp_log.h>
@@ -35,7 +36,7 @@ bool PhysicalVescController::isActive() {
 }
 
 void PhysicalVescController::set_speed(float speed) {
-    if (this->active) {
+    if (this->active && coupe_circuit_connected) {
       speed = speed > VESC_MAX_MOTOR_SPEED ? VESC_MAX_MOTOR_SPEED : speed;
       if (speed < -VESC_MAX_MOTOR_SPEED)
         speed = -VESC_MAX_MOTOR_SPEED;

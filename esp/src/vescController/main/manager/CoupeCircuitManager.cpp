@@ -6,15 +6,18 @@
 */
 
 #include "CoupeCircuitManager.hpp"
-#include "api/vesc_controller_api.hpp"
 #include "config.h"
+#include "esp_attr.h"
 #include "freertos/idf_additions.h"
 
+#include <atomic>
 #include <cstdint>
 #include <freertos/FreeRTOS.h>
 #include <driver/gpio.h>
 
 static TaskHandle_t coupe_circuit_task_handle = nullptr;
+
+std::atomic_bool coupe_circuit_connected = false;
 
 void IRAM_ATTR coupe_circuit_handler(void *args)
 {
@@ -28,9 +31,27 @@ void IRAM_ATTR coupe_circuit_handler(void *args)
     }
 }
 
-CoupeCircuitManager::CoupeCircuitManager(VescControllerApi &vesc)
-    : vesc(vesc)
+void coupe_circuit_task(void *)
 {
+    uint32_t notification_value = 0;
+
+    while (true) {
+        // On interrupt on "coupe circuit" pin
+        if (xTaskNotifyWait(0, 0, &notification_value, portMAX_DELAY) == pdPASS) {
+            if (gpio_get_level(COUPE_CIRCUIT_PIN)) { // HIGH = disconnected
+                coupe_circuit_connected = false;
+            } else {
+                coupe_circuit_connected = true;
+            }
+        }
+    }
+}
+
+CoupeCircuitManager::CoupeCircuitManager()
+{
+    // Set coupe circuit to false by default
+    coupe_circuit_connected = false;
+
     // Setup coupe circuit interruption
     gpio_set_direction(COUPE_CIRCUIT_GND_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(COUPE_CIRCUIT_GND_PIN, 0);
@@ -42,25 +63,5 @@ CoupeCircuitManager::CoupeCircuitManager(VescControllerApi &vesc)
     gpio_intr_enable(COUPE_CIRCUIT_PIN);
 
     // Setup coupe circuit task
-    xTaskCreate(this->task, "coupe_circuit_task", 4096, this, 1, &coupe_circuit_task_handle);
-}
-
-CoupeCircuitManager::~CoupeCircuitManager()
-{
-    this->vesc.deactivate();
-}
-
-void CoupeCircuitManager::task(void *args)
-{
-    uint32_t notification_value = 0;
-    VescControllerApi *vesc = (VescControllerApi *) args;
-
-    // On interrupt on "coupe circuit" pin
-    if (xTaskNotifyWait(0, 0, &notification_value, pdMS_TO_TICKS(20)) == pdPASS) {
-        if (gpio_get_level(COUPE_CIRCUIT_PIN)) { // HIGH = disconnected
-            vesc->deactivate();
-        } else {
-            vesc->activate();
-        }
-    }
+    xTaskCreatePinnedToCore(&coupe_circuit_task, "coupe_circuit_task", 4096, NULL, 3, &coupe_circuit_task_handle, 0);
 }
