@@ -2,6 +2,14 @@
 
 This folder contains a first ROS 2 simulation scaffold for Ubuntu.
 
+## Documentation
+
+Architecture and explanations are available in `docs/`:
+
+- `docs/ROS_ET_GAZEBO.md`
+- `docs/ARCHITECTURE_SIMULATION.md`
+- `docs/COMMENTAIRES_FICHIERS.md`
+
 ## Target versions
 
 - ROS 2 Jazzy
