@@ -3,14 +3,26 @@
 #include <atomic>
 #include <cstdint>
 
+#include <cstddef>
+
 #include "api/user_controller_api.hpp"
+#include "api/vesc_controller_api.hpp"
 #include "esp_err.h"
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-class WifiControlServer : public UserControllerApi {
+
+
+
+class WifiControlServerSensor : public UserControllerApi {
 public:
+    WifiControlServerSensor(VescControllerApi &vescController)
+        : _vescControllerApi(vescController)
+    {
+        this->start();
+    };
+    ~WifiControlServerSensor() {};
     void start(void);
     void stop(void);
     bool isActivated(void);
@@ -19,7 +31,6 @@ public:
     driving_mode_t getDrivingMode(void) override;
     float getSpeed(void) override;
     float getSteering(void) override;
-    bool getEmergencyStop() override;
 
 private:
     static constexpr float STEER_CENTER = 0.5f;
@@ -36,6 +47,8 @@ private:
     static constexpr int CONTROL_TCP_PORT = 3334;
     static constexpr int RX_BUFFER_SIZE = 64;
 
+    VescControllerApi &_vescControllerApi;
+
     void initWifiSoftAp();
     void startHttpServer();
     void runTcpServerTask();
@@ -46,7 +59,7 @@ private:
 
     static void tcpServerTask(void *arg);
     static void setHttpCommonHeaders(httpd_req_t *req);
-    static WifiControlServer *fromRequest(httpd_req_t *req);
+    static WifiControlServerSensor *fromRequest(httpd_req_t *req);
     static esp_err_t httpCmdHandler(httpd_req_t *req);
     static esp_err_t httpCmdOptionsHandler(httpd_req_t *req);
     static esp_err_t httpLogsHandler(httpd_req_t *req);
@@ -66,7 +79,8 @@ private:
     std::atomic<bool> active_{false};
     httpd_handle_t httpServer_ = nullptr;
     TaskHandle_t tcpTaskHandle_ = nullptr;
+
+  
+
 };
 
-UserControllerApi &wifiControlServer();
-WifiControlServer &wifiControlService();
