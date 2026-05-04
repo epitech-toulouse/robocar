@@ -1,0 +1,7 @@
+CompileFlags:
+  CompilationDatabase: build
+  Compiler: /home/mani/.espressif/tools/xtensa-esp-elf/esp-14.2.0_20251107/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc
+  Remove:
+    - -mlongcalls
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
