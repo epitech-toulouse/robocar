@@ -44,6 +44,54 @@ static float min_valid_distance(float a, float b) {
     return std::min(a, b);
 }
 
+static float compute_front_speed_cap(float frontNear)
+{
+    if (frontNear < 0.0f) {
+        return SPEED_FORWARD;
+    }
+    if (frontNear <= STOP_DISTANCE_M) {
+        return 0.0f;
+    }
+    if (frontNear <= SLOW_DISTANCE_M) {
+        const float t = clampf((frontNear - STOP_DISTANCE_M) / (SLOW_DISTANCE_M - STOP_DISTANCE_M), 0.0f, 1.0f);
+        return SPEED_CRAWL + (SPEED_SLOW - SPEED_CRAWL) * t;
+    }
+    if (frontNear >= SAFE_DISTANCE_M) {
+        return SPEED_FORWARD;
+    }
+
+    const float t = clampf((frontNear - SLOW_DISTANCE_M) / (SAFE_DISTANCE_M - SLOW_DISTANCE_M), 0.0f, 1.0f);
+    return SPEED_SLOW + (SPEED_FORWARD - SPEED_SLOW) * t;
+}
+
+static float sanitize_clearance(float distance)
+{
+    return (distance < 0.0f) ? FTG_MAX_RANGE_M : distance;
+}
+
+static float choose_escape_steer(float ftgSteer, float leftNear, float rightNear)
+{
+    const float leftClearance = sanitize_clearance(leftNear);
+    const float rightClearance = sanitize_clearance(rightNear);
+
+    if (leftClearance > rightClearance + SIDE_OPENNESS_EPSILON_M) {
+        return STEER_LEFT;
+    }
+    if (rightClearance > leftClearance + SIDE_OPENNESS_EPSILON_M) {
+        return STEER_RIGHT;
+    }
+
+    // If both sides look equally bad, keep the current FTG intent if it is already
+    // meaningfully off-center, otherwise pick a deterministic left turn.
+    if (ftgSteer < STEER_CENTER - 0.05f) {
+        return STEER_LEFT;
+    }
+    if (ftgSteer > STEER_CENTER + 0.05f) {
+        return STEER_RIGHT;
+    }
+    return STEER_LEFT;
+}
+
 static float map_auto_steer(float steer) {
     steer = clampf(steer, STEER_LEFT, STEER_RIGHT);
     if (AUTO_STEER_REVERSED) {
@@ -223,7 +271,7 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     }
 
     // If there is a critical obstacle in front, back up and turn toward the more open side.
-    if (frontNear > 0.0f && frontNear < STOP_DISTANCE_M) {
+    if (frontNear > 0.0f && frontNear <= STOP_DISTANCE_M + 0.05f) {
         const bool leftMoreOpen = (leftNear < 0.0f) || (rightNear > 0.0f && rightNear > leftNear);
         reverseSteer = leftMoreOpen ? STEER_RIGHT : STEER_LEFT;
         reverseUntil = now + pdMS_TO_TICKS(REVERSE_DURATION_MS);
@@ -235,7 +283,25 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
 
     // Compute steer and speed using Disparity Extender FTG
     compute_ftg_steer_speed(clean_scan, steer, speed);
+
+    if (frontNear > 0.0f && frontNear < ESCAPE_TURN_START_M) {
+        const float escapeSteer = choose_escape_steer(steer, leftNear, rightNear);
+        const float avoidanceWeight = clampf(
+            (ESCAPE_TURN_START_M - frontNear) / (ESCAPE_TURN_START_M - STOP_DISTANCE_M),
+            0.0f,
+            1.0f);
+        steer = steer * (1.0f - avoidanceWeight) + escapeSteer * avoidanceWeight;
+        if (frontNear < SAFE_DISTANCE_M) {
+            steer = escapeSteer;
+        }
+        speed = std::min(speed, SPEED_CRAWL + (SPEED_SLOW - SPEED_CRAWL) * (1.0f - avoidanceWeight));
+    }
+
     steer = map_auto_steer(steer);
+
+    // Clamp forward speed based on what is directly ahead so we don't keep charging
+    // into a wall while FTG still sees lateral free space.
+    speed = std::min(speed, compute_front_speed_cap(frontNear));
 
     // Emergency stop override if something is completely blocked right in front
     if (frontNear > 0.0f && frontNear <= STOP_DISTANCE_M) {

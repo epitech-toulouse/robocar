@@ -50,68 +50,94 @@
       </link>
     </model>
 
-    <!-- CIRCUIT DE FORMULE 1 (Échelle Robocar) -->
+    <!-- UN VRAI CIRCUIT DE JEU AVEC DEBUT ET FIN -->
+    <model name="circuit_wall_1">
+      <static>true</static><pose>2.5 -1.0 0.25 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>9 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>9 0.2 0.5</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
+    </model>
+    <model name="circuit_wall_2">
+      <static>true</static><pose>1.5 1.0 0.25 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>7 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>7 0.2 0.5</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
+    </model>
+    <model name="circuit_wall_3">
+      <static>true</static><pose>7.0 3.0 0.25 0 0 1.5707</pose>
+      <link name="link"><collision name="c"><geometry><box><size>8 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>8 0.2 0.5</size></box></geometry><material><ambient>0.1 0.3 0.8 1</ambient><diffuse>0.1 0.3 0.8 1</diffuse></material></visual></link>
+    </model>
+    <model name="circuit_wall_4">
+      <static>true</static><pose>5.0 3.0 0.25 0 0 1.5707</pose>
+      <link name="link"><collision name="c"><geometry><box><size>4 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>4 0.2 0.5</size></box></geometry><material><ambient>0.1 0.3 0.8 1</ambient><diffuse>0.1 0.3 0.8 1</diffuse></material></visual></link>
+    </model>
+    <model name="circuit_wall_5">
+      <static>true</static><pose>3.0 7.0 0.25 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>8 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>8 0.2 0.5</size></box></geometry><material><ambient>0.8 0.8 0.1 1</ambient><diffuse>0.8 0.8 0.1 1</diffuse></material></visual></link>
+    </model>
+    <model name="circuit_wall_6">
+      <static>true</static><pose>3.0 5.0 0.25 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>4 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>4 0.2 0.5</size></box></geometry><material><ambient>0.8 0.8 0.1 1</ambient><diffuse>0.8 0.8 0.1 1</diffuse></material></visual></link>
+    </model>
+    <model name="circuit_wall_7">
+      <static>true</static><pose>-1.0 11.0 0.25 0 0 1.5707</pose>
+      <link name="link"><collision name="c"><geometry><box><size>8 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>8 0.2 0.5</size></box></geometry><material><ambient>0.2 0.8 0.2 1</ambient><diffuse>0.2 0.8 0.2 1</diffuse></material></visual></link>
+    </model>
+    <model name="circuit_wall_8">
+      <static>true</static><pose>1.0 9.0 0.25 0 0 1.5707</pose>
+      <link name="link"><collision name="c"><geometry><box><size>8 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>8 0.2 0.5</size></box></geometry><material><ambient>0.2 0.8 0.2 1</ambient><diffuse>0.2 0.8 0.2 1</diffuse></material></visual></link>
+    </model>
+    <model name="circuit_wall_9">
+      <static>true</static><pose>3.0 15.0 0.25 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>8 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>8 0.2 0.5</size></box></geometry><material><ambient>0.8 0.4 0.1 1</ambient><diffuse>0.8 0.4 0.1 1</diffuse></material></visual></link>
+    </model>
+    <model name="circuit_wall_10">
+      <static>true</static><pose>4.0 13.0 0.25 0 0 0</pose>
+      <link name="link"><collision name="c"><geometry><box><size>6 0.2 0.5</size></box></geometry></collision><visual name="v"><geometry><box><size>6 0.2 0.5</size></box></geometry><material><ambient>0.8 0.4 0.1 1</ambient><diffuse>0.8 0.4 0.1 1</diffuse></material></visual></link>
+    </model>
     
-    <!-- BORDURES EXTERIEURES ROUGES -->
-    <model name="f1_border_n">
-      <static>true</static><pose>10 7 0.5 0 0 0</pose>
-      <link name="link"><collision name="c"><geometry><box><size>25 0.2 1</size></box></geometry></collision><visual name="v"><geometry><box><size>25 0.2 1</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
-    </model>
-    <model name="f1_border_s">
-      <static>true</static><pose>10 -7 0.5 0 0 0</pose>
-      <link name="link"><collision name="c"><geometry><box><size>25 0.2 1</size></box></geometry></collision><visual name="v"><geometry><box><size>25 0.2 1</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
-    </model>
-    <model name="f1_border_e">
-      <static>true</static><pose>22.5 0 0.5 0 0 0</pose>
-      <link name="link"><collision name="c"><geometry><box><size>0.2 14 1</size></box></geometry></collision><visual name="v"><geometry><box><size>0.2 14 1</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
-    </model>
-    <model name="f1_border_w">
-      <static>true</static><pose>-2.5 0 0.5 0 0 0</pose>
-      <link name="link"><collision name="c"><geometry><box><size>0.2 14 1</size></box></geometry></collision><visual name="v"><geometry><box><size>0.2 14 1</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link>
-    </model>
-
-    <!-- LES CHICANES EN BIAIS (Vibreurs Blancs et Bleus) -->
-    <model name="chicane_1">
-      <static>true</static><pose>5 2.5 0.5 0 0 -0.785</pose>
-      <link name="link"><collision name="c"><geometry><box><size>6 0.2 1</size></box></geometry></collision><visual name="v"><geometry><box><size>6 0.2 1</size></box></geometry><material><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse></material></visual></link>
-    </model>
-    <model name="chicane_2">
-      <static>true</static><pose>9 -2.5 0.5 0 0 0.785</pose>
-      <link name="link"><collision name="c"><geometry><box><size>6 0.2 1</size></box></geometry></collision><visual name="v"><geometry><box><size>6 0.2 1</size></box></geometry><material><ambient>0.2 0.4 1 1</ambient><diffuse>0.2 0.4 1 1</diffuse></material></visual></link>
-    </model>
-
-    <!-- OBSTACLE DE LA GRANDE EPINGLE (Vibreurs Jaunes) -->
-    <model name="hairpin_island">
-      <static>true</static><pose>17.5 0 0.5 0 0 0</pose>
-      <link name="link"><collision name="c"><geometry><box><size>6 8 1</size></box></geometry></collision><visual name="v"><geometry><box><size>6 8 1</size></box></geometry><material><ambient>0.9 0.7 0.1 1</ambient><diffuse>0.9 0.7 0.1 1</diffuse></material></visual></link>
-    </model>
-
-    <!-- SÉPARATEURS DROITS -->
-    <model name="straight_block_1">
-      <static>true</static><pose>10 4.5 0.5 0 0 0</pose>
-      <link name="link"><collision name="c"><geometry><box><size>8 0.5 1</size></box></geometry></collision><visual name="v"><geometry><box><size>8 0.5 1</size></box></geometry><material><ambient>0.3 0.8 0.3 1</ambient><diffuse>0.3 0.8 0.3 1</diffuse></material></visual></link>
-    </model>
-    <model name="straight_block_2">
-      <static>true</static><pose>2 -4.5 0.5 0 0 0</pose>
-      <link name="link"><collision name="c"><geometry><box><size>6 0.5 1</size></box></geometry></collision><visual name="v"><geometry><box><size>6 0.5 1</size></box></geometry><material><ambient>0.3 0.8 0.3 1</ambient><diffuse>0.3 0.8 0.3 1</diffuse></material></visual></link>
+    <!-- LIGNE D'ARRIVEE -->
+    <model name="finish_line">
+      <static>true</static><pose>7.0 14.0 0.01 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><box><size>0.5 2.0 0.02</size></box></geometry><material><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse></material></visual></link>
     </model>
 
     <model name="robocar">
-      <pose>0 0 0.08 0 0 0</pose>
+      <pose>0 0 0 0 0 0</pose>
 
       <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
         <left_joint>left_wheel_joint</left_joint>
         <right_joint>right_wheel_joint</right_joint>
-        <wheel_separation>0.15</wheel_separation>
-        <wheel_radius>0.05</wheel_radius>
+        <wheel_separation>0.18</wheel_separation>
+        <wheel_radius>0.03</wheel_radius>
         <topic>/cmd_vel</topic>
         <odom_topic>/odom</odom_topic>
         <tf_topic>/tf</tf_topic>
-        <max_linear_velocity>3.5</max_linear_velocity>
-        <min_linear_velocity>-3.5</min_linear_velocity>
-        <!-- L'angle max (45 degrés) pour la rotation sur un empattement de ~30cm donne une angular velocity max très spécifique. 45 deg = 0.785 rad -->
-        <max_angular_velocity>5.5</max_angular_velocity>
-        <min_angular_velocity>-5.5</min_angular_velocity>
+        <odom_publish_frequency>50</odom_publish_frequency>
+        <max_linear_acceleration>1000.0</max_linear_acceleration>
+        <min_linear_acceleration>-1000.0</min_linear_acceleration>
+        <max_angular_acceleration>8.0</max_angular_acceleration>
+        <min_angular_acceleration>-8.0</min_angular_acceleration>
+        <max_linear_velocity>1000.0</max_linear_velocity>
+        <min_linear_velocity>-1000.0</min_linear_velocity>
+        <max_angular_velocity>5.0</max_angular_velocity>
+        <min_angular_velocity>-5.0</min_angular_velocity>
+      </plugin>
+
+      <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+        <joint_name>front_left_steering_joint</joint_name>
+        <topic>/robocar/front_left_steering_cmd</topic>
+        <p_gain>30.0</p_gain>
+        <i_gain>0.0</i_gain>
+        <d_gain>1.0</d_gain>
+        <cmd_max>80.0</cmd_max>
+        <cmd_min>-80.0</cmd_min>
+      </plugin>
+
+      <plugin filename="gz-sim-joint-position-controller-system" name="gz::sim::systems::JointPositionController">
+        <joint_name>front_right_steering_joint</joint_name>
+        <topic>/robocar/front_right_steering_cmd</topic>
+        <p_gain>30.0</p_gain>
+        <i_gain>0.0</i_gain>
+        <d_gain>1.0</d_gain>
+        <cmd_max>80.0</cmd_max>
+        <cmd_min>-80.0</cmd_min>
       </plugin>
 
       <link name="base_link">
@@ -147,10 +173,120 @@
             <diffuse>0.12 0.12 0.12 1</diffuse>
           </material>
         </visual>
+
+        <visual name="front_marker_stem">
+          <pose>0.055 0 0.058 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.15 0.025 0.018</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+            <emissive>0.35 0 0 1</emissive>
+          </material>
+        </visual>
+
+        <visual name="front_marker_left_head">
+          <pose>0.13 0.022 0.058 0 0 0.55</pose>
+          <geometry>
+            <box>
+              <size>0.07 0.022 0.018</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+            <emissive>0.35 0 0 1</emissive>
+          </material>
+        </visual>
+
+        <visual name="front_marker_right_head">
+          <pose>0.13 -0.022 0.058 0 0 -0.55</pose>
+          <geometry>
+            <box>
+              <size>0.07 0.022 0.018</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+            <emissive>0.35 0 0 1</emissive>
+          </material>
+        </visual>
+
+        <visual name="front_marker_nose">
+          <pose>0.158 0 0.02 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.018 0.13 0.035</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 1</ambient>
+            <diffuse>1 0 0 1</diffuse>
+            <emissive>0.35 0 0 1</emissive>
+          </material>
+        </visual>
       </link>
 
-      <link name="left_wheel_link">
-        <pose>0 0.085 0.05 1.57079632679 0 0</pose>
+      <link name="front_left_steering_link">
+        <pose>0.12 0.075 0.05 0 0 0</pose>
+        <inertial>
+          <mass>0.08</mass>
+          <inertia>
+            <ixx>0.0001</ixx>
+            <iyy>0.0001</iyy>
+            <izz>0.0001</izz>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyz>0.0</iyz>
+          </inertia>
+        </inertial>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.012</radius>
+              <length>0.03</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+      </link>
+
+      <link name="front_right_steering_link">
+        <pose>0.12 -0.075 0.05 0 0 0</pose>
+        <inertial>
+          <mass>0.08</mass>
+          <inertia>
+            <ixx>0.0001</ixx>
+            <iyy>0.0001</iyy>
+            <izz>0.0001</izz>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyz>0.0</iyz>
+          </inertia>
+        </inertial>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.012</radius>
+              <length>0.03</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+      </link>
+
+      <link name="front_left_wheel_link">
+        <pose>0.12 0.09 0.05 1.57079632679 0 0</pose>
         <inertial>
           <mass>0.35</mass>
           <inertia>
@@ -164,16 +300,108 @@
         </inertial>
         <collision name="collision">
           <geometry>
+            <sphere>
+              <radius>0.05</radius>
+            </sphere>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>1.0</mu>
+                <mu2>1.0</mu2>
+                <slip1>0.035</slip1>
+                <slip2>0.0</slip2>
+                <fdir1>0 0 1</fdir1>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
             <cylinder>
               <radius>0.05</radius>
               <length>0.03</length>
             </cylinder>
           </geometry>
+          <material>
+            <ambient>0.04 0.04 0.04 1</ambient>
+            <diffuse>0.05 0.05 0.05 1</diffuse>
+          </material>
+        </visual>
+      </link>
+
+      <link name="front_right_wheel_link">
+        <pose>0.12 -0.09 0.05 1.57079632679 0 0</pose>
+        <inertial>
+          <mass>0.35</mass>
+          <inertia>
+            <ixx>0.001</ixx>
+            <iyy>0.001</iyy>
+            <izz>0.001</izz>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyz>0.0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.05</radius>
+            </sphere>
+          </geometry>
           <surface>
             <friction>
               <ode>
-                <mu>1.2</mu>
-                <mu2>1.2</mu2>
+                <mu>1.0</mu>
+                <mu2>1.0</mu2>
+                <slip1>0.035</slip1>
+                <slip2>0.0</slip2>
+                <fdir1>0 0 1</fdir1>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.03</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.04 0.04 0.04 1</ambient>
+            <diffuse>0.05 0.05 0.05 1</diffuse>
+          </material>
+        </visual>
+      </link>
+
+      <link name="left_wheel_link">
+        <pose>-0.12 0.09 0.05 1.57079632679 0 0</pose>
+        <inertial>
+          <mass>0.35</mass>
+          <inertia>
+            <ixx>0.001</ixx>
+            <iyy>0.001</iyy>
+            <izz>0.001</izz>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyz>0.0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry>
+            <sphere>
+              <radius>0.05</radius>
+            </sphere>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>1.0</mu>
+                <mu2>1.0</mu2>
+                <slip1>0.035</slip1>
+                <slip2>0.0</slip2>
+                <fdir1>0 0 1</fdir1>
               </ode>
             </friction>
           </surface>
@@ -193,7 +421,7 @@
       </link>
 
       <link name="right_wheel_link">
-        <pose>0 -0.085 0.05 1.57079632679 0 0</pose>
+        <pose>-0.12 -0.09 0.05 1.57079632679 0 0</pose>
         <inertial>
           <mass>0.35</mass>
           <inertia>
@@ -207,16 +435,18 @@
         </inertial>
         <collision name="collision">
           <geometry>
-            <cylinder>
+            <sphere>
               <radius>0.05</radius>
-              <length>0.03</length>
-            </cylinder>
+            </sphere>
           </geometry>
           <surface>
             <friction>
               <ode>
-                <mu>1.2</mu>
-                <mu2>1.2</mu2>
+                <mu>1.0</mu>
+                <mu2>1.0</mu2>
+                <slip1>0.035</slip1>
+                <slip2>0.0</slip2>
+                <fdir1>0 0 1</fdir1>
               </ode>
             </friction>
           </surface>
@@ -235,17 +465,87 @@
         </visual>
       </link>
 
-      <joint name="left_wheel_joint" type="revolute">
+      <joint name="front_left_steering_joint" type="revolute">
         <parent>base_link</parent>
-        <child>left_wheel_link</child>
+        <child>front_left_steering_link</child>
         <axis>
           <xyz>0 0 1</xyz>
           <dynamics>
-            <damping>0.2</damping>
+            <damping>0.1</damping>
+          </dynamics>
+          <limit>
+            <lower>-0.6108652382</lower>
+            <upper>0.6108652382</upper>
+            <velocity>8.0</velocity>
+            <effort>100</effort>
+          </limit>
+        </axis>
+      </joint>
+
+      <joint name="front_right_steering_joint" type="revolute">
+        <parent>base_link</parent>
+        <child>front_right_steering_link</child>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <dynamics>
+            <damping>0.1</damping>
+          </dynamics>
+          <limit>
+            <lower>-0.6108652382</lower>
+            <upper>0.6108652382</upper>
+            <velocity>8.0</velocity>
+            <effort>100</effort>
+          </limit>
+        </axis>
+      </joint>
+
+      <joint name="front_left_wheel_joint" type="revolute">
+        <parent>front_left_steering_link</parent>
+        <child>front_left_wheel_link</child>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <dynamics>
+            <damping>0.0</damping>
           </dynamics>
           <limit>
             <lower>-1e16</lower>
             <upper>1e16</upper>
+            <velocity>200.0</velocity>
+            <effort>100.0</effort>
+          </limit>
+        </axis>
+      </joint>
+
+      <joint name="front_right_wheel_joint" type="revolute">
+        <parent>front_right_steering_link</parent>
+        <child>front_right_wheel_link</child>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <dynamics>
+            <damping>0.0</damping>
+          </dynamics>
+          <limit>
+            <lower>-1e16</lower>
+            <upper>1e16</upper>
+            <velocity>200.0</velocity>
+            <effort>100.0</effort>
+          </limit>
+        </axis>
+      </joint>
+
+      <joint name="left_wheel_joint" type="revolute">
+        <parent>base_link</parent>
+        <child>left_wheel_link</child>
+        <axis>
+          <xyz>0 0 -1</xyz>
+          <dynamics>
+            <damping>0.0</damping>
+          </dynamics>
+          <limit>
+            <lower>-1e16</lower>
+            <upper>1e16</upper>
+            <velocity>200.0</velocity>
+            <effort>100.0</effort>
           </limit>
         </axis>
       </joint>
@@ -254,91 +554,17 @@
         <parent>base_link</parent>
         <child>right_wheel_link</child>
         <axis>
-          <xyz>0 0 1</xyz>
+          <xyz>0 0 -1</xyz>
           <dynamics>
-            <damping>0.2</damping>
+            <damping>0.0</damping>
           </dynamics>
           <limit>
             <lower>-1e16</lower>
             <upper>1e16</upper>
+            <velocity>200.0</velocity>
+            <effort>100.0</effort>
           </limit>
         </axis>
-      </joint>
-
-      <link name="front_caster_link">
-        <pose>0.12 0 0.03 0 0 0</pose>
-        <inertial>
-          <mass>0.08</mass>
-          <inertia>
-            <ixx>0.0001</ixx>
-            <iyy>0.0001</iyy>
-            <izz>0.0001</izz>
-            <ixy>0.0</ixy>
-            <ixz>0.0</ixz>
-            <iyz>0.0</iyz>
-          </inertia>
-        </inertial>
-        <collision name="collision">
-          <geometry>
-            <sphere>
-              <radius>0.03</radius>
-            </sphere>
-          </geometry>
-        </collision>
-        <visual name="visual">
-          <geometry>
-            <sphere>
-              <radius>0.03</radius>
-            </sphere>
-          </geometry>
-          <material>
-            <ambient>0.08 0.08 0.08 1</ambient>
-            <diffuse>0.1 0.1 0.1 1</diffuse>
-          </material>
-        </visual>
-      </link>
-
-      <joint name="front_caster_joint" type="ball">
-        <parent>base_link</parent>
-        <child>front_caster_link</child>
-      </joint>
-
-      <link name="rear_caster_link">
-        <pose>-0.18 0 0.03 0 0 0</pose>
-        <inertial>
-          <mass>0.08</mass>
-          <inertia>
-            <ixx>0.0001</ixx>
-            <iyy>0.0001</iyy>
-            <izz>0.0001</izz>
-            <ixy>0.0</ixy>
-            <ixz>0.0</ixz>
-            <iyz>0.0</iyz>
-          </inertia>
-        </inertial>
-        <collision name="collision">
-          <geometry>
-            <sphere>
-              <radius>0.03</radius>
-            </sphere>
-          </geometry>
-        </collision>
-        <visual name="visual">
-          <geometry>
-            <sphere>
-              <radius>0.03</radius>
-            </sphere>
-          </geometry>
-          <material>
-            <ambient>0.08 0.08 0.08 1</ambient>
-            <diffuse>0.1 0.1 0.1 1</diffuse>
-          </material>
-        </visual>
-      </link>
-
-      <joint name="rear_caster_joint" type="ball">
-        <parent>base_link</parent>
-        <child>rear_caster_link</child>
       </joint>
 
       <link name="lidar_link">
@@ -381,12 +607,12 @@
           <pose>0 0 0.04 0 0 0</pose>
           <topic>/scan</topic>
           <always_on>true</always_on>
-          <update_rate>10</update_rate>
+          <update_rate>20</update_rate>
           <visualize>true</visualize>
           <ray>
             <scan>
               <horizontal>
-                <samples>360</samples>
+                <samples>720</samples>
                 <resolution>1</resolution>
                 <min_angle>0.0</min_angle>
                 <max_angle>6.26573201466</max_angle>
@@ -395,7 +621,7 @@
             <range>
               <min>0.05</min>
               <max>12.0</max>
-              <resolution>0.01</resolution>
+              <resolution>0.02</resolution>
             </range>
           </ray>
         </sensor>

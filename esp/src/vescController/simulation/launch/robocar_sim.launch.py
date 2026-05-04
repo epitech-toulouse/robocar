@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -49,6 +49,14 @@ def generate_launch_description():
     start_rviz = LaunchConfiguration("start_rviz")
     rviz_config = LaunchConfiguration("rviz_config")
 
+    startup_delay_arg = DeclareLaunchArgument(
+        "startup_delay",
+        default_value="2.0",
+        description="Delay non-Gazebo nodes startup to let the GUI/world settle",
+    )
+
+    startup_delay = LaunchConfiguration("startup_delay")
+
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("ros_gz_sim"), "launch", "gz_sim.launch.py"])
@@ -66,6 +74,8 @@ def generate_launch_description():
             "/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
             "/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
             "/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist",
+            "/robocar/front_left_steering_cmd@std_msgs/msg/Float64]gz.msgs.Double",
+            "/robocar/front_right_steering_cmd@std_msgs/msg/Float64]gz.msgs.Double",
         ],
     )
 
@@ -105,9 +115,15 @@ def generate_launch_description():
         controller_menu_enabled_arg,
         start_rviz_arg,
         rviz_config_arg,
+        startup_delay_arg,
         gazebo,
-        bridge,
-        controller,
-        static_tf_lidar,
-        rviz,
+        TimerAction(
+            period=startup_delay,
+            actions=[
+                bridge,
+                controller,
+                static_tf_lidar,
+                rviz,
+            ],
+        ),
     ])

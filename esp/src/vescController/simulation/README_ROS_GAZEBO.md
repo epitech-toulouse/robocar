@@ -181,8 +181,8 @@ ros2 pkg list | grep robocar_sim
 
 ## Current scope
 
-- Starts Gazebo world with floor, a simple car model, and obstacles
-- Car has a top-mounted LiDAR sensor publishing `/scan` at 10 Hz
+- Starts Gazebo world with floor, obstacles, rear wheel propulsion, and front steering joints limited to +/-35 deg
+- Car has a top-mounted LiDAR sensor publishing `/scan` at 20 Hz with 720 horizontal samples
 - Starts ROS-Gazebo bridge for `/clock`, `/scan`, `/cmd_vel`
 - Starts `robocar_sim_controller` ROS node
 - Converts LaserScan into point list similar to project LiDAR parsing style:
@@ -195,7 +195,7 @@ ros2 pkg list | grep robocar_sim
 Note:
 
 - A simple terminal menu is available in the controller node.
-- `cmd_vel` publishing is available from the menu (`cmd v w`), but world motion plugins can be expanded later.
+- `cmd_vel` publishing is available from the menu (`cmd v w`); front steering is published separately to the two front steering joints.
 
 ## Menu commands
 

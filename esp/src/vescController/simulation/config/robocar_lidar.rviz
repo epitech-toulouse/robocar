@@ -39,6 +39,18 @@ Visualization Manager:
       Size (m): 0.03
       Style: Flat Squares
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: LiDAR Clusters
+      Namespaces:
+        lidar_clusters: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robocar/lidar_clusters
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

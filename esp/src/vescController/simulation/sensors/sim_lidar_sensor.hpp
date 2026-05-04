@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <mutex>
 
 #include "sensor_msgs/msg/laser_scan.hpp"
@@ -17,8 +18,10 @@ public:
 	void updateFromScan(const sensor_msgs::msg::LaserScan& scanMsg);
 
 private:
+	bool isFreshLocked() const;
+
 	mutable std::mutex dataMutex;
 	lidar_array_t lastData{};
 	bool hasFreshData = false;
+	std::chrono::steady_clock::time_point lastUpdateTime{};
 };
-

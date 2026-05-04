@@ -1,12 +1,55 @@
 robocar_sim_controller:
   ros__parameters:
+    # ROS LaserScan topic bridged from the Gazebo LiDAR.
     scan_topic: "/scan"
+
+    # ROS Twist topic sent to Gazebo for vehicle speed and yaw command.
     cmd_topic: "/cmd_vel"
+
+    # Debug topic publishing LiDAR points as flat triples: angle_deg, distance_m, intensity.
     points_topic: "/robocar/lidar_points_flat"
+
+    # RViz marker topic showing connected clusters of nearby LiDAR points.
+    cluster_topic: "/robocar/lidar_clusters"
+
+    # Position command topic for the front left steering joint, in radians.
+    front_left_steering_topic: "/robocar/front_left_steering_cmd"
+
+    # Position command topic for the front right steering joint, in radians.
+    front_right_steering_topic: "/robocar/front_right_steering_cmd"
+
+    # Starts the LiDAR obstacle avoidance algorithm automatically when the node launches.
     autonomous_enabled: true
-    sim_auto_speed_scale: 8.0
-    sim_max_linear_speed_mps: 1.8
-    sim_max_angular_speed_radps: 2.2
+
+    # Maximum linear speed of the simulated car in m/s. 5.0 m/s is about 18 km/h.
+    # In autonomous mode, the algorithm full-forward output maps to this value.
+    # Values above about 10 m/s need larger obstacle stop/slow distances, otherwise the car overshoots.
+    sim_max_linear_speed_mps: 2.0
+
+    # Maximum rate of speed change in m/s^2; very high values create abrupt throttle changes in Gazebo.
+    sim_max_acceleration_mps2: 3.0
+
+    # Manual steering sensitivity: this angular command value maps to full steering lock.
+    # It does not inject yaw into Gazebo; the front wheels create the turn physically.
+    sim_max_angular_speed_radps: 4.0
+
+    # Mechanical front wheel steering limit in degrees for each side.
+    sim_max_steering_angle_deg: 35.0
+
+    # Inverts steering direction if the simulated steering turns opposite to expected.
     sim_reverse_steering: false
+
+    # Maximum distance between consecutive LiDAR points to group them in one cluster.
+    cluster_distance_threshold_m: 0.18
+
+    # Maximum angular gap between consecutive LiDAR points in one cluster.
+    cluster_max_angle_gap_deg: 2.0
+
+    # Minimum number of points required before a cluster is displayed.
+    cluster_min_points: 3
+
+    # Enables the terminal menu inside robocar_sim_controller.
     menu_enabled: true
+
+    # Prints detailed scan summaries continuously when enabled.
     auto_print: false

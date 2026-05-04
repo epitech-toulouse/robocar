@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <mutex>
 
 #include "geometry_msgs/msg/twist.hpp"
@@ -20,6 +21,8 @@ public:
 	void set_steering(float steering) override;
 
 	geometry_msgs::msg::Twist toTwistCommand() const;
+	float toSteeringAngleCommand() const;
+	float steeringAngleFromAngularCommand(float angular) const;
 
 private:
 	SimControlConfig config;
@@ -28,5 +31,7 @@ private:
 	bool active = true;
 	float speedCmd = 0.0f;
 	float steeringCmd = 0.5f;
+	mutable bool hasLastCommandTime = false;
+	mutable float currentLinearMps = 0.0f;
+	mutable std::chrono::steady_clock::time_point lastCommandTime;
 };
-

@@ -14,6 +14,7 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 get_filename_component(SIM_DIR_REAL "${CMAKE_CURRENT_SOURCE_DIR}" REALPATH)
 get_filename_component(VESC_CONTROLLER_ROOT "${SIM_DIR_REAL}/.." REALPATH)
@@ -41,6 +42,7 @@ ament_target_dependencies(robocar_sim_controller
 	sensor_msgs
 	geometry_msgs
 	std_msgs
+	visualization_msgs
 )
 
 install(TARGETS robocar_sim_controller

@@ -1,6 +1,7 @@
 #include "sim_vesc_controller.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 SimVescController::SimVescController(SimControlConfig config)
@@ -26,6 +27,8 @@ void SimVescController::deactivate(void)
 	active = false;
 	speedCmd = 0.0f;
 	steeringCmd = 0.5f;
+	currentLinearMps = 0.0f;
+	hasLastCommandTime = false;
 }
 
 void SimVescController::activate(void)
@@ -63,15 +66,44 @@ geometry_msgs::msg::Twist SimVescController::toTwistCommand() const
 		return cmd;
 	}
 
-	const float signedSteering = (steeringCmd - 0.5f) * 2.0f;
-	const float steer = config.reverseSteering ? -signedSteering : signedSteering;
-	const float linear = speedCmd * config.maxLinearSpeedMps;
-	// Maintenir un peu de braquage même à basse vitesse (évite la pénalité x0)
-	const float curvatureScale = std::clamp(std::abs(speedCmd), 0.1f, 1.0f);
-	const float angular = steer * config.maxAngularSpeedRadps * curvatureScale;
+	const auto now = std::chrono::steady_clock::now();
+	float dt = 0.1f;
+	if (hasLastCommandTime) {
+		dt = std::chrono::duration<float>(now - lastCommandTime).count();
+	}
+	lastCommandTime = now;
+	hasLastCommandTime = true;
 
-	cmd.linear.x = linear;
-	cmd.angular.z = angular;
+	const float targetLinear = speedCmd * config.maxLinearSpeedMps;
+	const float acceleration = std::max(0.0f, config.maxAccelerationMps2);
+	const float maxDelta = acceleration * std::clamp(dt, 0.0f, 0.25f);
+	if (acceleration <= 0.0f) {
+		currentLinearMps = targetLinear;
+	} else {
+		currentLinearMps += std::clamp(targetLinear - currentLinearMps, -maxDelta, maxDelta);
+	}
+
+	cmd.linear.x = currentLinearMps;
+	cmd.angular.z = 0.0;
 	return cmd;
 }
 
+float SimVescController::toSteeringAngleCommand() const
+{
+	std::lock_guard<std::mutex> lock(dataMutex);
+	const float signedSteering = (steeringCmd - 0.5f) * 2.0f;
+	const float steer = config.reverseSteering ? -signedSteering : signedSteering;
+	return std::clamp(
+		steer * config.maxSteeringAngleRad,
+		-config.maxSteeringAngleRad,
+		config.maxSteeringAngleRad);
+}
+
+float SimVescController::steeringAngleFromAngularCommand(float angular) const
+{
+	const float steer = std::clamp(angular / std::max(config.maxAngularSpeedRadps, 0.01f), -1.0f, 1.0f);
+	return std::clamp(
+		steer * config.maxSteeringAngleRad,
+		-config.maxSteeringAngleRad,
+		config.maxSteeringAngleRad);
+}
