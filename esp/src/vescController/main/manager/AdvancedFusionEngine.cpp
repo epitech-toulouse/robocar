@@ -39,7 +39,7 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
     }
     DrivingAlgorithmOutput final_output = {
         .target_speed = 0.0,
-        .target_steering = 0.5,
+        .target_steering = 0.0,
         .computed_weight = 0.0
     };
     for (DrivingAlgorithmOutput &output : outputs) {
