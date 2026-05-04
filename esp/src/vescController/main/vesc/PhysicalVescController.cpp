@@ -36,6 +36,9 @@ bool PhysicalVescController::isActive() {
 }
 
 void PhysicalVescController::set_speed(float speed) {
+    ESP_LOGD("VESC", "Actif [%s] / Coupe circuit connecté [%s]",
+             this->active ? "X" : " ",
+             coupe_circuit_connected ? "X" : " ");
     if (this->active && coupe_circuit_connected) {
       speed = speed > VESC_MAX_MOTOR_SPEED ? VESC_MAX_MOTOR_SPEED : speed;
       if (speed < -VESC_MAX_MOTOR_SPEED)
