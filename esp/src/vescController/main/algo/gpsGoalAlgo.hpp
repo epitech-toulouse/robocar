@@ -12,10 +12,11 @@
 class GpsGoalAlgo : public DrivingAlgorithmApi
 {
 public:
-    explicit GpsGoalAlgo(GpsSensorApi &gps)
+    GpsGoalAlgo(GpsSensorApi &gps)
         : gps(gps)
     {
     }
+    ~GpsGoalAlgo() = default;
 
     bool available(void) override;
     bool compute(DrivingAlgorithmOutput &output) override;

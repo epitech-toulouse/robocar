@@ -50,8 +50,6 @@ public:
 
     // [0.0;1.0]
     virtual float getSteering(void) = 0;
-
-    virtual bool getEmergencyStop() = 0;
 };
 
 #endif /* USER_USER_CONTROLLER_HPP */

@@ -594,7 +594,7 @@ void UsbGpsHost::parseNmeaLine(char *line) {
     }
 
     if (count < 10 || std::strlen(tokens[2]) == 0 || std::strlen(tokens[4]) == 0) {
-        ESP_LOGW(TAG, "GGA sentence missing required fields count=%d: %s", count, line);
+        ESP_LOGD(TAG, "GGA sentence missing required fields count=%d: %s", count, line);
         return;
     }
 
