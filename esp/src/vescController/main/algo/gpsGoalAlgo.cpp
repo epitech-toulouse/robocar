@@ -52,7 +52,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         output.target_steering = 0.0f;
         output.computed_weight = 1.0f;
         if (shouldLog) {
-            ESP_LOGD(this->tag,
+            ESP_LOGI(this->tag,
                      "goal reached dist=%.2fm speed=%.2f steer=%.2f rtk_fixed=%d sats=%d",
                      distanceMeters,
                      static_cast<double>(output.target_speed),
@@ -71,14 +71,17 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         1.0f);
     const float maxSpeed = rtkFixed ? this->maxSpeedRtkFixed : this->maxSpeed;
     output.target_speed = this->baseSpeed + (maxSpeed - this->baseSpeed) * distanceScale;
-
+    static int iterate = 0;
+    iterate++;
     if (!headingValid) {
         if (shouldLog) {
-            ESP_LOGD(this->tag,
-                     "gps-only dist=%.2fm heading=NA speed=0.0 steer=0.0 rtk_fixed=%d sats=%d",
-                     distanceMeters,
-                     rtkFixed,
-                     status.satellites);
+            if (iterate % 100 == 0) {
+                ESP_LOGI(this->tag,
+                         "gps-only dist=%.2fm heading=NA speed=0.0 steer=0.0 rtk_fixed=%d sats=%d",
+                         distanceMeters,
+                         rtkFixed,
+                         status.satellites);
+            }
             this->lastLogTick = now;
         }
         return false;   

@@ -3,7 +3,7 @@
 
 float UserControllerAlgo::getPriority()
 {
-    return std::numeric_limits<float>::max();
+    return 1000.0;
 }
 
 bool UserControllerAlgo::compute(DrivingAlgorithmOutput &output)
