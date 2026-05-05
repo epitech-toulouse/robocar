@@ -27,7 +27,12 @@ static const char *TAG = "cdc_acm";
 
 // Control transfer constants
 #define CDC_ACM_CTRL_TRANSFER_SIZE (64)   // All standard CTRL requests and responses fit in this size
+
+#if CONFIG_IDF_TARGET_LINUX
+#define CDC_ACM_CTRL_TIMEOUT_MS    (1000) // To shorten transfer timeout errors on the linux target
+#else
 #define CDC_ACM_CTRL_TIMEOUT_MS    (5000) // Every CDC device should be able to respond to CTRL transfer in 5 seconds
+#endif // CONFIG_IDF_TARGET_LINUX
 
 // CDC-ACM spinlock
 static portMUX_TYPE cdc_acm_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -252,20 +257,21 @@ static void cdc_acm_device_remove(cdc_dev_t *cdc_dev)
 }
 
 /**
- * @brief Open USB device with requested VID/PID
+ * @brief Find and open USB device with requested VID/PID/dev_addr
  *
  * This function has two regular return paths:
- * 1. USB device with matching VID/PID is already opened by this driver: allocate new CDC device on top of the already opened USB device.
- * 2. USB device with matching VID/PID is NOT opened by this driver yet: poll USB connected devices until it is found.
+ * 1. USB device with matching VID/PID/dev_addr is already opened by this driver: allocate new CDC device on top of the already opened USB device.
+ * 2. USB device with matching VID/PID/dev_addr is NOT opened by this driver yet: poll USB connected devices until it is found.
  *
  * @note This function will block for timeout_ms, if the device is not enumerated at the moment of calling this function.
- * @param[in] vid Vendor ID
- * @param[in] pid Product ID
+ * @param[in] dev_addr USB device address, or CDC_HOST_ANY_DEV_ADDR to ignore address
+ * @param[in] vid Vendor ID, or CDC_HOST_ANY_VID to match any vendor ID
+ * @param[in] pid Product ID, or CDC_HOST_ANY_PID to match any product ID
  * @param[in] timeout_ms Connection timeout [ms]
  * @param[out] dev CDC-ACM device
  * @return esp_err_t
  */
-static esp_err_t cdc_acm_find_and_open_usb_device(uint16_t vid, uint16_t pid, int timeout_ms, cdc_dev_t **dev)
+static esp_err_t cdc_acm_find_and_open_usb_device(uint8_t dev_addr, uint16_t vid, uint16_t pid, int timeout_ms, cdc_dev_t **dev)
 {
     assert(p_cdc_acm_obj);
     assert(dev);
@@ -280,9 +286,12 @@ static esp_err_t cdc_acm_find_and_open_usb_device(uint16_t vid, uint16_t pid, in
     cdc_dev_t *cdc_dev;
     SLIST_FOREACH(cdc_dev, &p_cdc_acm_obj->cdc_devices_list, list_entry) {
         const usb_device_desc_t *device_desc;
+        usb_device_info_t dev_info;
         ESP_ERROR_CHECK(usb_host_get_device_descriptor(cdc_dev->dev_hdl, &device_desc));
+        ESP_ERROR_CHECK(usb_host_device_info(cdc_dev->dev_hdl, &dev_info));
         if ((vid == device_desc->idVendor || vid == CDC_HOST_ANY_VID) &&
-                (pid == device_desc->idProduct || pid == CDC_HOST_ANY_PID)) {
+                (pid == device_desc->idProduct || pid == CDC_HOST_ANY_PID) &&
+                (dev_addr == dev_info.dev_addr || dev_addr == CDC_HOST_ANY_DEV_ADDR)) {
             // Return path 1:
             (*dev)->dev_hdl = cdc_dev->dev_hdl;
             return ESP_OK;
@@ -304,19 +313,21 @@ static esp_err_t cdc_acm_find_and_open_usb_device(uint16_t vid, uint16_t pid, in
         for (int i = 0; i < num_of_devices; i++) {
             usb_device_handle_t current_device;
             // Open USB device
-            if (usb_host_device_open(p_cdc_acm_obj->cdc_acm_client_hdl, dev_addr_list[i], &current_device) == ESP_OK) {
-                assert(current_device);
-                const usb_device_desc_t *device_desc;
-                ESP_ERROR_CHECK(usb_host_get_device_descriptor(current_device, &device_desc));
-                if ((device_desc->bDeviceClass != USB_CLASS_HUB) &&
-                        (vid == device_desc->idVendor || vid == CDC_HOST_ANY_VID) &&
-                        (pid == device_desc->idProduct || pid == CDC_HOST_ANY_PID)) {
-                    // Return path 2:
-                    (*dev)->dev_hdl = current_device;
-                    return ESP_OK;
-                }
-                usb_host_device_close(p_cdc_acm_obj->cdc_acm_client_hdl, current_device);
+            if (usb_host_device_open(p_cdc_acm_obj->cdc_acm_client_hdl, dev_addr_list[i], &current_device) != ESP_OK) {
+                continue;
             }
+            assert(current_device);
+            const usb_device_desc_t *device_desc;
+            ESP_ERROR_CHECK(usb_host_get_device_descriptor(current_device, &device_desc));
+            if ((device_desc->bDeviceClass != USB_CLASS_HUB) &&
+                    (vid == device_desc->idVendor || vid == CDC_HOST_ANY_VID) &&
+                    (pid == device_desc->idProduct || pid == CDC_HOST_ANY_PID) &&
+                    (dev_addr == dev_addr_list[i] || dev_addr == CDC_HOST_ANY_DEV_ADDR)) {
+                // Return path 2:
+                (*dev)->dev_hdl = current_device;
+                return ESP_OK;
+            }
+            usb_host_device_close(p_cdc_acm_obj->cdc_acm_client_hdl, current_device);
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     } while (xTaskCheckForTimeOut(&connection_timeout, &timeout_ticks) == pdFALSE);
@@ -460,28 +471,36 @@ static void cdc_acm_transfers_free(cdc_dev_t *cdc_dev)
     assert(cdc_dev);
     if (cdc_dev->notif.xfer != NULL) {
         usb_host_transfer_free(cdc_dev->notif.xfer);
+        cdc_dev->notif.xfer = NULL;
     }
     if (cdc_dev->data.in_xfer != NULL) {
         cdc_acm_reset_in_transfer(cdc_dev);
         usb_host_transfer_free(cdc_dev->data.in_xfer);
+        cdc_dev->data.in_xfer = NULL;
     }
     if (cdc_dev->data.out_xfer != NULL) {
         if (cdc_dev->data.out_xfer->context != NULL) {
             vSemaphoreDelete((SemaphoreHandle_t)cdc_dev->data.out_xfer->context);
+            cdc_dev->data.out_xfer->context = NULL;
         }
         if (cdc_dev->data.out_mux != NULL) {
             vSemaphoreDelete(cdc_dev->data.out_mux);
+            cdc_dev->data.out_mux = NULL;
         }
         usb_host_transfer_free(cdc_dev->data.out_xfer);
+        cdc_dev->data.out_xfer = NULL;
     }
     if (cdc_dev->ctrl_transfer != NULL) {
         if (cdc_dev->ctrl_transfer->context != NULL) {
             vSemaphoreDelete((SemaphoreHandle_t)cdc_dev->ctrl_transfer->context);
+            cdc_dev->ctrl_transfer->context = NULL;
         }
         if (cdc_dev->ctrl_mux != NULL) {
             vSemaphoreDelete(cdc_dev->ctrl_mux);
+            cdc_dev->ctrl_mux = NULL;
         }
         usb_host_transfer_free(cdc_dev->ctrl_transfer);
+        cdc_dev->ctrl_transfer = NULL;
     }
 }
 
@@ -568,17 +587,39 @@ err:
     return ret;
 }
 
-esp_err_t cdc_acm_host_open(uint16_t vid, uint16_t pid, uint8_t interface_idx, const cdc_acm_host_device_config_t *dev_config, cdc_acm_dev_hdl_t *cdc_hdl_ret)
+esp_err_t cdc_acm_host_open_v1_dispatch(uint16_t vid, uint16_t pid, uint8_t interface_idx,
+                                        const cdc_acm_host_device_config_t *dev_config,
+                                        cdc_acm_dev_hdl_t *cdc_hdl_ret)
+{
+    CDC_ACM_CHECK(p_cdc_acm_obj, ESP_ERR_INVALID_STATE);
+    CDC_ACM_CHECK(dev_config, ESP_ERR_INVALID_ARG);
+    const cdc_acm_host_open_config_t cfg = {
+        .vid = vid,
+        .pid = pid,
+        .interface_idx = interface_idx,
+        .dev_addr = CDC_HOST_ANY_DEV_ADDR,
+        .connection_timeout_ms = dev_config->connection_timeout_ms,
+        .out_buffer_size = dev_config->out_buffer_size,
+        .in_buffer_size = dev_config->in_buffer_size,
+        .event_cb = dev_config->event_cb,
+        .data_cb = dev_config->data_cb,
+        .user_arg = dev_config->user_arg,
+    };
+    return cdc_acm_host_open_v2(&cfg, cdc_hdl_ret);
+}
+
+esp_err_t cdc_acm_host_open_v2(const cdc_acm_host_open_config_t *open_config, cdc_acm_dev_hdl_t *cdc_hdl_ret)
 {
     esp_err_t ret;
     CDC_ACM_CHECK(p_cdc_acm_obj, ESP_ERR_INVALID_STATE);
-    CDC_ACM_CHECK(dev_config, ESP_ERR_INVALID_ARG);
+    CDC_ACM_CHECK(open_config, ESP_ERR_INVALID_ARG);
     CDC_ACM_CHECK(cdc_hdl_ret, ESP_ERR_INVALID_ARG);
 
     xSemaphoreTake(p_cdc_acm_obj->open_close_mutex, portMAX_DELAY);
     // Find underlying USB device
     cdc_dev_t *cdc_dev;
-    ret =  cdc_acm_find_and_open_usb_device(vid, pid, dev_config->connection_timeout_ms, &cdc_dev);
+    ret = cdc_acm_find_and_open_usb_device(open_config->dev_addr, open_config->vid, open_config->pid,
+                                           open_config->connection_timeout_ms, &cdc_dev);
     if (ESP_OK != ret) {
         goto exit;
     }
@@ -592,7 +633,7 @@ esp_err_t cdc_acm_host_open(uint16_t vid, uint16_t pid, uint8_t interface_idx, c
     // Parse the required interface descriptor
     cdc_parsed_info_t cdc_info;
     ESP_GOTO_ON_ERROR(
-        cdc_parse_interface_descriptor(device_desc, config_desc, interface_idx, &cdc_info),
+        cdc_parse_interface_descriptor(device_desc, config_desc, open_config->interface_idx, &cdc_info),
         err, TAG, "Could not open required interface as CDC");
 
     // Save all members of cdc_dev
@@ -615,13 +656,13 @@ esp_err_t cdc_acm_host_open(uint16_t vid, uint16_t pid, uint8_t interface_idx, c
 
     // The following line is here for backward compatibility with v1.0.*
     // where fixed size of IN buffer (equal to IN Maximum Packet Size) was used
-    const size_t in_buf_size = (dev_config->data_cb && (dev_config->in_buffer_size == 0)) ? USB_EP_DESC_GET_MPS(cdc_info.in_ep) : dev_config->in_buffer_size;
+    const size_t in_buf_size = (open_config->data_cb && (open_config->in_buffer_size == 0)) ? USB_EP_DESC_GET_MPS(cdc_info.in_ep) : open_config->in_buffer_size;
 
     // Allocate USB transfers, claim CDC interfaces and return CDC-ACM handle
     ESP_GOTO_ON_ERROR(
-        cdc_acm_transfers_allocate(cdc_dev, cdc_info.notif_ep, cdc_info.in_ep, in_buf_size, cdc_info.out_ep, dev_config->out_buffer_size),
+        cdc_acm_transfers_allocate(cdc_dev, cdc_info.notif_ep, cdc_info.in_ep, in_buf_size, cdc_info.out_ep, open_config->out_buffer_size),
         err, TAG,);
-    ESP_GOTO_ON_ERROR(cdc_acm_start(cdc_dev, dev_config->event_cb, dev_config->data_cb, dev_config->user_arg), err, TAG,);
+    ESP_GOTO_ON_ERROR(cdc_acm_start(cdc_dev, open_config->event_cb, open_config->data_cb, open_config->user_arg), err, TAG,);
     *cdc_hdl_ret = (cdc_acm_dev_hdl_t)cdc_dev;
     xSemaphoreGive(p_cdc_acm_obj->open_close_mutex);
     return ESP_OK;
@@ -785,7 +826,7 @@ static void in_xfer_cb(usb_transfer_t *transfer)
 #else
             // For targets that must sync internal memory through L1CACHE, we cannot change the data_buffer
             // because it would lead to unaligned cache sync, which is not allowed
-            ESP_LOGW(TAG, "RX buffer append is not yet supported on ESP32-P4!");
+            ESP_LOGW(TAG, "RX buffer append is not supported on this target!");
 #endif
         } else {
             cdc_acm_reset_in_transfer(cdc_dev);
@@ -1033,7 +1074,7 @@ esp_err_t cdc_acm_host_send_custom_request(cdc_acm_dev_hdl_t cdc_hdl, uint8_t bm
     if (wLength > 0) {
         CDC_ACM_CHECK(data, ESP_ERR_INVALID_ARG);
     }
-    CDC_ACM_CHECK(cdc_dev->ctrl_transfer->data_buffer_size >= wLength, ESP_ERR_INVALID_SIZE);
+    CDC_ACM_CHECK(cdc_dev->ctrl_transfer->data_buffer_size >= wLength + sizeof(usb_setup_packet_t), ESP_ERR_INVALID_SIZE);
 
     esp_err_t ret;
 
@@ -1063,8 +1104,7 @@ esp_err_t cdc_acm_host_send_custom_request(cdc_acm_dev_hdl_t cdc_hdl, uint8_t bm
 
     taken = xSemaphoreTake((SemaphoreHandle_t)cdc_dev->ctrl_transfer->context, pdMS_TO_TICKS(CDC_ACM_CTRL_TIMEOUT_MS));
     if (!taken) {
-        // Transfer was not finished, error in USB LIB. Reset the endpoint
-        cdc_acm_reset_transfer_endpoint(cdc_dev->dev_hdl, cdc_dev->ctrl_transfer);
+        // Transfer was not finished, error in USB LIB. This is EP0, USBH will reset the endpoint.
         ret = ESP_ERR_TIMEOUT;
         goto unblock;
     }
@@ -1115,3 +1155,98 @@ esp_err_t cdc_acm_host_cdc_desc_get(cdc_acm_dev_hdl_t cdc_hdl, cdc_desc_subtype_
     }
     return ret;
 }
+
+#ifdef CDC_HOST_REMOTE_WAKE_SUPPORTED
+
+esp_err_t cdc_acm_host_enable_remote_wakeup(cdc_acm_dev_hdl_t cdc_hdl, bool enable)
+{
+    esp_err_t ret;
+    CDC_ACM_CHECK(p_cdc_acm_obj, ESP_ERR_INVALID_STATE);
+    CDC_ACM_CHECK(cdc_hdl, ESP_ERR_INVALID_ARG);
+    cdc_dev_t *this_cdc_dev = (cdc_dev_t *)cdc_hdl;
+
+    // Make sure that the device is in the devices list (that it is not already closed)
+    cdc_dev_t *cdc_dev;
+    bool device_found = false;
+    CDC_ACM_ENTER_CRITICAL();
+    SLIST_FOREACH(cdc_dev, &p_cdc_acm_obj->cdc_devices_list, list_entry) {
+        if (cdc_dev == this_cdc_dev) {
+            device_found = true;
+            break;
+        }
+    }
+    CDC_ACM_EXIT_CRITICAL();
+    ESP_RETURN_ON_FALSE(device_found, ESP_ERR_NOT_FOUND, TAG, "Device not found in device list");
+
+    // Get device's config descriptor
+    const usb_config_desc_t *config_desc;
+    ESP_RETURN_ON_ERROR(
+        usb_host_get_active_config_descriptor(this_cdc_dev->dev_hdl, &config_desc), TAG, "Unable to get configuration descriptor");
+
+    // Check if the device reports remote wakeup feature in it's configuration descriptor
+    ESP_RETURN_ON_FALSE(
+        (config_desc->bmAttributes & USB_BM_ATTRIBUTES_WAKEUP), ESP_ERR_NOT_SUPPORTED, TAG, "Device does not support remote wakeup");
+
+    // Go through all pseudo devices and find out whether current physical USB Device has remote wakeup enabled/disabled
+    bool remote_wake_enabled = false;       // Disabled by default (if supported) after reset
+    CDC_ACM_ENTER_CRITICAL();
+    SLIST_FOREACH(cdc_dev, &p_cdc_acm_obj->cdc_devices_list, list_entry) {
+        if ((cdc_dev->dev_hdl == this_cdc_dev->dev_hdl) && cdc_dev->remote_wakeup_enabled) {
+            remote_wake_enabled = true;
+            break;
+        }
+    }
+    CDC_ACM_EXIT_CRITICAL();
+
+    // Check current remote wakeup status,
+    // If user wants to enable it and is already enabled (or vice versa) return early, otherwise proceed to ctrl transfer
+    if (remote_wake_enabled == enable) {
+        ESP_LOGD(TAG, "Remote wakeup already %s on this device", (enable) ? "enabled" : "disabled");
+        return ESP_OK;
+    }
+
+    // Take Mutex and fill the CTRL request
+    BaseType_t taken = xSemaphoreTake(this_cdc_dev->ctrl_mux, pdMS_TO_TICKS(CDC_ACM_CTRL_TIMEOUT_MS));
+    if (!taken) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    usb_setup_packet_t *req = (usb_setup_packet_t *)(this_cdc_dev->ctrl_transfer->data_buffer);
+    if (enable) {
+        USB_SETUP_PACKET_INIT_SET_FEATURE(req, DEVICE_REMOTE_WAKEUP);
+        ESP_LOGI(TAG, "Enabling remote wakeup on device");
+    } else {
+        USB_SETUP_PACKET_INIT_CLEAR_FEATURE(req, DEVICE_REMOTE_WAKEUP);
+        ESP_LOGI(TAG, "Disabling remote wakeup on device");
+    }
+    this_cdc_dev->ctrl_transfer->num_bytes = sizeof(usb_setup_packet_t);
+
+    ESP_GOTO_ON_ERROR(
+        usb_host_transfer_submit_control(p_cdc_acm_obj->cdc_acm_client_hdl, this_cdc_dev->ctrl_transfer),
+        unlock_ctrl_mux, TAG, "CTRL transfer failed");
+
+    taken = xSemaphoreTake((SemaphoreHandle_t)this_cdc_dev->ctrl_transfer->context, pdMS_TO_TICKS(CDC_ACM_CTRL_TIMEOUT_MS));
+    if (!taken) {
+        // Transfer was not finished, error in USB LIB
+        ret = ESP_ERR_TIMEOUT;
+        goto unlock_ctrl_mux;
+    }
+
+    ESP_GOTO_ON_FALSE(this_cdc_dev->ctrl_transfer->status == USB_TRANSFER_STATUS_COMPLETED, ESP_ERR_INVALID_RESPONSE, unlock_ctrl_mux, TAG, "Control transfer error");
+    ESP_GOTO_ON_FALSE(this_cdc_dev->ctrl_transfer->actual_num_bytes == this_cdc_dev->ctrl_transfer->num_bytes, ESP_ERR_INVALID_RESPONSE, unlock_ctrl_mux, TAG, "Incorrect number of bytes transferred");
+    ret = ESP_OK;
+
+    // Remote wakeup status has changed, update all pseudo-devices statuses about remote wakeup
+    CDC_ACM_ENTER_CRITICAL();
+    SLIST_FOREACH(cdc_dev, &p_cdc_acm_obj->cdc_devices_list, list_entry) {
+        if (cdc_dev->dev_hdl == this_cdc_dev->dev_hdl) {
+            cdc_dev->remote_wakeup_enabled = enable;
+        }
+    }
+    CDC_ACM_EXIT_CRITICAL();
+
+unlock_ctrl_mux:
+    xSemaphoreGive(this_cdc_dev->ctrl_mux);
+    return ret;
+}
+#endif // CDC_HOST_REMOTE_WAKE_SUPPORTED

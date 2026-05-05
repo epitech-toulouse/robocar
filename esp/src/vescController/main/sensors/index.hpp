@@ -1,259 +1,619 @@
 static const char *INDEX_HTML = R"HTML(
 <!doctype html>
-<html>
+<html lang="fr">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>RoboCar Control</title>
     <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        *, *::before, *::after { box-sizing: border-box; }
+
+        :root {
+            color-scheme: dark;
+            --bg: #101418;
+            --panel: #171d22;
+            --panel-strong: #1f2930;
+            --line: #2c3841;
+            --text: #edf5f7;
+            --muted: #92a3ad;
+            --blue: #2383c4;
+            --blue-strong: #0d6fa9;
+            --green: #18a058;
+            --green-soft: #153526;
+            --red: #d14343;
+            --red-strong: #b52525;
+            --amber: #e0a11b;
+            --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+        }
 
         html, body {
             width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background: #0d1b2e;
+            min-height: 100%;
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             touch-action: manipulation;
             -webkit-user-select: none;
             user-select: none;
         }
 
         body {
-            font-family: system-ui, "Segoe UI", sans-serif;
-            display: flex;
-            flex-direction: column;
+            min-height: 100dvh;
+            overflow: hidden;
         }
 
-        /* ── TOP BAR ── */
+        button, input {
+            font: inherit;
+        }
+
+        button {
+            border: 0;
+            color: inherit;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        .app {
+            min-height: 100dvh;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0) 34%),
+                radial-gradient(circle at top left, rgba(35,131,196,.16), transparent 30rem),
+                var(--bg);
+        }
+
         .topbar {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: .75rem;
+            padding: max(.65rem, env(safe-area-inset-top)) max(.8rem, env(safe-area-inset-right)) .65rem max(.8rem, env(safe-area-inset-left));
+            border-bottom: 1px solid rgba(255,255,255,.08);
+            background: rgba(16,20,24,.86);
+            backdrop-filter: blur(18px);
+        }
+
+        .brand {
+            min-width: 0;
+            display: grid;
+            gap: .15rem;
+        }
+
+        .brand-title {
+            font-size: clamp(1rem, 2.2vw, 1.2rem);
+            font-weight: 800;
+            letter-spacing: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .brand-subtitle {
+            color: var(--muted);
+            font-size: .78rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .status-row {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 6px 14px;
-            background: rgba(0,0,0,.35);
-            flex-shrink: 0;
-            gap: 8px;
+            justify-content: flex-end;
+            gap: .45rem;
             flex-wrap: wrap;
         }
 
-        .topbar-title {
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: .06em;
-            text-transform: uppercase;
-            color: #b0cfe8;
-        }
-
-        .hint { font-size: 11px; color: rgba(255,255,255,.38); }
-
-        .topbar-right { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-
-        .btn-sm {
-            border: none;
-            border-radius: 8px;
-            padding: 6px 14px;
-            font-family: inherit;
-            font-size: 13px;
-            font-weight: 700;
-            cursor: pointer;
-            color: #fff;
-            touch-action: manipulation;
-        }
-        .btn-connect  { background: #1d8a50; }
-        .btn-disc     { background: #3a4f62; }
-        .btn-fs       { background: #2a4a6a; font-size: 18px; padding: 4px 12px; }
-
-        /* ── MAIN LAYOUT ── */
-        .layout {
-            flex: 1;
-            display: grid;
-            grid-template-columns: 1fr 1px 1fr;
-            min-height: 0;
-        }
-
-        .divider { background: rgba(255,255,255,.1); }
-
-        .col {
-            display: flex;
-            flex-direction: column;
+        .chip {
+            min-height: 2rem;
+            display: inline-flex;
             align-items: center;
-            padding: 12px;
-            gap: 20px;
+            gap: .4rem;
+            padding: .35rem .6rem;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: rgba(255,255,255,.04);
+            color: var(--muted);
+            font-size: .78rem;
+            font-weight: 700;
+            line-height: 1;
         }
 
-        .col-label {
-            font-size: 10px;
-            letter-spacing: .14em;
-            text-transform: uppercase;
-            color: rgba(255,255,255,.3);
-            font-weight: 600;
+        .dot {
+            width: .55rem;
+            height: .55rem;
+            border-radius: 999px;
+            background: #687782;
+            box-shadow: 0 0 0 .18rem rgba(104,119,130,.14);
         }
 
-        .dpad-v { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-        .dpad-h { display: flex; flex-direction: row; align-items: center; gap: 20px; }
+        .chip.ok {
+            color: #d9f8e8;
+            border-color: rgba(24,160,88,.55);
+            background: var(--green-soft);
+        }
 
-        .ctl {
-            border: none;
-            border-radius: 18px;
-            color: #fff;
-            background: #1475a0;
-            cursor: pointer;
-            display: flex;
+        .chip.ok .dot {
+            background: var(--green);
+            box-shadow: 0 0 0 .18rem rgba(24,160,88,.18);
+        }
+
+        .chip.warn {
+            color: #ffecc0;
+            border-color: rgba(224,161,27,.55);
+            background: rgba(224,161,27,.13);
+        }
+
+        .chip.warn .dot {
+            background: var(--amber);
+            box-shadow: 0 0 0 .18rem rgba(224,161,27,.18);
+        }
+
+        .btn {
+            min-height: 2.25rem;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            transition: transform 70ms, filter 70ms;
-            touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
-            font-size: 32px;
+            gap: .45rem;
+            padding: .5rem .75rem;
+            border-radius: .5rem;
+            background: var(--panel-strong);
+            border: 1px solid var(--line);
+            font-weight: 800;
+            font-size: .82rem;
+            line-height: 1;
+            transition: transform 80ms ease, filter 80ms ease, background 80ms ease, border-color 80ms ease;
         }
 
-        .ctl:active, .ctl.pressed {
-            transform: scale(0.91);
-            filter: brightness(.78);
+        .btn:active,
+        .btn.pressed {
+            transform: translateY(1px) scale(.98);
+            filter: brightness(.9);
         }
 
-        .btn-fwd, .btn-bwd   { width: min(42vw, 220px); height: min(14vh, 96px); }
-        .btn-left, .btn-right { width: min(14vw, 96px); height: min(28vh, 180px); }
+        .btn-primary {
+            background: var(--green);
+            border-color: rgba(255,255,255,.08);
+            color: #04140b;
+        }
 
-        /* Bigger buttons in fullscreen */
-        :fullscreen .btn-fwd,
-        :fullscreen .btn-bwd   { width: min(42vw, 320px); height: min(17vh, 120px); }
-        :fullscreen .btn-left,
-        :fullscreen .btn-right { width: min(17vw, 120px); height: min(34vh, 220px); }
-        :-webkit-full-screen .btn-fwd,
-        :-webkit-full-screen .btn-bwd   { width: min(42vw, 320px); height: min(17vh, 120px); }
-        :-webkit-full-screen .btn-left,
-        :-webkit-full-screen .btn-right { width: min(17vw, 120px); height: min(34vh, 220px); }
+        .btn-danger {
+            background: rgba(209,67,67,.12);
+            border-color: rgba(209,67,67,.5);
+            color: #ffdada;
+        }
 
-        .stop-and-logs {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
+        .btn-icon {
+            width: 2.25rem;
+            padding: 0;
+            font-size: 1.15rem;
+        }
+
+        .workspace {
+            min-height: 0;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(10rem, .55fr) minmax(0, 1fr);
+            gap: clamp(.65rem, 1.5vw, 1.1rem);
+            padding: clamp(.7rem, 1.6vw, 1.1rem);
+        }
+
+        .drive-zone,
+        .center-zone {
+            min-width: 0;
+            min-height: 0;
+            border: 1px solid rgba(255,255,255,.08);
+            background: rgba(23,29,34,.84);
+            box-shadow: var(--shadow);
+        }
+
+        .drive-zone {
+            display: grid;
+            align-content: center;
+            justify-items: center;
+            gap: clamp(.8rem, 2.2vh, 1.2rem);
+            border-radius: .75rem;
+            padding: clamp(.75rem, 2vw, 1.2rem);
+        }
+
+        .zone-label {
+            align-self: end;
+            color: var(--muted);
+            font-size: .72rem;
+            font-weight: 800;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+        }
+
+        .pad-vertical {
+            display: grid;
+            gap: clamp(.75rem, 2vh, 1.1rem);
+            width: min(100%, 22rem);
+        }
+
+        .pad-horizontal {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: clamp(.75rem, 2vw, 1.1rem);
+            width: min(100%, 28rem);
+        }
+
+        .ctl {
+            width: 100%;
+            min-height: 7.5rem;
+            border-radius: .85rem;
+            background: linear-gradient(180deg, #2a93d1, var(--blue-strong));
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 12px 28px rgba(0,0,0,.26);
+            font-size: clamp(2.2rem, 8vw, 4.5rem);
+            font-weight: 900;
+            transition: transform 70ms ease, filter 70ms ease, box-shadow 70ms ease;
+        }
+
+        .ctl:active,
+        .ctl.pressed {
+            transform: scale(.96);
+            filter: brightness(.86);
+            box-shadow: inset 0 2px 8px rgba(0,0,0,.25), 0 7px 18px rgba(0,0,0,.22);
+        }
+
+        .btn-left,
+        .btn-right {
+            min-height: 16rem;
+        }
+
+        .center-zone {
+            display: grid;
+            grid-template-rows: auto auto auto;
+            gap: .75rem;
+            border-radius: .75rem;
+            padding: .8rem;
+            overflow: hidden;
         }
 
         .stop {
-            border: none;
-            border-radius: 50%;
-            width: min(18vw, 110px);
-            height: min(18vw, 110px);
-            background: #b91c1c;
+            width: min(44vw, 10rem);
+            aspect-ratio: 1;
+            justify-self: center;
+            border-radius: 999px;
+            background: linear-gradient(180deg, var(--red), var(--red-strong));
             color: #fff;
-            font-family: inherit;
-            font-size: 13px;
-            font-weight: 800;
-            letter-spacing: .1em;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 16px 34px rgba(181,37,37,.25);
+            font-size: clamp(1rem, 2.4vw, 1.35rem);
+            font-weight: 950;
+            letter-spacing: .06em;
             text-transform: uppercase;
-            cursor: pointer;
-            transition: transform 70ms, filter 70ms;
-            touch-action: manipulation;
-            line-height: 1.25;
-        }
-        .stop:active { transform: scale(0.91); filter: brightness(.82); }
-
-        .log {
-            width: min(38vw, 900px);
-            max-height: 300px;
-            overflow-y: auto;
-            background: rgba(0,0,0,.45);
-            border-radius: 10px;
-            padding: 6px 10px;
-            font-family: monospace;
-            font-size: 10px;
-            color: #7dd3e8;
-            line-height: 1.5;
+            transition: transform 70ms ease, filter 70ms ease;
         }
 
-        .log-toggle {
-            font-size: 11px;
-            color: rgba(255,255,255,.45);
+        .stop:active {
+            transform: scale(.96);
+            filter: brightness(.88);
+        }
+
+        .actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: .5rem;
+        }
+
+        .actions .btn-primary {
+            grid-column: 1 / -1;
+        }
+
+        .log-panel {
+            min-height: 0;
+            display: grid;
+            grid-template-rows: auto;
+            gap: .5rem;
+        }
+
+        .log-tools {
             display: flex;
             align-items: center;
-            gap: 5px;
+            justify-content: space-between;
+            gap: .5rem;
+            color: var(--muted);
+            font-size: .78rem;
+            font-weight: 750;
+        }
+
+        .toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: .45rem;
             cursor: pointer;
+        }
+
+        .toggle input {
+            width: 1rem;
+            height: 1rem;
+            accent-color: var(--blue);
+        }
+
+        .log {
+            display: none;
+            height: clamp(7rem, 24vh, 16rem);
+            min-height: 5rem;
+            max-height: 16rem;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: .55rem;
+            background: rgba(0,0,0,.28);
+            padding: .55rem .65rem;
+            color: #a9e7f2;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+            font-size: .72rem;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        .is-logs-open .log {
+            display: block;
+        }
+
+        .is-logs-open .log-panel {
+            grid-template-rows: auto minmax(0, auto);
+        }
+
+        .is-disconnected .ctl,
+        .is-disconnected .stop,
+        .is-disconnected #arm {
+            filter: saturate(.45) brightness(.78);
+        }
+
+        .is-armed #arm {
+            background: var(--green-soft);
+            border-color: rgba(24,160,88,.6);
+            color: #d9f8e8;
+        }
+
+        :fullscreen .workspace,
+        :-webkit-full-screen .workspace {
+            padding: clamp(.5rem, 1.2vw, 1rem);
+        }
+
+        :fullscreen .ctl,
+        :-webkit-full-screen .ctl {
+            min-height: 8.5rem;
+        }
+
+        :fullscreen .log,
+        :-webkit-full-screen .log {
+            height: clamp(6rem, 22vh, 14rem);
+        }
+
+        @media (orientation: landscape) and (max-height: 520px) {
+            .topbar {
+                grid-template-columns: minmax(8rem, 1fr) auto;
+                padding-top: .45rem;
+                padding-bottom: .45rem;
+            }
+
+            .brand-subtitle,
+            .zone-label {
+                display: none;
+            }
+
+            .workspace {
+                grid-template-columns: 1fr minmax(8rem, .42fr) 1fr;
+                gap: .55rem;
+                padding: .55rem;
+            }
+
+            .drive-zone,
+            .center-zone {
+                padding: .55rem;
+                border-radius: .6rem;
+            }
+
+            .ctl {
+                min-height: 5.2rem;
+                font-size: clamp(2rem, 8vh, 3.3rem);
+            }
+
+            .btn-left,
+            .btn-right {
+                min-height: 11rem;
+            }
+
+            .stop {
+                width: min(9.5rem, 30vh);
+            }
+
+            .log-panel {
+                display: none;
+            }
+
+            .center-zone {
+                grid-template-rows: 1fr auto;
+                align-items: center;
+            }
+        }
+
+        @media (max-width: 760px) and (orientation: portrait) {
+            body {
+                overflow: auto;
+            }
+
+            .app {
+                min-height: 100dvh;
+            }
+
+            .topbar {
+                grid-template-columns: 1fr;
+                align-items: start;
+            }
+
+            .status-row {
+                justify-content: flex-start;
+            }
+
+            .workspace {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto;
+                padding-bottom: max(.8rem, env(safe-area-inset-bottom));
+            }
+
+            .drive-zone,
+            .center-zone {
+                min-height: auto;
+            }
+
+            .pad-vertical,
+            .pad-horizontal {
+                width: 100%;
+            }
+
+            .ctl {
+                min-height: 5.6rem;
+            }
+
+            .btn-left,
+            .btn-right {
+                min-height: 6.6rem;
+            }
+
+            .center-zone {
+                order: -1;
+            }
+
+            .stop {
+                width: min(46vw, 8rem);
+            }
+        }
+
+        @media (max-width: 430px) {
+            .status-row {
+                gap: .35rem;
+            }
+
+            .chip,
+            .btn {
+                font-size: .74rem;
+                padding-left: .5rem;
+                padding-right: .5rem;
+            }
+
+            .btn-icon {
+                width: 2.15rem;
+            }
+
+            .actions {
+                grid-template-columns: 1fr;
+            }
+
+            .actions .btn-primary {
+                grid-column: auto;
+            }
         }
     </style>
 </head>
-<body>
-
-    <div class="topbar">
-        <div>
-            <div class="topbar-title">RoboCar Drive Pad</div>
-            <div class="hint">AP : http://192.168.4.1:3333</div>
-        </div>
-        <div class="topbar-right">
-                        <label class="log-toggle">
-                <input id="espLogs" type="checkbox" />
-                Logs ESP
-                </label>
-            <button id="connect" class="btn-sm btn-connect">Connect</button>
-            <button id="disconnect" class="btn-sm btn-disc">Disconnect</button>
-            <button id="fsBtn" class="btn-sm btn-fs" title="Plein écran">⛶</button>
-        </div>
-    </div>
-
-
-
-
-    <div class="layout">
-        <div class="col">
-            <div class="dpad-v">
-                <button id="f" class="ctl btn-fwd">▲</button>
-                <button id="b" class="ctl btn-bwd">▼</button>
+<body class="is-disconnected">
+    <main class="app">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-title">RoboCar Control</div>
+                <div class="brand-subtitle">AP ROBOCAR_CTRL · http://192.168.4.1:3333</div>
             </div>
-        </div>
-
-        <div class="stop-and-logs divider" style="z-index: 1;">
-                <button id="s" class="stop">STOP</button>
-                <div id="log" class="log">Prêt</div>
-        </div>
-        <!-- <div class="divider"></div> -->
-
-        <div class="col">
-            <div class="dpad-h">
-                <button id="l" class="ctl btn-left">◀</button>
-                <button id="r" class="ctl btn-right">▶</button>
+            <div class="status-row">
+                <span id="connChip" class="chip"><span class="dot"></span><span id="connText">Hors ligne</span></span>
+                <span id="vescChip" class="chip warn"><span class="dot"></span><span id="vescText">VESC off</span></span>
+                <button id="connect" class="btn btn-primary">Connecter</button>
+                <button id="disconnect" class="btn">Couper</button>
+                <button id="fsBtn" class="btn btn-icon" title="Plein écran">⛶</button>
             </div>
-        </div>
+        </header>
 
-    </div>
-    
+        <section class="workspace" aria-label="Commandes RoboCar">
+            <section class="drive-zone" aria-label="Vitesse">
+                <div class="zone-label">Vitesse</div>
+                <div class="pad-vertical">
+                    <button id="f" class="ctl btn-fwd" aria-label="Avancer">▲</button>
+                    <button id="b" class="ctl btn-bwd" aria-label="Reculer">▼</button>
+                </div>
+            </section>
+
+            <section class="center-zone" aria-label="Securite et logs">
+                <button id="s" class="stop">Stop</button>
+                <div class="actions">
+                    <button id="arm" class="btn btn-primary">Activer VESC</button>
+                    <button id="clearLog" class="btn">Nettoyer</button>
+                    <button id="refreshStatus" class="btn">Statut</button>
+                </div>
+                <div class="log-panel">
+                    <div class="log-tools">
+                        <span>Journal</span>
+                        <label class="toggle">
+                            <input id="espLogs" type="checkbox" />
+                            Afficher logs
+                        </label>
+                    </div>
+                    <div id="log" class="log">Pret</div>
+                </div>
+            </section>
+
+            <section class="drive-zone" aria-label="Direction">
+                <div class="zone-label">Direction</div>
+                <div class="pad-horizontal">
+                    <button id="l" class="ctl btn-left" aria-label="Gauche">◀</button>
+                    <button id="r" class="ctl btn-right" aria-label="Droite">▶</button>
+                </div>
+            </section>
+        </section>
+    </main>
 
     <script>
-        /* ── FULLSCREEN ── */
+        const body = document.body;
         const fsBtn = document.getElementById('fsBtn');
+        const logEl = document.getElementById('log');
+        const espLogsToggle = document.getElementById('espLogs');
+        const connChip = document.getElementById('connChip');
+        const connText = document.getElementById('connText');
+        const vescChip = document.getElementById('vescChip');
+        const vescText = document.getElementById('vescText');
+        const armBtn = document.getElementById('arm');
+
+        let connected = false;
+        let vescActive = false;
+        let logsSince = 0;
+        let logsTimer = null;
 
         function isFs() {
             return !!(document.fullscreenElement || document.webkitFullscreenElement);
         }
 
         function updateFsBtn() {
-            fsBtn.textContent = isFs() ? '✕' : '⛶';
+            fsBtn.textContent = isFs() ? '×' : '⛶';
             fsBtn.title = isFs() ? 'Quitter le plein écran' : 'Plein écran';
         }
 
         fsBtn.addEventListener('click', () => {
             if (isFs()) {
-                (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+                const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                if (exit) exit.call(document);
             } else {
-                const el = document.documentElement;
-                const req = el.requestFullscreen || el.webkitRequestFullscreen;
-                if (req) req.call(el, { navigationUI: 'hide' }).catch(() => {});
+                const req = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+                if (req) req.call(document.documentElement, { navigationUI: 'hide' }).catch(() => {});
             }
         });
 
         document.addEventListener('fullscreenchange', updateFsBtn);
         document.addEventListener('webkitfullscreenchange', updateFsBtn);
 
-        /* ── ROBOCAR LOGIC (inchangée) ── */
-        let connected = false;
-        let logsSince = 0;
-        let logsTimer = null;
-        const logEl = document.getElementById('log');
-        const espLogsToggle = document.getElementById('espLogs');
+        function renderState() {
+            body.classList.toggle('is-disconnected', !connected);
+            body.classList.toggle('is-armed', vescActive);
+            body.classList.toggle('is-logs-open', espLogsToggle.checked);
 
-        function setConnectedUi(nextState) {
-            connected = nextState;
+            connChip.classList.toggle('ok', connected);
+            connText.textContent = connected ? 'Connecté' : 'Hors ligne';
+
+            vescChip.classList.toggle('ok', vescActive);
+            vescChip.classList.toggle('warn', !vescActive);
+            vescText.textContent = vescActive ? 'VESC actif' : 'VESC off';
+            armBtn.textContent = vescActive ? 'VESC actif' : 'Activer VESC';
         }
 
         function log(msg) {
@@ -262,20 +622,32 @@ static const char *INDEX_HTML = R"HTML(
             logEl.scrollTop = logEl.scrollHeight;
         }
 
-        async function api(path) {
+        async function apiText(path) {
             const r = await fetch(path, { method: 'GET', cache: 'no-store' });
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.text();
         }
 
+        async function readStatus() {
+            const text = await apiText('/status');
+            const data = JSON.parse(text);
+            connected = true;
+            vescActive = !!data.vescActive;
+            renderState();
+            return data;
+        }
+
         function stopLogPolling() {
-            if (logsTimer !== null) { clearInterval(logsTimer); logsTimer = null; }
+            if (logsTimer !== null) {
+                clearInterval(logsTimer);
+                logsTimer = null;
+            }
         }
 
         async function pollEspLogs() {
             if (!connected || !espLogsToggle.checked) return;
             try {
-                const data = await api('/logs?since=' + encodeURIComponent(String(logsSince)));
+                const data = await apiText('/logs?since=' + encodeURIComponent(String(logsSince)));
                 const lines = data.split('\n');
                 for (const line of lines) {
                     if (!line) continue;
@@ -287,12 +659,13 @@ static const char *INDEX_HTML = R"HTML(
                     if (msg) log('ESP ' + msg);
                 }
             } catch (e) {
-                log('Log stream failed: ' + (e.message || e));
+                log('Logs stoppés : ' + (e.message || e));
                 stopLogPolling();
             }
         }
 
         function updateLogPolling() {
+            renderState();
             stopLogPolling();
             if (connected && espLogsToggle.checked) {
                 pollEspLogs();
@@ -302,58 +675,84 @@ static const char *INDEX_HTML = R"HTML(
 
         async function connect() {
             try {
-                await api('/status');
-                setConnectedUi(true);
+                await readStatus();
                 logsSince = 0;
                 log('Connecté');
                 updateLogPolling();
             } catch (e) {
-                setConnectedUi(false);
+                connected = false;
+                vescActive = false;
+                renderState();
                 log('Échec connexion : ' + (e.message || e));
             }
         }
 
         function disconnect() {
-            setConnectedUi(false);
+            connected = false;
             stopLogPolling();
+            renderState();
             log('Déconnecté');
         }
 
-        async function send(c) {
-            if (!connected) { log('Non connecté'); return; }
+        async function send(c, label) {
+            if (!connected) {
+                log('Non connecté');
+                return false;
+            }
             try {
-                await api('/cmd?c=' + encodeURIComponent(c));
-                log('→ ' + c);
+                await apiText('/cmd?c=' + encodeURIComponent(c));
+                if (c === 'A') vescActive = true;
+                if (c === 'S') vescActive = false;
+                renderState();
+                log(label || ('→ ' + c));
+                return true;
             } catch (e) {
                 log('Erreur : ' + (e.message || e));
+                return false;
             }
         }
 
         function bindHold(id, down, up) {
             const el = document.getElementById(id);
             let pressed = false;
-            const p = (e) => { e.preventDefault(); if (pressed) return; pressed = true; el.classList.add('pressed'); send(down); };
-            const r = (e) => { e.preventDefault(); if (!pressed) return; pressed = false; el.classList.remove('pressed'); send(up); };
-            el.addEventListener('pointerdown', p);
-            el.addEventListener('pointerup', r);
-            el.addEventListener('pointercancel', r);
-            el.addEventListener('touchstart', p, { passive: false });
-            el.addEventListener('touchend', r, { passive: false });
-            el.addEventListener('touchcancel', r, { passive: false });
-            el.addEventListener('mousedown', p);
-            el.addEventListener('mouseup', r);
-            el.addEventListener('mouseleave', r);
+            const press = (e) => {
+                e.preventDefault();
+                if (pressed) return;
+                pressed = true;
+                el.classList.add('pressed');
+                send(down);
+            };
+            const release = (e) => {
+                e.preventDefault();
+                if (!pressed) return;
+                pressed = false;
+                el.classList.remove('pressed');
+                send(up);
+            };
+            el.addEventListener('pointerdown', press);
+            el.addEventListener('pointerup', release);
+            el.addEventListener('pointercancel', release);
+            el.addEventListener('pointerleave', release);
+            el.addEventListener('touchstart', press, { passive: false });
+            el.addEventListener('touchend', release, { passive: false });
+            el.addEventListener('touchcancel', release, { passive: false });
+            el.addEventListener('mousedown', press);
+            el.addEventListener('mouseup', release);
+            el.addEventListener('mouseleave', release);
         }
 
         document.getElementById('connect').addEventListener('click', connect);
         document.getElementById('disconnect').addEventListener('click', disconnect);
+        document.getElementById('clearLog').addEventListener('click', () => { logEl.innerHTML = ''; log('Pret'); });
+        document.getElementById('refreshStatus').addEventListener('click', () => readStatus().then(() => log('Statut actualisé')).catch((e) => log('Statut indisponible : ' + (e.message || e))));
+        armBtn.addEventListener('click', () => send('A', 'VESC activé'));
         espLogsToggle.addEventListener('change', updateLogPolling);
-        document.getElementById('s').addEventListener('click', () => send('S'));
+        document.getElementById('s').addEventListener('click', () => send('S', 'STOP envoyé'));
         bindHold('f', 'F', 'f');
         bindHold('l', 'L', 'l');
         bindHold('r', 'R', 'r');
         bindHold('b', 'B', 'b');
-        log('Prêt');
+        renderState();
     </script>
 </body>
 </html>
