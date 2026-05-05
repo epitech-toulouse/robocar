@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include "freertos/semphr.h"
 
 class LidarSensor : public LidarSensorApi {
@@ -97,6 +98,7 @@ private:
     SemaphoreHandle_t dataMutex{nullptr};
     lidar_array_t lastData;
     bool taskRunning{false};
+    uint32_t lastPublishedScanCount{0};
 
     static void lidarTaskEntry(void *pv) {
         LidarSensor *self = static_cast<LidarSensor *>(pv);
@@ -105,10 +107,13 @@ private:
             return;
         }
 
-        const TickType_t delayTicks = pdMS_TO_TICKS(1000 / LIDAR_HZ);
+        const TickType_t delayTicks = pdMS_TO_TICKS(5);
 
         while (self->taskRunning) {
-            if (self->lidarReader.update()) {
+            self->lidarReader.update();
+
+            const uint32_t completedScanCount = self->lidarReader.getCompletedScanCount();
+            if (completedScanCount != self->lastPublishedScanCount) {
                 const std::vector<LidarPoint> points = self->lidarReader.getCurrentWorld();
                 if (!points.empty()) {
                     lidar_array_t newData;
@@ -139,11 +144,13 @@ private:
                         if (xSemaphoreTake(self->dataMutex, LIDAR_MUTEX_TIMEOUT_TICK) == pdTRUE) {
                             self->lastData = newData;
                             self->lastSuccessfulUpdateTick = xTaskGetTickCount();
+                            self->lastPublishedScanCount = completedScanCount;
                             xSemaphoreGive(self->dataMutex);
                         }
                     } else {
                         self->lastData = newData;
                         self->lastSuccessfulUpdateTick = xTaskGetTickCount();
+                        self->lastPublishedScanCount = completedScanCount;
                     }
                 }
             }

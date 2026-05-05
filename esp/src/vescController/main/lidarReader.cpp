@@ -34,6 +34,7 @@ LidarReader::LidarReader(float angleOffsetDeg)
       currentWorld(),
       hasLastPacketStartAngle(false),
       lastPacketStartAngle(0.0f),
+      completedScanCount(0),
       readBuffer{} {
 }
 
@@ -50,6 +51,7 @@ void LidarReader::stop() {
     buffer.clear();
     scanInProgress.clear();
     hasLastPacketStartAngle = false;
+    completedScanCount = 0;
 }
 
 int LidarReader::start() {
@@ -61,6 +63,7 @@ int LidarReader::start() {
     scanInProgress.clear();
     currentWorld.clear();
     hasLastPacketStartAngle = false;
+    completedScanCount = 0;
     running = true;
     return ESP_OK;
 }
@@ -74,13 +77,19 @@ bool LidarReader::update() {
         return false;
     }
 
-    const int bytesRead = uart_read_bytes(LIDAR_UART_PORT, readBuffer.data(), readBuffer.size(), 0);
-    if (bytesRead <= 0) {
-        return false;
+    bool consumedBytes = false;
+
+    while (true) {
+        const int bytesRead = uart_read_bytes(LIDAR_UART_PORT, readBuffer.data(), readBuffer.size(), 0);
+        if (bytesRead <= 0) {
+            break;
+        }
+
+        consumedBytes = true;
+        processBytes(readBuffer.data(), static_cast<std::size_t>(bytesRead));
     }
 
-    processBytes(readBuffer.data(), static_cast<std::size_t>(bytesRead));
-    return true;
+    return consumedBytes;
 }
 
 void LidarReader::processBytes(const uint8_t* data, std::size_t len) {
@@ -164,6 +173,7 @@ void LidarReader::consumePacket(const uint8_t* packet) {
             return a.angleDeg < b.angleDeg;
         });
         currentWorld = scanInProgress;
+        ++completedScanCount;
         scanInProgress.clear();
     }
 

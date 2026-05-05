@@ -44,8 +44,8 @@ public:
     }
 
 private:
-    static constexpr int READ_BUFFER_SIZE = 256;
-    static constexpr int DRIVER_BUFFER_SIZE = 1024;
+    static constexpr int READ_BUFFER_SIZE = 1024;
+    static constexpr int DRIVER_BUFFER_SIZE = 8192;
     static constexpr float MIN_RANGE_METERS = 0.05f;
     static constexpr float MAX_RANGE_METERS = 12.0f;
 
@@ -58,6 +58,7 @@ private:
 
     bool hasLastPacketStartAngle;
     float lastPacketStartAngle;
+    uint32_t completedScanCount;
 
     std::array<uint8_t, READ_BUFFER_SIZE> readBuffer;
 
@@ -66,4 +67,9 @@ private:
     void consumePacket(const uint8_t* packet);
     static float normalizeAngle(float angleDeg);
     static uint8_t computeCrc8(const uint8_t* data, std::size_t len);
+
+public:
+    uint32_t getCompletedScanCount() const {
+        return completedScanCount;
+    }
 };
