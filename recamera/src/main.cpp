@@ -575,6 +575,50 @@ void dump_lane_mask_once_if_requested(const std::vector<uint8_t>& lane_mask, int
 
 }
 
+void dump_lane_overlay_once_if_requested(const ma_img_t& frame,
+                                         const std::vector<uint8_t>& lane_mask,
+                                         int width,
+                                         int height) {
+    static bool attempted = false;
+    if (attempted) {
+        return;
+    }
+
+    const char* dump_path = std::getenv("DUMP_LANE_OVERLAY_PATH");
+    if (dump_path == nullptr || dump_path[0] == '\0') {
+        return;
+    }
+
+    const int dump_after_frames =
+        env_nonneg_int("DUMP_LANE_OVERLAY_AFTER_FRAMES", env_nonneg_int("DUMP_FRAME_AFTER_FRAMES", 0));
+    if (g_current_frame_count < dump_after_frames) {
+        return;
+    }
+
+    CpuReadableFrame prepared;
+    if (!make_cpu_readable_frame(frame, width, height, &prepared)) {
+        MA_LOGW(TAG, "lane_overlay dump prepare failed");
+        return;
+    }
+
+    attempted = true;
+    ::cv::Mat overlay(height, width, CV_8UC3, prepared.frame.data);
+    overlay = overlay.clone();
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (lane_mask[y * width + x] == 0) {
+                continue;
+            }
+            ::cv::Vec3b& px = overlay.at<::cv::Vec3b>(y, x);
+            px[0] = static_cast<uint8_t>(std::min(255, static_cast<int>(px[0]) / 2));
+            px[1] = static_cast<uint8_t>(std::min(255, static_cast<int>(px[1]) / 2 + 127));
+            px[2] = static_cast<uint8_t>(std::min(255, static_cast<int>(px[2]) / 2));
+        }
+    }
+
+    dump_mat_to_path(overlay, dump_path, "lane_overlay");
+}
+
 void dump_encoded_frame_once_if_requested(const ma_img_t& frame) {
     static bool attempted = false;
     if (attempted) {
@@ -959,6 +1003,7 @@ bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) 
 
     close_5x5(lane_mask, mask_width, mask_height);
     dump_lane_mask_once_if_requested(lane_mask, mask_width, mask_height);
+    dump_lane_overlay_once_if_requested(frame, lane_mask, mask_width, mask_height);
     const LaneMaskStats stats = analyze_lane_mask(lane_mask, mask_width, mask_height);
     *decision = decide_lane(lane_mask, mask_width, mask_height);
     printf("[LANE_TICK] mask=%dx%d lane_pixels=%d/%d bottom=%d valid_rows=%d first_valid_y=%d decision=%s steer=%+.1f\n",
