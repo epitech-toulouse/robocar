@@ -9,7 +9,7 @@
 
 // Adapter that exposes the USB GPS host through the shared GPS sensor API.
 // Position is taken from the latest fix; heading is derived from recent movement.
-class GpsSensor : public GpsSensorApi
+class GpsSensor : public IGpsSensor
 {
 public:
     GpsSensor() = default;

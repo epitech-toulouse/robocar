@@ -19,10 +19,10 @@ public:
     AdvancedFusionEngine() = default;
     ~AdvancedFusionEngine() = default;
 
-    void addDrivingAlgorithm(std::unique_ptr<DrivingAlgorithmApi> algorithm);
+    void addDrivingAlgorithm(std::unique_ptr<IDrivingAlgorithm> algorithm);
     DrivingAlgorithmOutput computeOutput(void);
 private:
-    std::vector<std::unique_ptr<DrivingAlgorithmApi>> driving_algorithms;
+    std::vector<std::unique_ptr<IDrivingAlgorithm>> driving_algorithms;
 };
 
 #endif /* ADVANCED_FUSION_ENGINE_HPP */

@@ -11,7 +11,7 @@
 #include <esp_log.h>
 
 void AdvancedFusionEngine::addDrivingAlgorithm
-(std::unique_ptr<DrivingAlgorithmApi> algorithm)
+(std::unique_ptr<IDrivingAlgorithm> algorithm)
 {
     this->driving_algorithms.push_back(std::move(algorithm));
 }
@@ -21,7 +21,7 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
     std::vector<DrivingAlgorithmOutput> outputs;
 
     outputs.reserve(this->driving_algorithms.size());
-    for (std::unique_ptr<DrivingAlgorithmApi> &driving_algo : this->driving_algorithms) {
+    for (std::unique_ptr<IDrivingAlgorithm> &driving_algo : this->driving_algorithms) {
         if (!driving_algo->available())
             continue;
         float priority = driving_algo->getPriority();

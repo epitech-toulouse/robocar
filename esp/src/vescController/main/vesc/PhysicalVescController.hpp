@@ -9,7 +9,7 @@
 #define VESC_MAX_MOTOR_SPEED 0.5f
 
 // this is the implementation of vescControllerAPI for physical vesc
-class PhysicalVescController : public VescControllerApi {
+class PhysicalVescController : public IVescController {
     public:
         PhysicalVescController();
         ~PhysicalVescController();

@@ -1,6 +1,6 @@
 #include "lidarDriving.hpp"
 
-LidarDriving::LidarDriving(LidarSensorApi &lidar) : lidar(lidar) {
+LidarDriving::LidarDriving(ILidarSensor &lidar) : lidar(lidar) {
     
 }
 

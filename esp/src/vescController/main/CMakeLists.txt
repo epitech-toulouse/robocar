@@ -13,7 +13,6 @@ idf_component_register(
   "algo/LidarObstacleAvoidance/lidar_obstacle_avoidance_algorithm.cpp"
   "gpsdrive.cpp"
   "vescController.cpp"
-  "bluetooth_receiver.cpp"
   "vesc/PhysicalVescController.cpp"
   "vescLidarUart.c"
   "rmt-uart/rmt_uart.c"

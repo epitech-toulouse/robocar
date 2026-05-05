@@ -9,7 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-class WifiControlServer : public UserControllerApi {
+class WifiControlServer : public IUserController {
 public:
     void start(void);
     void stop(void);
@@ -68,5 +68,5 @@ private:
     TaskHandle_t tcpTaskHandle_ = nullptr;
 };
 
-UserControllerApi &wifiControlServer();
+IUserController &wifiControlServer();
 WifiControlServer &wifiControlService();

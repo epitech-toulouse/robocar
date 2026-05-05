@@ -322,7 +322,7 @@ void vesc_control_task(void *pvParameters) {
     AutonomousDriver driver;
     GpsAutonomousDriver gpsDriver;
     LidarRuntimeState lidarState;
-    UserControllerApi &manualControl = wifiControlServer();
+    IUserController &manualControl = wifiControlServer();
 
     lidarState.enabled = (lidar.start() == ESP_OK);
     const bool gpsEnabled = (gps.start() == ESP_OK);

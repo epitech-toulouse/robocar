@@ -25,10 +25,10 @@ public:
     void iterate(void);
 private:
     AdvancedFusionEngine fusionEngine;
-    std::unique_ptr<GpsSensorApi> gps_sensor_api = nullptr;
-    std::unique_ptr<LidarSensorApi> lidar_sensor_api = nullptr;
-    std::unique_ptr<VescControllerApi> vesc_controller_api = nullptr;
-    std::unique_ptr<UserControllerApi> user_controller_api = nullptr;
+    std::unique_ptr<IGpsSensor> gps_sensor_api = nullptr;
+    std::unique_ptr<ILidarSensor> lidar_sensor_api = nullptr;
+    std::unique_ptr<IVescController> vesc_controller_api = nullptr;
+    std::unique_ptr<IUserController> user_controller_api = nullptr;
     std::unique_ptr<CoupeCircuitManager> coupe_circuit_manager = nullptr;
 };
 

@@ -9,10 +9,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-class GpsGoalAlgo : public DrivingAlgorithmApi
+class GpsGoalAlgo : public IDrivingAlgorithm
 {
 public:
-    explicit GpsGoalAlgo(GpsSensorApi &gps)
+    explicit GpsGoalAlgo(IGpsSensor &gps)
         : gps(gps)
     {
     }
@@ -32,7 +32,7 @@ private:
     static double haversineDistanceMeters(double lat1, double lon1, double lat2, double lon2);
     static double initialBearingDegrees(double lat1, double lon1, double lat2, double lon2);
 
-    GpsSensorApi &gps;
+    IGpsSensor &gps;
 
     const double goalLatitude = 43.612139;
     const double goalLongitude = 1.430194;

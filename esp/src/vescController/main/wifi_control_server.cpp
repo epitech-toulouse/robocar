@@ -495,7 +495,7 @@ WifiControlServer &serviceInstance()
 
 } // namespace
 
-UserControllerApi &wifiControlServer()
+IUserController &wifiControlServer()
 {
     return serviceInstance();
 }

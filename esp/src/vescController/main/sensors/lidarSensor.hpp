@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cmath>
 
-class LidarSensor : public LidarSensorApi {
+class LidarSensor : public ILidarSensor {
 public:
     LidarSensor()
         : lidarReader(), lastSuccessfulUpdateTick(0), uartInitialized(false) {

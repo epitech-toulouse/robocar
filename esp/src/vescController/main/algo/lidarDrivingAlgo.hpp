@@ -7,9 +7,9 @@
 
 #include <vector>
 
-class LidarDrivingAlgo : public DrivingAlgorithmApi {
+class LidarDrivingAlgo : public IDrivingAlgorithm {
 public:
-    explicit LidarDrivingAlgo(LidarSensorApi &lidar)
+    explicit LidarDrivingAlgo(ILidarSensor &lidar)
         : lidar(lidar), driver() {}
 
     bool available(void) override {
@@ -52,7 +52,7 @@ public:
     }
 
 private:
-    LidarSensorApi &lidar;
+    ILidarSensor &lidar;
     AutonomousDriver driver;
 };
 

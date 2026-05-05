@@ -4,15 +4,15 @@
 #ifndef LIDAR_DRIVING_HPP
 #define LIDAR_DRIVING_HPP
 
-class LidarDriving : public DrivingAlgorithmApi {
+class LidarDriving : public IDrivingAlgorithm {
 public:
-    LidarDriving(LidarSensorApi &lidar);
+    LidarDriving(ILidarSensor &lidar);
     ~LidarDriving() override;
     
     bool available(void) override;
     bool compute(DrivingAlgorithmOutput &output) override;
 private:
-    LidarSensorApi &lidar;
+    ILidarSensor &lidar;
 };
 
 #endif /* LIDAR_DRIVING_HPP */
