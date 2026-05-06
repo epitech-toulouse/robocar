@@ -11,14 +11,15 @@
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "manager/DrivingModeSelector.hpp"
 
 
 
 
 class WifiControlServerSensor : public UserControllerApi {
 public:
-    WifiControlServerSensor(VescControllerApi &vescController)
-        : _vescControllerApi(vescController)
+    WifiControlServerSensor(VescControllerApi &vescController, DrivingModeSelector &drivingModeSelector)
+        : _vescControllerApi(vescController), _drivingModeSelector(drivingModeSelector)
     {
         this->start();
     };
@@ -64,9 +65,14 @@ private:
     static esp_err_t httpCmdOptionsHandler(httpd_req_t *req);
     static esp_err_t httpLogsHandler(httpd_req_t *req);
     static esp_err_t httpLogsOptionsHandler(httpd_req_t *req);
+    static esp_err_t httpModeHandler(httpd_req_t *req);
+    static esp_err_t httpModeOptionsHandler(httpd_req_t *req);
     static esp_err_t httpStatusHandler(httpd_req_t *req);
     static esp_err_t httpStatusOptionsHandler(httpd_req_t *req);
     static esp_err_t httpRootHandler(httpd_req_t *req);
+    bool isManualDriveEnabled() const;
+    void clearManualDriveState();
+    void setAutonomousMode(AutonomousDrivingMode mode);
 
     std::atomic<float> duty_{0.0f};
     std::atomic<float> steer_{STEER_CENTER};
@@ -77,10 +83,10 @@ private:
     std::atomic<bool> right_{false};
     std::atomic<bool> emergency_{false};
     std::atomic<bool> active_{false};
+    DrivingModeSelector &_drivingModeSelector;
     httpd_handle_t httpServer_ = nullptr;
     TaskHandle_t tcpTaskHandle_ = nullptr;
 
   
 
 };
-

@@ -15,7 +15,7 @@ idf_component_register(
   "manager/CoupeCircuitManager.cpp"
 
   "lidarReader.cpp"
-  "drive.cpp"
+  "algo/corridorLidar/drive.cpp"
   "vesc/PhysicalVescController.cpp"
   "vescLidarUart.c"
   "rmt-uart/rmt_uart.c"

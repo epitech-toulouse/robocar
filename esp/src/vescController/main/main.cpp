@@ -20,7 +20,7 @@
 #include "wifi_control_server.hpp"
 #include "vescLidarUart.h"
 
-#include "drive.hpp"
+#include "algo/corridorLidar/drive.hpp"
 #include "gpsdrive.hpp"
 
 #include "esp_log.h"

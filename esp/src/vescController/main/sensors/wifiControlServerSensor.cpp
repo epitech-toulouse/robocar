@@ -128,10 +128,23 @@ static std::string get_logs_since(uint32_t since)
     return out;
 }
 
-
-
-
-
+static bool parse_autonomous_mode_value(const char *value, AutonomousDrivingMode &mode)
+{
+    if (value == nullptr) {
+        return false;
+    }
+    if (strcasecmp(value, "fusion") == 0 || strcmp(value, "1") == 0) {
+        mode = AutonomousDrivingMode::Fusion;
+        return true;
+    }
+    if (strcasecmp(value, "corridor_lidar") == 0 ||
+        strcasecmp(value, "corridor") == 0 ||
+        strcmp(value, "0") == 0) {
+        mode = AutonomousDrivingMode::CorridorLidar;
+        return true;
+    }
+    return false;
+}
 
 void WifiControlServerSensor::setHttpCommonHeaders(httpd_req_t *req)
 {
@@ -145,6 +158,28 @@ void WifiControlServerSensor::setHttpCommonHeaders(httpd_req_t *req)
 WifiControlServerSensor *WifiControlServerSensor::fromRequest(httpd_req_t *req)
 {
     return static_cast<WifiControlServerSensor *>(req->user_ctx);
+}
+
+bool WifiControlServerSensor::isManualDriveEnabled() const
+{
+    return this->_drivingModeSelector.isManualDriveEnabled();
+}
+
+void WifiControlServerSensor::clearManualDriveState()
+{
+    forward_.store(false);
+    backward_.store(false);
+    left_.store(false);
+    right_.store(false);
+    duty_.store(0.0f);
+    steer_.store(STEER_CENTER);
+    lastTick_.store(0);
+}
+
+void WifiControlServerSensor::setAutonomousMode(AutonomousDrivingMode mode)
+{
+    this->_drivingModeSelector.setMode(mode);
+    this->clearManualDriveState();
 }
 
 void WifiControlServerSensor::recomputeOutputFromState()
@@ -170,12 +205,7 @@ void WifiControlServerSensor::recomputeOutputFromState()
 
 void WifiControlServerSensor::emergencyStop()
 {
-    forward_.store(false);
-    backward_.store(false);
-    left_.store(false);
-    right_.store(false);
-    duty_.store(0.0f);
-    steer_.store(STEER_CENTER);
+    clearManualDriveState();
     emergency_.store(true);
     lastTick_.store(static_cast<int>(xTaskGetTickCount()));
     _vescControllerApi.stop();
@@ -185,14 +215,46 @@ void WifiControlServerSensor::emergencyStop()
 bool WifiControlServerSensor::applyProtocolChar(char c)
 {
     switch (c) {
-        case 'F': forward_.store(true);  recomputeOutputFromState(); return true;
-        case 'f': forward_.store(false); recomputeOutputFromState(); return true;
-        case 'B': backward_.store(true);  recomputeOutputFromState(); return true;
-        case 'b': backward_.store(false); recomputeOutputFromState(); return true;
-        case 'L': left_.store(true);  recomputeOutputFromState(); return true;
-        case 'l': left_.store(false); recomputeOutputFromState(); return true;
-        case 'R': right_.store(true);  recomputeOutputFromState(); return true;
-        case 'r': right_.store(false); recomputeOutputFromState(); return true;
+        case 'F':
+            if (!isManualDriveEnabled()) return true;
+            forward_.store(true);
+            recomputeOutputFromState();
+            return true;
+        case 'f':
+            if (!isManualDriveEnabled()) return true;
+            forward_.store(false);
+            recomputeOutputFromState();
+            return true;
+        case 'B':
+            if (!isManualDriveEnabled()) return true;
+            backward_.store(true);
+            recomputeOutputFromState();
+            return true;
+        case 'b':
+            if (!isManualDriveEnabled()) return true;
+            backward_.store(false);
+            recomputeOutputFromState();
+            return true;
+        case 'L':
+            if (!isManualDriveEnabled()) return true;
+            left_.store(true);
+            recomputeOutputFromState();
+            return true;
+        case 'l':
+            if (!isManualDriveEnabled()) return true;
+            left_.store(false);
+            recomputeOutputFromState();
+            return true;
+        case 'R':
+            if (!isManualDriveEnabled()) return true;
+            right_.store(true);
+            recomputeOutputFromState();
+            return true;
+        case 'r':
+            if (!isManualDriveEnabled()) return true;
+            right_.store(false);
+            recomputeOutputFromState();
+            return true;
         case 'S': emergencyStop(); return true;
         case 'A':
             emergency_.store(false);
@@ -339,17 +401,21 @@ void WifiControlServerSensor::startHttpServer()
     httpd_uri_t root_uri = {.uri = "/", .method = HTTP_GET, .handler = httpRootHandler, .user_ctx = this};
     httpd_uri_t cmd_uri = {.uri = "/cmd", .method = HTTP_GET, .handler = httpCmdHandler, .user_ctx = this};
     httpd_uri_t logs_uri = {.uri = "/logs", .method = HTTP_GET, .handler = httpLogsHandler, .user_ctx = this};
+    httpd_uri_t mode_uri = {.uri = "/mode", .method = HTTP_GET, .handler = httpModeHandler, .user_ctx = this};
     httpd_uri_t status_uri = {.uri = "/status", .method = HTTP_GET, .handler = httpStatusHandler, .user_ctx = this};
     httpd_uri_t cmd_options_uri = {.uri = "/cmd", .method = HTTP_OPTIONS, .handler = httpCmdOptionsHandler, .user_ctx = this};
     httpd_uri_t logs_options_uri = {.uri = "/logs", .method = HTTP_OPTIONS, .handler = httpLogsOptionsHandler, .user_ctx = this};
+    httpd_uri_t mode_options_uri = {.uri = "/mode", .method = HTTP_OPTIONS, .handler = httpModeOptionsHandler, .user_ctx = this};
     httpd_uri_t status_options_uri = {.uri = "/status", .method = HTTP_OPTIONS, .handler = httpStatusOptionsHandler, .user_ctx = this};
 
     httpd_register_uri_handler(server, &root_uri);
     httpd_register_uri_handler(server, &cmd_uri);
     httpd_register_uri_handler(server, &logs_uri);
+    httpd_register_uri_handler(server, &mode_uri);
     httpd_register_uri_handler(server, &status_uri);
     httpd_register_uri_handler(server, &cmd_options_uri);
     httpd_register_uri_handler(server, &logs_options_uri);
+    httpd_register_uri_handler(server, &mode_options_uri);
     httpd_register_uri_handler(server, &status_options_uri);
     ESP_LOGI(TAG, "HTTP control API listening on port %d", CONTROL_HTTP_PORT);
 }
@@ -445,7 +511,7 @@ bool WifiControlServerSensor::isConnected(void)
 
 driving_mode_t WifiControlServerSensor::getDrivingMode(void)
 {
-    if (!isConnected()) {
+    if (!isConnected() || !isManualDriveEnabled()) {
         return DRIVING_MODE_DISABLED;
     }
     return DRIVING_MODE_USER;
@@ -453,7 +519,7 @@ driving_mode_t WifiControlServerSensor::getDrivingMode(void)
 
 float WifiControlServerSensor::getSpeed(void)
 {
-    if (!isConnected()) {
+    if (!isConnected() || !isManualDriveEnabled()) {
         return 0.0f;
     }
     return duty_.load();
@@ -461,7 +527,7 @@ float WifiControlServerSensor::getSpeed(void)
 
 float WifiControlServerSensor::getSteering(void)
 {
-    if (!isConnected()) {
+    if (!isConnected() || !isManualDriveEnabled()) {
         return STEER_CENTER;
     }
     return steer_.load();
@@ -529,19 +595,66 @@ esp_err_t WifiControlServerSensor::httpLogsOptionsHandler(httpd_req_t *req)
     return ESP_OK;
 }
 
+esp_err_t WifiControlServerSensor::httpModeHandler(httpd_req_t *req)
+{
+    auto *self = fromRequest(req);
+    char query[64] = {0};
+    char value[32] = {0};
+    AutonomousDrivingMode mode = AutonomousDrivingMode::Fusion;
+
+    if (self != nullptr &&
+        httpd_req_get_url_query_len(req) > 0 &&
+        httpd_req_get_url_query_len(req) < static_cast<int>(sizeof(query))) {
+        httpd_req_get_url_query_str(req, query, sizeof(query));
+        if (httpd_query_key_value(query, "value", value, sizeof(value)) == ESP_OK &&
+            parse_autonomous_mode_value(value, mode)) {
+            self->setAutonomousMode(mode);
+
+            char payload[128] = {0};
+            std::snprintf(payload, sizeof(payload),
+                          "{\"ok\":true,\"autonomousMode\":\"%s\",\"manualDriveEnabled\":%s}",
+                          self->_drivingModeSelector.modeString(),
+                          self->isManualDriveEnabled() ? "true" : "false");
+            httpd_resp_set_type(req, "application/json");
+            setHttpCommonHeaders(req);
+            httpd_resp_sendstr(req, payload);
+            return ESP_OK;
+        }
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    setHttpCommonHeaders(req);
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_or_invalid_mode\"}");
+    return ESP_OK;
+}
+
+esp_err_t WifiControlServerSensor::httpModeOptionsHandler(httpd_req_t *req)
+{
+    setHttpCommonHeaders(req);
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_send(req, nullptr, 0);
+    return ESP_OK;
+}
+
 esp_err_t WifiControlServerSensor::httpStatusHandler(httpd_req_t *req)
 {
     auto *self = fromRequest(req);
-    char payload[128] = {0};
+    char payload[192] = {0};
     const bool serviceActive = self != nullptr && self->active_.load();
     const bool vescActive = self != nullptr && self->_vescControllerApi.isActive();
     const bool emergency = self != nullptr && self->emergency_.load();
+    const char *autonomousMode = self != nullptr ? self->_drivingModeSelector.modeString() : "FUSION";
+    const bool manualDriveEnabled = self != nullptr && self->isManualDriveEnabled();
 
     std::snprintf(payload, sizeof(payload),
-                  "{\"ok\":true,\"service\":\"robocar_ctrl\",\"serviceActive\":%s,\"vescActive\":%s,\"emergency\":%s}",
+                  "{\"ok\":true,\"service\":\"robocar_ctrl\",\"serviceActive\":%s,\"vescActive\":%s,"
+                  "\"emergency\":%s,\"autonomousMode\":\"%s\",\"manualDriveEnabled\":%s}",
                   serviceActive ? "true" : "false",
                   vescActive ? "true" : "false",
-                  emergency ? "true" : "false");
+                  emergency ? "true" : "false",
+                  autonomousMode,
+                  manualDriveEnabled ? "true" : "false");
 
     httpd_resp_set_type(req, "application/json");
     setHttpCommonHeaders(req);
