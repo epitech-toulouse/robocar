@@ -35,8 +35,8 @@ private:
 
     GpsSensorApi &gps;
 
-    const double goalLatitude = 43.612139;
-    const double goalLongitude = 1.430194;
+    const double goalLatitude =  43.610382;
+    const double goalLongitude = 1.431465;
 
     const float goalReachedDistanceM = 2.0f;
     const float fullSpeedDistanceM = 12.0f;

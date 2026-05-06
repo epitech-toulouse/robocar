@@ -16,7 +16,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 {
     output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
     const TickType_t now = xTaskGetTickCount();
-    const bool shouldLog = true; //(now - this->lastLogTick) > this->logPeriodTicks;
+    const bool shouldLog = (now - this->lastLogTick) >= this->logPeriodTicks;
 
     GpsPosition position{};
     GpsHeading heading{};
@@ -24,7 +24,9 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
     if (!this->gps.getPosition(position)) {
         if (shouldLog) {
-            ESP_LOGD(this->tag, "position unavailable");
+            ESP_LOGI(this->tag,
+                     "return=false reason=position_unavailable weight=%.2f",
+                     static_cast<double>(output.computed_weight));
             this->lastLogTick = now;
         }
         return false;
@@ -33,7 +35,11 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     const bool statusValid = this->gps.getStatus(status);
     if (!statusValid || !status.has_fix) {
         if (shouldLog) {
-            ESP_LOGD(this->tag, "status unavailable or no fix");
+            ESP_LOGI(this->tag,
+                     "return=false reason=status_invalid_or_no_fix rtk_fixed=%d sats=%d weight=%.2f",
+                     status.is_rtk_fixed,
+                     status.satellites,
+                     static_cast<double>(output.computed_weight));
             this->lastLogTick = now;
         }
         return false;
@@ -46,6 +52,11 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         position.longitude,
         this->goalLatitude,
         this->goalLongitude);
+    const double desiredBearingDeg = initialBearingDegrees(
+        position.latitude,
+        position.longitude,
+        this->goalLatitude,
+        this->goalLongitude);
 
     if (distanceMeters <= this->goalReachedDistanceM) {
         output.target_speed = 0.0f;
@@ -53,12 +64,14 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         output.computed_weight = 1.0f;
         if (shouldLog) {
             ESP_LOGI(this->tag,
-                     "goal reached dist=%.2fm speed=%.2f steer=%.2f rtk_fixed=%d sats=%d",
+                     "return=true reason=goal_reached dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
                      distanceMeters,
+                     desiredBearingDeg,
                      static_cast<double>(output.target_speed),
                      static_cast<double>(output.target_steering),
                      rtkFixed,
-                     status.satellites);
+                     status.satellites,
+                     static_cast<double>(output.computed_weight));
             this->lastLogTick = now;
         }
         return true;
@@ -71,27 +84,22 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         1.0f);
     const float maxSpeed = rtkFixed ? this->maxSpeedRtkFixed : this->maxSpeed;
     output.target_speed = this->baseSpeed + (maxSpeed - this->baseSpeed) * distanceScale;
-    static int iterate = 0;
-    iterate++;
     if (!headingValid) {
         if (shouldLog) {
-            if (iterate % 100 == 0) {
-                ESP_LOGI(this->tag,
-                         "gps-only dist=%.2fm heading=NA speed=0.0 steer=0.0 rtk_fixed=%d sats=%d",
-                         distanceMeters,
-                         rtkFixed,
-                         status.satellites);
-            }
+            ESP_LOGI(this->tag,
+                     "return=false reason=heading_unavailable dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
+                     distanceMeters,
+                     desiredBearingDeg,
+                     static_cast<double>(output.target_speed),
+                     static_cast<double>(output.target_steering),
+                     rtkFixed,
+                     status.satellites,
+                     static_cast<double>(output.computed_weight));
             this->lastLogTick = now;
         }
         return false;   
     }
 
-    const double desiredBearingDeg = initialBearingDegrees(
-        position.latitude,
-        position.longitude,
-        this->goalLatitude,
-        this->goalLongitude);
     const double errorDeg = wrap180(desiredBearingDeg - heading.degrees_to_north);
     const float normalizedError = clampf(static_cast<float>(errorDeg / 90.0), -1.0f, 1.0f);
 
@@ -100,14 +108,16 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     output.computed_weight = rtkFixed ? this->computedWeightRtkFixed : 1.0f;
 
     if (shouldLog) {
-        ESP_LOGD(this->tag,
-                 "gps dist=%.2fm heading_err=%.1fdeg speed=%.2f steer=%.2f rtk_fixed=%d sats=%d",
+        ESP_LOGI(this->tag,
+                 "return=true reason=normal dist=%.2fm goal_deg=%.1f heading_err=%.1fdeg speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
                  distanceMeters,
+                 desiredBearingDeg,
                  errorDeg,
                  static_cast<double>(output.target_speed),
                  static_cast<double>(output.target_steering),
                  rtkFixed,
-                 status.satellites);
+                 status.satellites,
+                 static_cast<double>(output.computed_weight));
         this->lastLogTick = now;
     }
     return true;
