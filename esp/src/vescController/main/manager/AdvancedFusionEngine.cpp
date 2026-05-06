@@ -9,6 +9,7 @@
 #include "api/driving_algorithm_interface.hpp"
 #include <vector>
 #include <esp_log.h>
+#include "../algo/gpsGoalAlgo.hpp"
 
 void AdvancedFusionEngine::addDrivingAlgorithm
 (std::unique_ptr<DrivingAlgorithmApi> algorithm)
@@ -28,11 +29,6 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
         DrivingAlgorithmOutput output;
         if (!driving_algo->compute(output))
             continue;
-        auto gps_algo = dynamic_cast<GpsGoalAlgo*>(driving_algo.get());
-        if (gps_algo) {
-            ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
-                 driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);
-        }
         // ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
         //          driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);
 
