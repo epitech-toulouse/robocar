@@ -8,6 +8,7 @@ idf_component_register(
 
   "algo/gpsGoalAlgo.cpp"
   "algo/userControllerAlgo.cpp"
+  "algo/closeObstacleAvoidanceAlgo.cpp"
 
   "manager/MasterManager.cpp"
   "manager/AdvancedFusionEngine.cpp"

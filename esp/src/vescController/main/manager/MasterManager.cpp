@@ -15,6 +15,7 @@
 #include "sensors/lidarSensor.hpp"
 
 #include "algo/lidarDrivingAlgo.hpp"
+#include "algo/closeObstacleAvoidanceAlgo.hpp"
 #include "algo/gpsGoalAlgo.hpp"
 #include "algo/userControllerAlgo.hpp"
 
@@ -37,6 +38,7 @@ MasterManager::MasterManager()
     this->vesc_controller_api->activate();
 
     this->fusionEngine.addDrivingAlgorithm(std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
+    this->fusionEngine.addDrivingAlgorithm(std::make_unique<CloseObstacleAvoidanceAlgo>(*this->lidar_sensor_api));
     // this->fusionEngine.addDrivingAlgorithm(std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
     this->fusionEngine.addDrivingAlgorithm(std::make_unique<UserControllerAlgo>(*this->user_controller_api));
 }

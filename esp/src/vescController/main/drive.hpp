@@ -25,7 +25,7 @@ constexpr bool AUTO_STEER_REVERSED = true;
 
 // FTG Parameters
 constexpr float FTG_MAX_RANGE_M = 3.0f; 
-constexpr float FTG_CAR_WIDTH_M = 0.50f; 
+constexpr float FTG_CAR_WIDTH_M = 0.60f; 
 constexpr float FTG_DISPARITY_THRESHOLD_M = 0.15f; 
 constexpr float FTG_STEER_GAIN = 2.2f;
 constexpr float FTG_MIN_COMMIT_STEER_DELTA = 0.12f;

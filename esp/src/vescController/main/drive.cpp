@@ -215,11 +215,6 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     const float leftNear = nearest_in_sector(clean_scan, SIDE_WINDOW_MIN_DEG, SIDE_WINDOW_MAX_DEG);
     const float rightNear = nearest_in_sector(clean_scan, 360.0f - SIDE_WINDOW_MAX_DEG, 360.0f - SIDE_WINDOW_MIN_DEG);
 
-    // Stop completely if there is a critical obstacle in front
-    if (frontNear > 0.0f && frontNear <= STOP_DISTANCE_M) {
-        std::cout << "Emergency Stop: front=" << frontNear << "m" << std::endl;
-        return {STEER_CENTER, 0.0f};
-    }
 
     float steer = STEER_CENTER;
     float speed = SPEED_FORWARD;
