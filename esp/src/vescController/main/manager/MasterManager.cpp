@@ -31,13 +31,13 @@ MasterManager::MasterManager()
 
     this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>();
 
-    this->gps_sensor_api = std::make_unique<GpsSensor>();
-    // this->lidar_sensor_api = std::make_unique<LidarSensor>();
+    //this->gps_sensor_api = std::make_unique<GpsSensor>();
+    this->lidar_sensor_api = std::make_unique<LidarSensor>();
 
     this->vesc_controller_api->activate();
 
-    // this->fusionEngine.addDrivingAlgorithm(std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
-    this->fusionEngine.addDrivingAlgorithm(std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
+    this->fusionEngine.addDrivingAlgorithm(std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
+    // this->fusionEngine.addDrivingAlgorithm(std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
     this->fusionEngine.addDrivingAlgorithm(std::make_unique<UserControllerAlgo>(*this->user_controller_api));
 }
 

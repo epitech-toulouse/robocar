@@ -10,7 +10,7 @@ constexpr float FRONT_WINDOW_DEG = 45.0f;
 constexpr float SIDE_WINDOW_MIN_DEG = 45.0f;
 constexpr float SIDE_WINDOW_MAX_DEG = 80.0f;
 
-constexpr float STOP_DISTANCE_M = 0.40f;
+constexpr float STOP_DISTANCE_M = 0.60f;
 constexpr float SLOW_DISTANCE_M = 1.00f;
 constexpr float SAFE_DISTANCE_M = 2.20f;
 

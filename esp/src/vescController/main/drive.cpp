@@ -215,28 +215,10 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     const float leftNear = nearest_in_sector(clean_scan, SIDE_WINDOW_MIN_DEG, SIDE_WINDOW_MAX_DEG);
     const float rightNear = nearest_in_sector(clean_scan, 360.0f - SIDE_WINDOW_MAX_DEG, 360.0f - SIDE_WINDOW_MIN_DEG);
 
-    const TickType_t now = xTaskGetTickCount();
-    if (now < reverseUntil) {
-        return {map_auto_steer(reverseSteer), SPEED_REVERSE};
-    }
-    if (escapeUntil != 0 && now >= reverseUntil && now < escapeUntil) {
-        std::cout << "Escape: front=" << frontNear << "m steer=" << escapeSteer << std::endl;
-        return {map_auto_steer(escapeSteer), ESCAPE_SPEED};
-    }
-    if (escapeUntil != 0 && now >= escapeUntil) {
-        escapeUntil = 0;
-    }
-
-    // If there is a critical obstacle in front, back up and turn toward the more open side.
-    if (now >= recoveryCooldownUntil && frontNear > 0.0f && frontNear < STOP_DISTANCE_M) {
-        const bool leftMoreOpen = (leftNear < 0.0f) || (rightNear > 0.0f && rightNear > leftNear);
-        reverseSteer = leftMoreOpen ? STEER_RIGHT : STEER_LEFT;
-        escapeSteer = opposite_steer(reverseSteer);
-        reverseUntil = now + pdMS_TO_TICKS(REVERSE_DURATION_MS);
-        escapeUntil = reverseUntil + pdMS_TO_TICKS(ESCAPE_DURATION_MS);
-        recoveryCooldownUntil = escapeUntil + pdMS_TO_TICKS(RECOVERY_COOLDOWN_MS);
-        std::cout << "Reverse: front=" << frontNear << "m left=" << leftNear << "m right=" << rightNear << "m" << std::endl;
-        return {map_auto_steer(reverseSteer), SPEED_REVERSE};
+    // Stop completely if there is a critical obstacle in front
+    if (frontNear > 0.0f && frontNear <= STOP_DISTANCE_M) {
+        std::cout << "Emergency Stop: front=" << frontNear << "m" << std::endl;
+        return {STEER_CENTER, 0.0f};
     }
 
     float steer = STEER_CENTER;
@@ -245,11 +227,6 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     // Compute steer and speed using Disparity Extender FTG
     compute_ftg_steer_speed(clean_scan, steer, speed);
     steer = map_auto_steer(steer);
-
-    // Emergency stop override if something is completely blocked right in front
-    if (frontNear > 0.0f && frontNear <= STOP_DISTANCE_M) {
-        speed = 0.0f;
-    }
 
     std::cout << "FTG Steer=" << steer
               << " Speed=" << speed
