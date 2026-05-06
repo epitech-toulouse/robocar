@@ -44,6 +44,7 @@ constexpr float kLaneFallbackScale = 0.85f;
 constexpr float kLaneBoundaryFallbackCenterFactor = 0.30f;
 constexpr float kLaneFallbackMaxSteerPercent = 60.0f;
 constexpr float kDefaultLaneWidthAt512 = 280.0f;
+constexpr float kLaneWeightBoundaryZonePercent = 0.35f;
 constexpr float kLaneMean[3] = {123.675f, 116.28f, 103.53f};
 constexpr float kLaneScale[3] = {0.01712475f, 0.01750700f, 0.01742919f};
 constexpr float kLaneMaskThreshold = 0.35f;
@@ -59,6 +60,7 @@ struct LoadedModel {
 
 struct LaneDecision {
     float steering_percent = 0.0f;
+    int weight = 0;
     const char* status = "SEARCHING";
 };
 
@@ -677,6 +679,14 @@ struct LaneMaskStats {
     int first_valid_y = -1;
 };
 
+struct LaneEvidence {
+    bool barricaded = false;
+    int max_consecutive_valid_rows = 0;
+    int lower_band_valid_rows = 0;
+    int lower_band_lane_rows = 0;
+    int boundary_rows = 0;
+};
+
 LaneMaskStats analyze_lane_mask(const std::vector<uint8_t>& mask, int width, int height) {
     LaneMaskStats stats;
     stats.total_pixels = width * height;
@@ -708,6 +718,81 @@ LaneMaskStats analyze_lane_mask(const std::vector<uint8_t>& mask, int width, int
     }
 
     return stats;
+}
+
+LaneEvidence analyze_lane_evidence(const std::vector<uint8_t>& mask, int width, int height) {
+    LaneEvidence evidence;
+    const int wall_y = std::min(height - 1, static_cast<int>(height * 0.70f));
+    int wall_pixels = 0;
+    for (int x = 0; x < width; ++x) {
+        if (mask_get(mask, width, x, wall_y)) {
+            ++wall_pixels;
+        }
+    }
+    evidence.barricaded = wall_pixels > static_cast<int>(width * kBarricadeThreshold);
+
+    const int y0 = static_cast<int>(height * 0.4f);
+    const int min_boundary_run_width = std::max(2, static_cast<int>(width * 10.0f / 512.0f));
+    const float left_boundary_limit = width * kLaneWeightBoundaryZonePercent;
+    const float right_boundary_limit = width * (1.0f - kLaneWeightBoundaryZonePercent);
+    int consecutive_valid_rows = 0;
+
+    for (int y = y0; y < height; ++y) {
+        int lane_pixels_in_row = 0;
+        int longest_run = 0;
+        int longest_run_start = -1;
+        int current_run_start = -1;
+
+        for (int x = 0; x < width; ++x) {
+            if (mask_get(mask, width, x, y)) {
+                ++lane_pixels_in_row;
+                if (current_run_start < 0) {
+                    current_run_start = x;
+                }
+                continue;
+            }
+            if (current_run_start >= 0) {
+                const int run_width = x - current_run_start;
+                if (run_width > longest_run) {
+                    longest_run = run_width;
+                    longest_run_start = current_run_start;
+                }
+                current_run_start = -1;
+            }
+        }
+        if (current_run_start >= 0) {
+            const int run_width = width - current_run_start;
+            if (run_width > longest_run) {
+                longest_run = run_width;
+                longest_run_start = current_run_start;
+            }
+        }
+
+        if (lane_pixels_in_row > 0) {
+            ++evidence.lower_band_lane_rows;
+        }
+
+        int lx = -1;
+        int rx = -1;
+        if (is_valid_lane_row(mask, width, y, &lx, &rx)) {
+            ++evidence.lower_band_valid_rows;
+            ++consecutive_valid_rows;
+            evidence.max_consecutive_valid_rows = std::max(evidence.max_consecutive_valid_rows, consecutive_valid_rows);
+            continue;
+        }
+
+        consecutive_valid_rows = 0;
+        if (longest_run < min_boundary_run_width || longest_run_start < 0) {
+            continue;
+        }
+
+        const float run_center = longest_run_start + longest_run / 2.0f;
+        if (run_center <= left_boundary_limit || run_center >= right_boundary_limit) {
+            ++evidence.boundary_rows;
+        }
+    }
+
+    return evidence;
 }
 
 void dilate_5x5(const std::vector<uint8_t>& src, int width, int height, std::vector<uint8_t>& dst) {
@@ -996,7 +1081,10 @@ bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) 
     int mask_height = 0;
     if (!build_lane_mask_from_output(lane, &lane_mask, &mask_width, &mask_height)) {
         *decision = LaneDecision{};
-        printf("[LANE_TICK] decision=%s steer=%+.1f no_lane_mask\n", decision->status, decision->steering_percent);
+        printf("[LANE_TICK] decision=%s steer=%+.1f weight=%d no_lane_mask\n",
+               decision->status,
+               decision->steering_percent,
+               decision->weight);
         std::fflush(stdout);
         return true;
     }
@@ -1005,8 +1093,19 @@ bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) 
     dump_lane_mask_once_if_requested(lane_mask, mask_width, mask_height);
     dump_lane_overlay_once_if_requested(frame, lane_mask, mask_width, mask_height);
     const LaneMaskStats stats = analyze_lane_mask(lane_mask, mask_width, mask_height);
+    const LaneEvidence evidence = analyze_lane_evidence(lane_mask, mask_width, mask_height);
     *decision = decide_lane(lane_mask, mask_width, mask_height);
-    printf("[LANE_TICK] mask=%dx%d lane_pixels=%d/%d bottom=%d valid_rows=%d first_valid_y=%d decision=%s steer=%+.1f\n",
+    const int min_lane_rows = std::max(4, static_cast<int>(mask_height * 0.04f));
+    const int min_boundary_rows = std::max(4, static_cast<int>(mask_height * 0.05f));
+    const int min_bottom_pixels = std::max(mask_width / 2, static_cast<int>(stats.total_pixels * 0.003f));
+    decision->weight = (evidence.barricaded ||
+                        evidence.max_consecutive_valid_rows >= kLaneMinCenteredRows ||
+                        (evidence.lower_band_lane_rows >= min_lane_rows &&
+                         evidence.boundary_rows >= min_boundary_rows &&
+                         stats.bottom_half_pixels >= min_bottom_pixels))
+                           ? 1
+                           : 0;
+    printf("[LANE_TICK] mask=%dx%d lane_pixels=%d/%d bottom=%d valid_rows=%d first_valid_y=%d decision=%s steer=%+.1f weight=%d barricade=%d max_valid_run=%d boundary_rows=%d lane_rows=%d\n",
            mask_width,
            mask_height,
            stats.lane_pixels,
@@ -1015,7 +1114,12 @@ bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) 
            stats.valid_rows,
            stats.first_valid_y,
            decision->status,
-           decision->steering_percent);
+           decision->steering_percent,
+           decision->weight,
+           evidence.barricaded ? 1 : 0,
+           evidence.max_consecutive_valid_rows,
+           evidence.boundary_rows,
+           evidence.lower_band_lane_rows);
     std::fflush(stdout);
     return true;
 }
@@ -1224,6 +1328,9 @@ int main(int argc, char** argv) {
                 char command[32];
                 std::snprintf(command, sizeof(command), "STEER:%+.0f\n", lane_decision.steering_percent);
                 send_uart(uart_fd, command);
+                char weight_command[32];
+                std::snprintf(weight_command, sizeof(weight_command), "STEER_WEIGHT:%d\n", lane_decision.weight);
+                send_uart(uart_fd, weight_command);
             }
         }
 
@@ -1233,6 +1340,7 @@ int main(int argc, char** argv) {
             bool should_stop = false;
             if (is_loaded(stop) && run_stop_model(stop, *model_frame, stop_threshold, &should_stop, frame_count) && should_stop) {
                 send_uart(uart_fd, "STOP\n");
+                send_uart(uart_fd, "STOP_WEIGHT:1\n");
             }
             release_model(stop);
         }

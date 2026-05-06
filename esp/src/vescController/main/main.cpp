@@ -444,7 +444,6 @@ void main_loop(void *) {
     ESP_LOGI(TAG, "Initiating master manager.");
 
     MasterManager master;
-
     while (true) {
         master.iterate();
 

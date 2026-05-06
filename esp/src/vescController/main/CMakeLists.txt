@@ -3,10 +3,12 @@ idf_component_register(
   "main.cpp"
   "gps/gpsUsbHost.cpp"
   
+  "sensors/cameraSensor.cpp"
   "sensors/gpsSensor.cpp"
   "sensors/wifiControlServerSensor.cpp"
 
   "algo/gpsGoalAlgo.cpp"
+  "algo/cameraDrivingAlgo.cpp"
   "algo/userControllerAlgo.cpp"
   "algo/closeObstacleAvoidanceAlgo.cpp"
 

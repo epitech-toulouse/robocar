@@ -8,9 +8,9 @@
 
 void init_lidar_uart(void)
 {
-    uart_driver_delete(0);
-    uart_driver_delete(1);
-    uart_driver_delete(2);
+    // uart_driver_delete(0);
+    // uart_driver_delete(1);
+    // uart_driver_delete(2);
     uart_config_t config = {
         .baud_rate = LIDAR_UART_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,

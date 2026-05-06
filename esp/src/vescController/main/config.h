@@ -20,8 +20,8 @@ static uint8_t const VESC_RMT_UART_PORT = RMT_UART_NUM_0;
 
 /* CAMERA */
 static uart_port_t const CAMERA_UART_PORT = UART_NUM_1;
-static gpio_num_t const CAMERA_UART_TX = GPIO_NUM_17;
-static gpio_num_t const CAMERA_UART_RX = GPIO_NUM_18;
+static gpio_num_t const CAMERA_UART_TX = GPIO_NUM_18;
+static gpio_num_t const CAMERA_UART_RX = GPIO_NUM_17;
 
 /* GPS */
 static uart_port_t const GPS_UART_PORT = UART_NUM_0;
