@@ -170,8 +170,16 @@ void WifiControlServerSensor::recomputeOutputFromState()
 
 void WifiControlServerSensor::emergencyStop()
 {
+    forward_.store(false);
+    backward_.store(false);
+    left_.store(false);
+    right_.store(false);
+    duty_.store(0.0f);
+    steer_.store(STEER_CENTER);
+    emergency_.store(true);
+    lastTick_.store(static_cast<int>(xTaskGetTickCount()));
+    _vescControllerApi.stop();
     _vescControllerApi.deactivate();
-  
 }
 
 bool WifiControlServerSensor::applyProtocolChar(char c)
@@ -186,6 +194,11 @@ bool WifiControlServerSensor::applyProtocolChar(char c)
         case 'R': right_.store(true);  recomputeOutputFromState(); return true;
         case 'r': right_.store(false); recomputeOutputFromState(); return true;
         case 'S': emergencyStop(); return true;
+        case 'A':
+            emergency_.store(false);
+            _vescControllerApi.activate();
+            lastTick_.store(static_cast<int>(xTaskGetTickCount()));
+            return true;
         default: return false;
     }
 }
@@ -518,9 +531,21 @@ esp_err_t WifiControlServerSensor::httpLogsOptionsHandler(httpd_req_t *req)
 
 esp_err_t WifiControlServerSensor::httpStatusHandler(httpd_req_t *req)
 {
+    auto *self = fromRequest(req);
+    char payload[128] = {0};
+    const bool serviceActive = self != nullptr && self->active_.load();
+    const bool vescActive = self != nullptr && self->_vescControllerApi.isActive();
+    const bool emergency = self != nullptr && self->emergency_.load();
+
+    std::snprintf(payload, sizeof(payload),
+                  "{\"ok\":true,\"service\":\"robocar_ctrl\",\"serviceActive\":%s,\"vescActive\":%s,\"emergency\":%s}",
+                  serviceActive ? "true" : "false",
+                  vescActive ? "true" : "false",
+                  emergency ? "true" : "false");
+
     httpd_resp_set_type(req, "application/json");
     setHttpCommonHeaders(req);
-    httpd_resp_sendstr(req, "{\"ok\":true,\"service\":\"robocar_ctrl\"}");
+    httpd_resp_sendstr(req, payload);
     return ESP_OK;
 }
 
