@@ -35,7 +35,6 @@ MasterManager::MasterManager()
         *this->vesc_controller_api,
         this->driving_mode_selector);
     this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>();
-<<<<<<< HEAD
 
     this->vesc_controller_api->activate();
 
@@ -52,8 +51,6 @@ MasterManager::MasterManager()
 
     // this->gps_sensor_api = std::make_unique<GpsSensor>();
     // this->lidar_sensor_api = std::make_unique<LidarSensor>();
-=======
->>>>>>> d295043 ([MERGE] requirements)
     this->camera_sensor_api = std::make_unique<CameraSensor>();
 
     this->vesc_controller_api->activate();
@@ -71,22 +68,6 @@ void MasterManager::iterate(void)
 {
     static int iteration = 0;
     iteration++;
-<<<<<<< HEAD
-    DrivingAlgorithmOutput output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
-
-    if (this->driving_mode_selector.isFusionMode()) {
-        output = this->fusionEngine.computeOutput();
-    } else if (this->close_obstacle_avoidance_algorithm != nullptr &&
-               this->close_obstacle_avoidance_algorithm->available() &&
-               this->close_obstacle_avoidance_algorithm->compute(output)) {
-    } else if (this->corridor_lidar_algorithm != nullptr &&
-               this->corridor_lidar_algorithm->available() &&
-               this->corridor_lidar_algorithm->compute(output)) {
-    } else {
-        output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
-    }
-=======
->>>>>>> d295043 ([MERGE] requirements)
 
     if (this->camera_sensor_api) {
         this->camera_sensor_api->update();

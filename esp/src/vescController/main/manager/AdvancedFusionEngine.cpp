@@ -31,7 +31,6 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
             continue;
         /*ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
                  driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);*/
-<<<<<<< HEAD
         // auto gps_algo = dynamic_cast<GpsGoalAlgo*>(driving_algo.get());
         // if (gps_algo) {
         //     ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
@@ -39,8 +38,6 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
         // }
         // ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
         //          driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);
-=======
->>>>>>> d295043 ([MERGE] requirements)
 
         float coef = priority * output.computed_weight;
         // Offset to allow computations
