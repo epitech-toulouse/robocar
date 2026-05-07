@@ -102,7 +102,7 @@ bool GpsSensor::getHeading(GpsHeading &output)
                                                     current.longitude);
     if (movedMeters < 0.5) {
         if (shouldLog) {
-            ESP_LOGD(TAG,
+            ESP_LOGI(TAG,
                      "heading invalid: low movement moved=%.3fm (<0.5m) prev=(%.6f,%.6f) cur=(%.6f,%.6f)",
                      movedMeters,
                      previous.latitude,

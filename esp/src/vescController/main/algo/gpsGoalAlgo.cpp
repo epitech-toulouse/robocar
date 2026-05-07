@@ -1,7 +1,9 @@
 #include "gpsGoalAlgo.hpp"
 
 #include <cmath>
+#include <cstdint>
 
+#include "api/gps_sensor_api.hpp"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -12,11 +14,19 @@ bool GpsGoalAlgo::available(void)
     return this->gps.isActive() && this->gps.getStatus(status) && status.has_fix;
 }
 
+#include <array>
+
+#define GPS_POS_BUFFER_SIZE 50
+std::array<GpsPosition, GPS_POS_BUFFER_SIZE> gps_positions = {
+    {}
+};
+uint8_t gps_index = 0;
+
 bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 {
     output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
     const TickType_t now = xTaskGetTickCount();
-    const bool shouldLog = (now - this->lastLogTick) >= this->logPeriodTicks;
+    const bool shouldLog = true;//(now - this->lastLogTick) >= this->logPeriodTicks;
 
     GpsPosition position{};
     GpsHeading heading{};
@@ -31,6 +41,15 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         }
         return false;
     }
+
+    double mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
+
+    ESP_LOGI(tag, "Comparing Index %04d with Index %04d | Bearing : %f", gps_index, (gps_index + 1) % GPS_POS_BUFFER_SIZE, mani_heading);
+
+    gps_positions[gps_index].latitude = position.latitude;
+    gps_positions[gps_index].longitude = position.longitude;
+    gps_index++;
+    gps_index %= GPS_POS_BUFFER_SIZE;
 
     const bool statusValid = this->gps.getStatus(status);
     if (!statusValid || !status.has_fix) {
@@ -82,9 +101,21 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         static_cast<float>(distanceMeters / this->fullSpeedDistanceM),
         this->minSpeedScale,
         1.0f);
-    const float maxSpeed = rtkFixed ? this->maxSpeedRtkFixed : this->maxSpeed;
-    output.target_speed = this->baseSpeed + (maxSpeed - this->baseSpeed) * distanceScale;
+    const float maxSpeed2 = rtkFixed ? this->maxSpeedRtkFixed : this->maxSpeed;
+    output.target_speed = 0.05;//this->baseSpeed + (maxSpeed2 - this->baseSpeed) * distanceScale;
+
+
+    const double errorDeg2 = wrap180(desiredBearingDeg - mani_heading);
+    const float normalizedError2 = clampf(static_cast<float>(errorDeg2 / 90.0), -1.0f, 1.0f);
+
+    const float maxSteeringDelta2 = this->maxSteeringDelta;
+    output.target_steering = 0.5;//clampf(0.5f + normalizedError2 * maxSteeringDelta2, 0.0f, 1.0f);
+    double heading_diff = wrap180(desiredBearingDeg - mani_heading);
+    ESP_LOGI(tag, "mani_heading to point %f", heading_diff);
+    output.target_steering += heading_diff * (0.5 / 180.0);
+    
     if (!headingValid) {
+        output.computed_weight = 1.0f;
         if (shouldLog) {
             ESP_LOGI(this->tag,
                      "return=false reason=heading_unavailable dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
@@ -97,7 +128,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
                      static_cast<double>(output.computed_weight));
             this->lastLogTick = now;
         }
-        return false;   
+        return true; // Please ajust weight in this "heading unavailable" case
     }
 
     const double errorDeg = wrap180(desiredBearingDeg - heading.degrees_to_north);
