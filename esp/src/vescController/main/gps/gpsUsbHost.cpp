@@ -620,7 +620,7 @@ void UsbGpsHost::parseNmeaLine(char *line) {
                  nextFix.longitude);
     }
 
-    ESP_LOGD(TAG,
+    ESP_LOGI(TAG,
              "Parsed fix hasFix=%d q=%d rtkFixed=%d rtkFloat=%d sats=%d lat=%.6f lon=%.6f alt=%.2f",
              nextFix.hasFix,
              nextFix.fixQuality,
