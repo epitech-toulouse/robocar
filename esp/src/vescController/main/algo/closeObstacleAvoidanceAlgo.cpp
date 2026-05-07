@@ -77,8 +77,9 @@ bool CloseObstacleAvoidanceAlgo::available(void) {
         });
     }
 
-    const float frontLeft = nearest_in_sector(scan, 0.0f, FRONT_WINDOW_DEG);
-    const float frontRight = nearest_in_sector(scan, 360.0f - FRONT_WINDOW_DEG, 360.0f);
+    const float EMERGENCY_FRONT_WINDOW_DEG = 15.0f;
+    const float frontLeft = nearest_in_sector(scan, 0.0f, EMERGENCY_FRONT_WINDOW_DEG);
+    const float frontRight = nearest_in_sector(scan, 360.0f - EMERGENCY_FRONT_WINDOW_DEG, 360.0f);
     const float frontNear = min_valid_distance(frontLeft, frontRight);
 
     // If an obstacle is closer than AVOID_DISTANCE_M, we take over.
@@ -108,8 +109,9 @@ bool CloseObstacleAvoidanceAlgo::compute(DrivingAlgorithmOutput &output) {
         });
     }
 
-    const float frontLeft = nearest_in_sector(scan, 0.0f, FRONT_WINDOW_DEG);
-    const float frontRight = nearest_in_sector(scan, 360.0f - FRONT_WINDOW_DEG, 360.0f);
+    const float EMERGENCY_FRONT_WINDOW_DEG = 15.0f;
+    const float frontLeft = nearest_in_sector(scan, 0.0f, EMERGENCY_FRONT_WINDOW_DEG);
+    const float frontRight = nearest_in_sector(scan, 360.0f - EMERGENCY_FRONT_WINDOW_DEG, 360.0f);
     const float frontNear = min_valid_distance(frontLeft, frontRight);
     
     const float leftNear = nearest_in_sector(scan, SIDE_WINDOW_MIN_DEG, SIDE_WINDOW_MAX_DEG);
@@ -181,5 +183,5 @@ bool CloseObstacleAvoidanceAlgo::compute(DrivingAlgorithmOutput &output) {
 }
 
 float CloseObstacleAvoidanceAlgo::getPriority() {
-    return 2.0f;
+    return 5.0f;
 }
