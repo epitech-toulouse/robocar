@@ -42,14 +42,30 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         return false;
     }
 
-    double mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
+    const double distanceMeters = haversineDistanceMeters(
+        position.latitude,
+        position.longitude,
+        this->goalLatitude,
+        this->goalLongitude);
+    
+    const double desiredBearingDeg = initialBearingDegrees(
+        position.latitude,
+        position.longitude,
+        this->goalLatitude,
+        this->goalLongitude);
 
+
+    ////// MANI HEADING COMPUTATION //////////////////////////////////
+    double mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
     ESP_LOGI(tag, "Comparing Index %04d with Index %04d | Bearing : %f", gps_index, (gps_index + 1) % GPS_POS_BUFFER_SIZE, mani_heading);
 
     gps_positions[gps_index].latitude = position.latitude;
     gps_positions[gps_index].longitude = position.longitude;
     gps_index++;
     gps_index %= GPS_POS_BUFFER_SIZE;
+
+    //////////////////////////////////////////////////////////////////////////////////////////////
+
 
     const bool statusValid = this->gps.getStatus(status);
     if (!statusValid || !status.has_fix) {
@@ -66,16 +82,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
     const bool rtkFixed = statusValid && status.is_rtk_fixed;
 
-    const double distanceMeters = haversineDistanceMeters(
-        position.latitude,
-        position.longitude,
-        this->goalLatitude,
-        this->goalLongitude);
-    const double desiredBearingDeg = initialBearingDegrees(
-        position.latitude,
-        position.longitude,
-        this->goalLatitude,
-        this->goalLongitude);
+
 
     if (distanceMeters <= this->goalReachedDistanceM) {
         output.target_speed = 0.0f;
@@ -97,39 +104,53 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     }
 
     const bool headingValid = this->gps.getHeading(heading);
-    const float distanceScale = clampf(
-        static_cast<float>(distanceMeters / this->fullSpeedDistanceM),
-        this->minSpeedScale,
-        1.0f);
-    const float maxSpeed2 = rtkFixed ? this->maxSpeedRtkFixed : this->maxSpeed;
-    output.target_speed = 0.05;//this->baseSpeed + (maxSpeed2 - this->baseSpeed) * distanceScale;
 
-
-    const double errorDeg2 = wrap180(desiredBearingDeg - mani_heading);
-    const float normalizedError2 = clampf(static_cast<float>(errorDeg2 / 90.0), -1.0f, 1.0f);
-
-    const float maxSteeringDelta2 = this->maxSteeringDelta;
-    output.target_steering = 0.5;//clampf(0.5f + normalizedError2 * maxSteeringDelta2, 0.0f, 1.0f);
-    double heading_diff = wrap180(desiredBearingDeg - mani_heading);
-    ESP_LOGI(tag, "mani_heading to point %f", heading_diff);
-    output.target_steering += heading_diff * (0.5 / 180.0);
     
+    ///////////////////// HEADING UNAVAILABLE CASE - FALLBACK TO MANI HEADING /////////////////////
     if (!headingValid) {
-        output.computed_weight = 1.0f;
-        if (shouldLog) {
+            const float maxSteeringDelta2 = this->maxSteeringDelta;
+            output.target_steering = 0.5;
+            double DegreFromGoalMani = wrap180(desiredBearingDeg - mani_heading);
+            ESP_LOGI(tag, "mani_heading to point %f, fixed %d, distance %.2f", DegreFromGoalMani, status.is_rtk_fixed, distanceMeters);
+    
+            float maxSteeringDelta = 0.35f;
+
+            if (DegreFromGoalMani > 35) {
+                output.target_steering = 1.0f;
+            }
+            else if (DegreFromGoalMani < -35) {
+                output.target_steering = 0.0f;
+            }
+            else {
+                output.target_steering = clampf(0.5f + (DegreFromGoalMani / 180.0f) * maxSteeringDelta2, 0.0f, 1.0f);
+            }
+            output.computed_weight = 1;
+            output.target_speed = 0.1;
+
+            if (shouldLog) {
             ESP_LOGI(this->tag,
                      "return=false reason=heading_unavailable dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
                      distanceMeters,
-                     desiredBearingDeg,
+                     DegreFromGoalMani,
                      static_cast<double>(output.target_speed),
                      static_cast<double>(output.target_steering),
                      rtkFixed,
                      status.satellites,
                      static_cast<double>(output.computed_weight));
             this->lastLogTick = now;
-        }
-        return true; // Please ajust weight in this "heading unavailable" case
+            }
+            return true; 
     }
+
+
+    /////////////////////// NORMAL CASE - HEADING AVAILABLE /////////////////////
+
+    
+    const float distanceScale = clampf(
+        static_cast<float>(distanceMeters / this->fullSpeedDistanceM),
+        this->minSpeedScale,
+        1.0f);
+    
 
     const double errorDeg = wrap180(desiredBearingDeg - heading.degrees_to_north);
     const float normalizedError = clampf(static_cast<float>(errorDeg / 90.0), -1.0f, 1.0f);
