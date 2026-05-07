@@ -42,6 +42,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         return false;
     }
 
+<<<<<<< HEAD
     const double distanceMeters = haversineDistanceMeters(
         position.latitude,
         position.longitude,
@@ -57,6 +58,10 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
     ////// MANI HEADING COMPUTATION //////////////////////////////////
     double mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
+=======
+    double mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
+
+>>>>>>> d295043 ([MERGE] requirements)
     ESP_LOGI(tag, "Comparing Index %04d with Index %04d | Bearing : %f", gps_index, (gps_index + 1) % GPS_POS_BUFFER_SIZE, mani_heading);
 
     gps_positions[gps_index].latitude = position.latitude;
@@ -64,9 +69,12 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     gps_index++;
     gps_index %= GPS_POS_BUFFER_SIZE;
 
+<<<<<<< HEAD
     //////////////////////////////////////////////////////////////////////////////////////////////
 
 
+=======
+>>>>>>> d295043 ([MERGE] requirements)
     const bool statusValid = this->gps.getStatus(status);
     if (!statusValid || !status.has_fix) {
         if (shouldLog) {
@@ -104,6 +112,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     }
 
     const bool headingValid = this->gps.getHeading(heading);
+<<<<<<< HEAD
 
     
     ///////////////////// HEADING UNAVAILABLE CASE - FALLBACK TO MANI HEADING /////////////////////
@@ -128,6 +137,28 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
             output.target_speed = 0.1;
 
             if (shouldLog) {
+=======
+    const float distanceScale = clampf(
+        static_cast<float>(distanceMeters / this->fullSpeedDistanceM),
+        this->minSpeedScale,
+        1.0f);
+    const float maxSpeed2 = rtkFixed ? this->maxSpeedRtkFixed : this->maxSpeed;
+    output.target_speed = 0.05;//this->baseSpeed + (maxSpeed2 - this->baseSpeed) * distanceScale;
+
+
+    const double errorDeg2 = wrap180(desiredBearingDeg - mani_heading);
+    const float normalizedError2 = clampf(static_cast<float>(errorDeg2 / 90.0), -1.0f, 1.0f);
+
+    const float maxSteeringDelta2 = this->maxSteeringDelta;
+    output.target_steering = 0.5;//clampf(0.5f + normalizedError2 * maxSteeringDelta2, 0.0f, 1.0f);
+    double heading_diff = wrap180(desiredBearingDeg - mani_heading);
+    ESP_LOGI(tag, "mani_heading to point %f", heading_diff);
+    output.target_steering += heading_diff * (0.5 / 180.0);
+    
+    if (!headingValid) {
+        output.computed_weight = 1.0f;
+        if (shouldLog) {
+>>>>>>> d295043 ([MERGE] requirements)
             ESP_LOGI(this->tag,
                      "return=false reason=heading_unavailable dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
                      distanceMeters,
@@ -138,8 +169,13 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
                      status.satellites,
                      static_cast<double>(output.computed_weight));
             this->lastLogTick = now;
+<<<<<<< HEAD
             }
             return true; 
+=======
+        }
+        return true; // Please ajust weight in this "heading unavailable" case
+>>>>>>> d295043 ([MERGE] requirements)
     }
 
 

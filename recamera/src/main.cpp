@@ -31,7 +31,7 @@ namespace {
 
 constexpr int kStopSignClassId = 11;
 constexpr float kStopSignDistanceConstant = 250.0f;
-constexpr float kStopDistanceCm = 100.0f;
+constexpr float kStopDistanceCm = 550.0f;
 constexpr int kLaneClassId = 1;
 constexpr int kDefaultLaneTick = 1;
 constexpr int kDefaultStopTick = 5;
@@ -1154,9 +1154,11 @@ bool run_stop_model(LoadedModel& stop, ma_img_t& frame, float threshold, bool* s
         }
 
         const float distance_cm = kStopSignDistanceConstant / result.h;
-        if (distance_cm < kStopDistanceCm) {
+        printf("[STOP_TICK] detections=%d stop_distance_cm=%.1f\n", detection_count, distance_cm);
+        std::fflush(stdout);
+        if (distance_cm <= kStopDistanceCm) {
             *should_stop = true;
-            printf("[STOP_TICK] detections=%d should_stop=1\n", detection_count);
+            printf("[STOP_TICK] detections=%d should_stop=1 stop_distance_cm=%.1f\n", detection_count, distance_cm);
             std::fflush(stdout);
             return true;
         }

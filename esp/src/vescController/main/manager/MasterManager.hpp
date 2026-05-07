@@ -36,6 +36,8 @@ private:
     std::unique_ptr<DrivingAlgorithmApi> corridor_lidar_algorithm = nullptr;
     std::unique_ptr<DrivingAlgorithmApi> close_obstacle_avoidance_algorithm = nullptr;
     std::unique_ptr<CameraSensorApi> camera_sensor_api = nullptr;
+    std::unique_ptr<DrivingAlgorithmApi> corridor_lidar_algorithm = nullptr;
+    std::unique_ptr<DrivingAlgorithmApi> close_obstacle_avoidance_algorithm = nullptr;
     std::unique_ptr<CoupeCircuitManager> coupe_circuit_manager = nullptr;
 };
 
