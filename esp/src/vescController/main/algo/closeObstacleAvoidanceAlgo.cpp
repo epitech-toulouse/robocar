@@ -181,5 +181,5 @@ bool CloseObstacleAvoidanceAlgo::compute(DrivingAlgorithmOutput &output) {
 }
 
 float CloseObstacleAvoidanceAlgo::getPriority() {
-    return 10.0f; // Extremely high priority to override normal driving
+    return 2.0f;
 }

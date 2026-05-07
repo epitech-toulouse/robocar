@@ -35,9 +35,10 @@ MasterManager::MasterManager()
 
     this->vesc_controller_api->activate();
 
-    this->fusionEngine.addDrivingAlgorithm(std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
+    //this->fusionEngine.addDrivingAlgorithm(std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
     this->fusionEngine.addDrivingAlgorithm(std::make_unique<CloseObstacleAvoidanceAlgo>(*this->lidar_sensor_api));
     this->fusionEngine.addDrivingAlgorithm(std::make_unique<UserControllerAlgo>(*this->user_controller_api));
+    this->fusionEngine.addDrivingAlgorithm(std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
     this->corridor_lidar_algorithm = std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api);
 }
 

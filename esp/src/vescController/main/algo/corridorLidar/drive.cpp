@@ -223,10 +223,10 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     compute_ftg_steer_speed(clean_scan, steer, speed);
     steer = map_auto_steer(steer);
 
-    std::cout << "FTG Steer=" << steer
+    /*std::cout << "FTG Steer=" << steer
               << " Speed=" << speed
               << " front=" << frontNear
-              << "m pts=" << clean_scan.size() << std::endl;
+              << "m pts=" << clean_scan.size() << std::endl;*/
 
     return {steer, speed};
 }
