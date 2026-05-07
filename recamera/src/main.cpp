@@ -38,7 +38,8 @@ constexpr int kDefaultStopTick = 5;
 constexpr float kDefaultStopThreshold = 0.5f;
 constexpr float kBarricadeThreshold = 0.40f;
 constexpr float kLaneSweepEndAt512 = 100.0f;
-constexpr int kLaneMinCenteredRows = 4;
+constexpr int kLaneMinCenteredRowsMin = 4;
+constexpr float kLaneMinCenteredRowsPercent = 0.08f;
 constexpr float kLaneFallbackDeadbandPercent = 12.5f;
 constexpr float kLaneFallbackScale = 0.85f;
 constexpr float kLaneBoundaryFallbackCenterFactor = 0.30f;
@@ -63,6 +64,10 @@ struct LaneDecision {
     int weight = 0;
     const char* status = "SEARCHING";
 };
+
+int min_centered_lane_rows(int height) {
+    return std::max(kLaneMinCenteredRowsMin, static_cast<int>(height * kLaneMinCenteredRowsPercent));
+}
 
 struct CpuReadableFrame {
     ma_img_t frame{};
@@ -916,6 +921,7 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
     LaneDecision decision;
     const int mid_x = width / 2;
     const int wall_y = std::min(height - 1, static_cast<int>(height * 0.70f));
+    const int min_centered_rows = min_centered_lane_rows(height);
 
     int wall_pixels = 0;
     for (int x = 0; x < width; ++x) {
@@ -939,7 +945,7 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
         int cur_rx = -1;
         const bool valid = is_valid_lane_row(mask, width, y, &cur_lx, &cur_rx);
         if (!valid) {
-            if (current_count >= kLaneMinCenteredRows) {
+            if (current_count >= min_centered_rows) {
                 lx = current_sum_lx / current_count;
                 rx = current_sum_rx / current_count;
                 found_y = current_start_y;
@@ -959,7 +965,7 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
         current_sum_rx += cur_rx;
         ++current_count;
     }
-    if (lx < 0 && current_count >= kLaneMinCenteredRows) {
+    if (lx < 0 && current_count >= min_centered_rows) {
         lx = current_sum_lx / current_count;
         rx = current_sum_rx / current_count;
         found_y = current_start_y;
@@ -1095,14 +1101,9 @@ bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) 
     const LaneMaskStats stats = analyze_lane_mask(lane_mask, mask_width, mask_height);
     const LaneEvidence evidence = analyze_lane_evidence(lane_mask, mask_width, mask_height);
     *decision = decide_lane(lane_mask, mask_width, mask_height);
-    const int min_lane_rows = std::max(4, static_cast<int>(mask_height * 0.04f));
-    const int min_boundary_rows = std::max(4, static_cast<int>(mask_height * 0.05f));
-    const int min_bottom_pixels = std::max(mask_width / 2, static_cast<int>(stats.total_pixels * 0.003f));
+    const int min_centered_rows = min_centered_lane_rows(mask_height);
     decision->weight = (evidence.barricaded ||
-                        evidence.max_consecutive_valid_rows >= kLaneMinCenteredRows ||
-                        (evidence.lower_band_lane_rows >= min_lane_rows &&
-                         evidence.boundary_rows >= min_boundary_rows &&
-                         stats.bottom_half_pixels >= min_bottom_pixels))
+                        evidence.max_consecutive_valid_rows >= min_centered_rows)
                            ? 1
                            : 0;
     printf("[LANE_TICK] mask=%dx%d lane_pixels=%d/%d bottom=%d valid_rows=%d first_valid_y=%d decision=%s steer=%+.1f weight=%d barricade=%d max_valid_run=%d boundary_rows=%d lane_rows=%d\n",
