@@ -33,6 +33,7 @@ private:
     std::unique_ptr<VescControllerApi> vesc_controller_api = nullptr;
     std::unique_ptr<UserControllerApi> user_controller_api = nullptr;
     std::unique_ptr<DrivingAlgorithmApi> corridor_lidar_algorithm = nullptr;
+    std::unique_ptr<DrivingAlgorithmApi> close_obstacle_avoidance_algorithm = nullptr;
     std::unique_ptr<CoupeCircuitManager> coupe_circuit_manager = nullptr;
 };
 

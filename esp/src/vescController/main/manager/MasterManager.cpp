@@ -40,6 +40,7 @@ MasterManager::MasterManager()
     this->fusionEngine.addDrivingAlgorithm(std::make_unique<UserControllerAlgo>(*this->user_controller_api));
     this->fusionEngine.addDrivingAlgorithm(std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
     this->corridor_lidar_algorithm = std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api);
+    this->close_obstacle_avoidance_algorithm = std::make_unique<CloseObstacleAvoidanceAlgo>(*this->lidar_sensor_api);
 }
 
 void MasterManager::iterate(void)
@@ -50,6 +51,9 @@ void MasterManager::iterate(void)
 
     if (this->driving_mode_selector.isFusionMode()) {
         output = this->fusionEngine.computeOutput();
+    } else if (this->close_obstacle_avoidance_algorithm != nullptr &&
+               this->close_obstacle_avoidance_algorithm->available() &&
+               this->close_obstacle_avoidance_algorithm->compute(output)) {
     } else if (this->corridor_lidar_algorithm != nullptr &&
                this->corridor_lidar_algorithm->available() &&
                this->corridor_lidar_algorithm->compute(output)) {
