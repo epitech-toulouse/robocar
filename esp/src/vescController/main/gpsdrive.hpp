@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "drive.hpp"
+#include "algo/corridorLidar/drive.hpp"
 #include "lidarReader.hpp"
 
 struct GpsDriveInput {

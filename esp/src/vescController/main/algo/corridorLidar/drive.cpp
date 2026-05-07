@@ -16,6 +16,9 @@ static bool in_sector(float angleDeg, float minDeg, float maxDeg) {
 static float nearest_in_sector(const std::vector<LidarPoint>& scan, float minDeg, float maxDeg) {
     float nearest = -1.0f;
     for (const auto& p : scan) {
+        if (p.intensity == 0) {
+            continue;
+        }
         if (!in_sector(p.angleDeg, minDeg, maxDeg)) {
             continue;
         }
@@ -54,12 +57,19 @@ static float normalize_angle_rad(float angleDeg) {
     return angleDeg * (float)M_PI / 180.0f; // positive for left
 }
 
+static float opposite_steer(float steer) {
+    return clampf((STEER_LEFT + STEER_RIGHT) - steer, STEER_LEFT, STEER_RIGHT);
+}
+
 static void compute_ftg_steer_speed(const std::vector<LidarPoint>& scan, float& out_steer, float& out_speed) {
     std::vector<PolarPoint> fov_scan;
     fov_scan.reserve(scan.size());
 
     // Filter to FOV and clamp range
     for (const auto& pt : scan) {
+        if (pt.intensity == 0 || pt.distanceMeters <= 0.0f) {
+            continue;
+        }
         float rad = normalize_angle_rad(pt.angleDeg);
         if (rad >= -FTG_FOV_RAD && rad <= FTG_FOV_RAD) {
             float d = std::min(pt.distanceMeters, FTG_MAX_RANGE_M);
@@ -69,7 +79,7 @@ static void compute_ftg_steer_speed(const std::vector<LidarPoint>& scan, float& 
     
     if (fov_scan.empty()) {
         out_steer = STEER_CENTER;
-        out_speed = SPEED_FORWARD;
+        out_speed = 0.0f;
         return;
     }
 
@@ -167,7 +177,13 @@ static void compute_ftg_steer_speed(const std::vector<LidarPoint>& scan, float& 
     float best_angle = fov_scan[center_idx].angle_rad;
 
     // Compute Steer & Speed
-    float steer_val = (best_angle * FTG_STEER_GAIN) / FTG_FOV_RAD;  // -1 to 1 (left to right)
+    float normalized_angle = best_angle / FTG_FOV_RAD;
+    float steer_val = clampf(normalized_angle * FTG_STEER_GAIN, -1.0f, 1.0f);
+    steer_val = std::copysign(std::pow(std::abs(steer_val), 0.8f), steer_val);
+
+    if (std::abs(steer_val) > 0.05f && std::abs(steer_val) < FTG_MIN_COMMIT_STEER_DELTA) {
+        steer_val = std::copysign(FTG_MIN_COMMIT_STEER_DELTA, steer_val);
+    }
     
     // Map it to [STEER_LEFT, STEER_RIGHT]
     out_steer = STEER_CENTER + steer_val * (STEER_LEFT - STEER_CENTER);
@@ -184,17 +200,11 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
         return {STEER_CENTER, 0.0f};
     }
 
-    // Clean scan directly to avoid bugs with `-1` representing objects touching the LiDAR,
-    // and `0` usually representing invalid points or "no reflection" (treated as Max Range).
+    // Preserve undefined points so downstream logic can treat them as unknown rather than free space.
     std::vector<LidarPoint> clean_scan;
     clean_scan.reserve(scan.size());
     for (const auto& pt : scan) {
         LidarPoint cp = pt;
-        if (cp.distanceMeters < 0.0f) {
-            cp.distanceMeters = 0.01f; // Critical obstacle touching the sensor
-        } else if (cp.distanceMeters == 0.0f) {
-            cp.distanceMeters = FTG_MAX_RANGE_M; // No signal / infinite distance
-        }
         clean_scan.push_back(cp);
     }
 
@@ -205,19 +215,6 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     const float leftNear = nearest_in_sector(clean_scan, SIDE_WINDOW_MIN_DEG, SIDE_WINDOW_MAX_DEG);
     const float rightNear = nearest_in_sector(clean_scan, 360.0f - SIDE_WINDOW_MAX_DEG, 360.0f - SIDE_WINDOW_MIN_DEG);
 
-    const TickType_t now = xTaskGetTickCount();
-    if (now < reverseUntil) {
-        return {map_auto_steer(reverseSteer), SPEED_REVERSE};
-    }
-
-    // If there is a critical obstacle in front, back up and turn toward the more open side.
-    if (frontNear > 0.0f && frontNear < STOP_DISTANCE_M) {
-        const bool leftMoreOpen = (leftNear < 0.0f) || (rightNear > 0.0f && rightNear > leftNear);
-        reverseSteer = leftMoreOpen ? STEER_RIGHT : STEER_LEFT;
-        reverseUntil = now + pdMS_TO_TICKS(REVERSE_DURATION_MS);
-        std::cout << "Reverse: front=" << frontNear << "m left=" << leftNear << "m right=" << rightNear << "m" << std::endl;
-        return {map_auto_steer(reverseSteer), SPEED_REVERSE};
-    }
 
     float steer = STEER_CENTER;
     float speed = SPEED_FORWARD;
@@ -226,15 +223,10 @@ DriveCommands AutonomousDriver::compute_commands(const std::vector<LidarPoint>& 
     compute_ftg_steer_speed(clean_scan, steer, speed);
     steer = map_auto_steer(steer);
 
-    // Emergency stop override if something is completely blocked right in front
-    if (frontNear > 0.0f && frontNear <= STOP_DISTANCE_M) {
-        speed = 0.0f;
-    }
-
-    std::cout << "FTG Steer=" << steer
+    /*std::cout << "FTG Steer=" << steer
               << " Speed=" << speed
               << " front=" << frontNear
-              << "m pts=" << clean_scan.size() << std::endl;
+              << "m pts=" << clean_scan.size() << std::endl;*/
 
     return {steer, speed};
 }

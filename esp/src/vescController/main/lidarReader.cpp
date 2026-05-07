@@ -34,6 +34,7 @@ LidarReader::LidarReader(float angleOffsetDeg)
       currentWorld(),
       hasLastPacketStartAngle(false),
       lastPacketStartAngle(0.0f),
+      completedScanCount(0),
       readBuffer{} {
 }
 
@@ -50,9 +51,11 @@ void LidarReader::stop() {
     buffer.clear();
     scanInProgress.clear();
     hasLastPacketStartAngle = false;
+    completedScanCount = 0;
 }
 
 int LidarReader::start() {
+    printf("LidarReader: start() called\n");
     if (running) {
         return ESP_OK;
     }
@@ -61,6 +64,7 @@ int LidarReader::start() {
     scanInProgress.clear();
     currentWorld.clear();
     hasLastPacketStartAngle = false;
+    completedScanCount = 0;
     running = true;
     return ESP_OK;
 }
@@ -74,13 +78,24 @@ bool LidarReader::update() {
         return false;
     }
 
-    const int bytesRead = uart_read_bytes(LIDAR_UART_PORT, readBuffer.data(), readBuffer.size(), 0);
-    if (bytesRead <= 0) {
-        return false;
+    bool consumedBytes = false;
+
+    TickType_t timeout = 10;
+    while (true) {
+        const int bytesRead = uart_read_bytes(LIDAR_UART_PORT, readBuffer.data(), readBuffer.size(), timeout);
+        if (bytesRead <= 0) {
+            break;
+        }
+
+        // printf("LidarReader: read %d bytes\n", bytesRead); // Commented out to avoid spam, uncomment if needed
+
+        timeout = 0; // Only block on the first read, then drain whatever is left and return
+
+        consumedBytes = true;
+        processBytes(readBuffer.data(), static_cast<std::size_t>(bytesRead));
     }
 
-    processBytes(readBuffer.data(), static_cast<std::size_t>(bytesRead));
-    return true;
+    return consumedBytes;
 }
 
 void LidarReader::processBytes(const uint8_t* data, std::size_t len) {
@@ -108,12 +123,14 @@ void LidarReader::processBytes(const uint8_t* data, std::size_t len) {
 
 bool LidarReader::parsePacket(const uint8_t* packet, float* packetStartAngle, std::vector<LidarPoint>* outPoints) const {
     if (packet[0] != HEADER_BYTE || packet[1] != EXPECTED_VER_LEN) {
+        // printf("LidarReader: Bad header %02x %02x\n", packet[0], packet[1]);
         return false;
     }
 
     const uint8_t expectedCrc = packet[PACKET_SIZE - 1];
     const uint8_t computedCrc = computeCrc8(packet, PACKET_SIZE - 1);
     if (expectedCrc != computedCrc) {
+        // printf("LidarReader: CRC mismatch expected=%02x computed=%02x\n", expectedCrc, computedCrc);
         return false;
     }
 
@@ -164,6 +181,7 @@ void LidarReader::consumePacket(const uint8_t* packet) {
             return a.angleDeg < b.angleDeg;
         });
         currentWorld = scanInProgress;
+        ++completedScanCount;
         scanInProgress.clear();
     }
 

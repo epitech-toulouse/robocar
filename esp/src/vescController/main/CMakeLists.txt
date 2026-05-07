@@ -8,13 +8,14 @@ idf_component_register(
 
   "algo/gpsGoalAlgo.cpp"
   "algo/userControllerAlgo.cpp"
+  "algo/closeObstacleAvoidanceAlgo.cpp"
 
   "manager/MasterManager.cpp"
   "manager/AdvancedFusionEngine.cpp"
   "manager/CoupeCircuitManager.cpp"
 
   "lidarReader.cpp"
-  "drive.cpp"
+  "algo/corridorLidar/drive.cpp"
   "vesc/PhysicalVescController.cpp"
   "vescLidarUart.c"
   "rmt-uart/rmt_uart.c"

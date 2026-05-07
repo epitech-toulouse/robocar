@@ -9,6 +9,7 @@
 #include "api/driving_algorithm_interface.hpp"
 #include <vector>
 #include <esp_log.h>
+#include "../algo/gpsGoalAlgo.hpp"
 
 void AdvancedFusionEngine::addDrivingAlgorithm
 (std::unique_ptr<DrivingAlgorithmApi> algorithm)
@@ -28,8 +29,8 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
         DrivingAlgorithmOutput output;
         if (!driving_algo->compute(output))
             continue;
-        
- 
+        /*ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
+                 driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);*/
 
         float coef = priority * output.computed_weight;
         // Offset to allow computations
@@ -41,7 +42,7 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
     }
     DrivingAlgorithmOutput final_output = {
         .target_speed = 0.0,
-        .target_steering = 0.5,
+        .target_steering = 0.0,
         .computed_weight = 0.0
     };
     for (DrivingAlgorithmOutput &output : outputs) {

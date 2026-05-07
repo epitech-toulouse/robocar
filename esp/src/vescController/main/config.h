@@ -34,4 +34,6 @@ static uint32_t const GPS_UART_BAUDRATE = 460800;
 static gpio_num_t const COUPE_CIRCUIT_PIN = GPIO_NUM_20;
 static gpio_num_t const COUPE_CIRCUIT_GND_PIN = GPIO_NUM_21;
 
+static float const AVOID_DISTANCE_M = 0.60f;
+
 #endif /* CONFIG_H */

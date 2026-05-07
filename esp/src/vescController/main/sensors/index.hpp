@@ -258,6 +258,12 @@ static const char *INDEX_HTML = R"HTML(
             box-shadow: inset 0 2px 8px rgba(0,0,0,.25), 0 7px 18px rgba(0,0,0,.22);
         }
 
+        .ctl:disabled {
+            cursor: not-allowed;
+            filter: saturate(.35) brightness(.68);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 7px 18px rgba(0,0,0,.18);
+        }
+
         .btn-left,
         .btn-right {
             min-height: 16rem;
@@ -300,6 +306,113 @@ static const char *INDEX_HTML = R"HTML(
 
         .actions .btn-primary {
             grid-column: 1 / -1;
+        }
+
+        .mode-panel {
+            display: grid;
+            gap: .55rem;
+            padding: .7rem;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: .65rem;
+            background: rgba(255,255,255,.03);
+        }
+
+        .mode-copy {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: .5rem;
+        }
+
+        .mode-title {
+            font-size: .82rem;
+            font-weight: 800;
+        }
+
+        .mode-value {
+            color: var(--muted);
+            font-size: .72rem;
+            font-weight: 900;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+        }
+
+        .mode-hint {
+            color: var(--muted);
+            font-size: .74rem;
+            line-height: 1.35;
+        }
+
+        .mode-switch {
+            display: grid;
+            grid-template-columns: auto auto auto;
+            align-items: center;
+            justify-content: center;
+            gap: .65rem;
+        }
+
+        .mode-side {
+            font-size: .72rem;
+            font-weight: 800;
+            color: var(--muted);
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+
+        .mode-toggle {
+            position: relative;
+            display: inline-flex;
+            width: 3.5rem;
+            height: 2rem;
+        }
+
+        .mode-toggle input {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .mode-track {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,.14);
+            background: rgba(255,255,255,.08);
+            transition: background 120ms ease, border-color 120ms ease;
+        }
+
+        .mode-track::after {
+            content: "";
+            position: absolute;
+            top: .14rem;
+            left: .14rem;
+            width: 1.45rem;
+            height: 1.45rem;
+            border-radius: 999px;
+            background: #edf5f7;
+            box-shadow: 0 3px 10px rgba(0,0,0,.28);
+            transition: transform 120ms ease;
+        }
+
+        .mode-toggle input:checked + .mode-track {
+            background: linear-gradient(180deg, rgba(24,160,88,.88), rgba(24,160,88,.62));
+            border-color: rgba(24,160,88,.65);
+        }
+
+        .mode-toggle input:checked + .mode-track::after {
+            transform: translateX(1.48rem);
+        }
+
+        .mode-toggle input:disabled + .mode-track {
+            opacity: .55;
+        }
+
+        .is-corridor-mode .mode-side-corridor,
+        .is-fusion-mode .mode-side-fusion {
+            color: var(--text);
         }
 
         .log-panel {
@@ -542,6 +655,21 @@ static const char *INDEX_HTML = R"HTML(
                     <button id="clearLog" class="btn">Nettoyer</button>
                     <button id="refreshStatus" class="btn">Statut</button>
                 </div>
+                <section class="mode-panel" aria-label="Mode autonome">
+                    <div class="mode-copy">
+                        <span class="mode-title">Mode autonome</span>
+                        <span id="modeValue" class="mode-value">FUSION</span>
+                    </div>
+                    <label class="mode-switch" for="modeToggle">
+                        <span class="mode-side mode-side-corridor">Corridor</span>
+                        <span class="mode-toggle">
+                            <input id="modeToggle" type="checkbox" role="switch" aria-label="Basculer le mode autonome" checked />
+                            <span class="mode-track"></span>
+                        </span>
+                        <span class="mode-side mode-side-fusion">Fusion</span>
+                    </label>
+                    <div id="modeHint" class="mode-hint">Fusion : GPS + obstacle proche + manuel</div>
+                </section>
                 <div class="log-panel">
                     <div class="log-tools">
                         <span>Journal</span>
@@ -574,9 +702,14 @@ static const char *INDEX_HTML = R"HTML(
         const vescChip = document.getElementById('vescChip');
         const vescText = document.getElementById('vescText');
         const armBtn = document.getElementById('arm');
+        const modeToggle = document.getElementById('modeToggle');
+        const modeValue = document.getElementById('modeValue');
+        const modeHint = document.getElementById('modeHint');
+        const driveButtons = ['f', 'b', 'l', 'r'].map((id) => document.getElementById(id));
 
         let connected = false;
         let vescActive = false;
+        let autonomousMode = 'FUSION';
         let logsSince = 0;
         let logsTimer = null;
 
@@ -606,6 +739,8 @@ static const char *INDEX_HTML = R"HTML(
             body.classList.toggle('is-disconnected', !connected);
             body.classList.toggle('is-armed', vescActive);
             body.classList.toggle('is-logs-open', espLogsToggle.checked);
+            body.classList.toggle('is-fusion-mode', autonomousMode === 'FUSION');
+            body.classList.toggle('is-corridor-mode', autonomousMode === 'CORRIDOR_LIDAR');
 
             connChip.classList.toggle('ok', connected);
             connText.textContent = connected ? 'Connecté' : 'Hors ligne';
@@ -614,6 +749,17 @@ static const char *INDEX_HTML = R"HTML(
             vescChip.classList.toggle('warn', !vescActive);
             vescText.textContent = vescActive ? 'VESC actif' : 'VESC off';
             armBtn.textContent = vescActive ? 'VESC actif' : 'Activer VESC';
+            modeToggle.checked = autonomousMode === 'FUSION';
+            modeToggle.disabled = !connected;
+            modeValue.textContent = autonomousMode === 'FUSION' ? 'FUSION' : 'CORRIDOR';
+            modeHint.textContent = autonomousMode === 'FUSION'
+                ? 'Fusion : GPS + obstacle proche + manuel'
+                : 'Corridor : conduite corridor LiDAR uniquement';
+
+            const manualDriveEnabled = connected && autonomousMode === 'FUSION';
+            for (const button of driveButtons) {
+                button.disabled = !manualDriveEnabled;
+            }
         }
 
         function log(msg) {
@@ -633,6 +779,7 @@ static const char *INDEX_HTML = R"HTML(
             const data = JSON.parse(text);
             connected = true;
             vescActive = !!data.vescActive;
+            autonomousMode = data.autonomousMode || 'FUSION';
             renderState();
             return data;
         }
@@ -694,6 +841,26 @@ static const char *INDEX_HTML = R"HTML(
             log('Déconnecté');
         }
 
+        async function setAutonomousMode(nextMode) {
+            if (!connected) {
+                log('Non connecté');
+                renderState();
+                return false;
+            }
+            try {
+                const text = await apiText('/mode?value=' + encodeURIComponent(nextMode));
+                const data = JSON.parse(text);
+                autonomousMode = data.autonomousMode || nextMode;
+                renderState();
+                log('Mode autonome : ' + (autonomousMode === 'FUSION' ? 'Fusion' : 'Corridor LiDAR'));
+                return true;
+            } catch (e) {
+                renderState();
+                log('Erreur mode : ' + (e.message || e));
+                return false;
+            }
+        }
+
         async function send(c, label) {
             if (!connected) {
                 log('Non connecté');
@@ -746,6 +913,10 @@ static const char *INDEX_HTML = R"HTML(
         document.getElementById('clearLog').addEventListener('click', () => { logEl.innerHTML = ''; log('Pret'); });
         document.getElementById('refreshStatus').addEventListener('click', () => readStatus().then(() => log('Statut actualisé')).catch((e) => log('Statut indisponible : ' + (e.message || e))));
         armBtn.addEventListener('click', () => send('A', 'VESC activé'));
+        modeToggle.addEventListener('change', () => {
+            const nextMode = modeToggle.checked ? 'FUSION' : 'CORRIDOR_LIDAR';
+            setAutonomousMode(nextMode);
+        });
         espLogsToggle.addEventListener('change', updateLogPolling);
         document.getElementById('s').addEventListener('click', () => send('S', 'STOP envoyé'));
         bindHold('f', 'F', 'f');

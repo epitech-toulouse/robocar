@@ -24,7 +24,7 @@ void init_lidar_uart(void)
     ESP_ERROR_CHECK(uart_set_pin(LIDAR_UART_PORT, GPIO_NUM_4, LIDAR_UART_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     ESP_LOGI("lidar uart", "Pins set.");
 
-    ESP_ERROR_CHECK(uart_driver_install(LIDAR_UART_PORT, 1024, 0, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_driver_install(LIDAR_UART_PORT, 8192, 0, 0, NULL, 0));
     ESP_LOGI("lidar uart", "Driver installed.");
 }
 
