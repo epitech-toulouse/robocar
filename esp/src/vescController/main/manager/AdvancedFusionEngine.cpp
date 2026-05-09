@@ -9,20 +9,23 @@
 #include "api/driving_algorithm_interface.hpp"
 #include <vector>
 #include <esp_log.h>
-#include "../algo/gpsGoalAlgo.hpp"
 
 void AdvancedFusionEngine::addDrivingAlgorithm
-(std::unique_ptr<DrivingAlgorithmApi> algorithm)
+(SelectableAlgorithm id, std::unique_ptr<DrivingAlgorithmApi> algorithm)
 {
-    this->driving_algorithms.push_back(std::move(algorithm));
+    this->driving_algorithms.push_back({id, std::move(algorithm)});
 }
 
-DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
+DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(const AlgorithmSelector &selector)
 {
     std::vector<DrivingAlgorithmOutput> outputs;
 
     outputs.reserve(this->driving_algorithms.size());
-    for (std::unique_ptr<DrivingAlgorithmApi> &driving_algo : this->driving_algorithms) {
+    for (RegisteredAlgorithm &registered_algorithm : this->driving_algorithms) {
+        if (!selector.isEnabled(registered_algorithm.id)) {
+            continue;
+        }
+        std::unique_ptr<DrivingAlgorithmApi> &driving_algo = registered_algorithm.algorithm;
         if (!driving_algo->available())
             continue;
         float priority = driving_algo->getPriority();

@@ -30,17 +30,21 @@ MasterManager::MasterManager()
     this->lidar_sensor_api = std::make_unique<LidarSensor>();
     this->user_controller_api = std::make_unique<WifiControlServerSensor>(
         *this->vesc_controller_api,
-        this->driving_mode_selector);
+        this->algorithm_selector,
+        *this->gps_sensor_api,
+        *this->lidar_sensor_api);
     this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>();
 
     this->vesc_controller_api->activate();
 
-    //this->fusionEngine.addDrivingAlgorithm(std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
-    this->fusionEngine.addDrivingAlgorithm(std::make_unique<CloseObstacleAvoidanceAlgo>(*this->lidar_sensor_api));
-    this->fusionEngine.addDrivingAlgorithm(std::make_unique<UserControllerAlgo>(*this->user_controller_api));
-    this->fusionEngine.addDrivingAlgorithm(std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
-    this->corridor_lidar_algorithm = std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api);
-    this->close_obstacle_avoidance_algorithm = std::make_unique<CloseObstacleAvoidanceAlgo>(*this->lidar_sensor_api);
+    this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::Gps,
+                                           std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
+    this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::CloseObstacle,
+                                           std::make_unique<CloseObstacleAvoidanceAlgo>(*this->lidar_sensor_api));
+    this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::Manual,
+                                           std::make_unique<UserControllerAlgo>(*this->user_controller_api));
+    this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::LidarCorridor,
+                                           std::make_unique<LidarDrivingAlgo>(*this->lidar_sensor_api));
 }
 
 void MasterManager::iterate(void)
@@ -49,25 +53,15 @@ void MasterManager::iterate(void)
     iteration++;
     DrivingAlgorithmOutput output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
 
-    if (this->driving_mode_selector.isFusionMode()) {
-        output = this->fusionEngine.computeOutput();
-    } else if (this->close_obstacle_avoidance_algorithm != nullptr &&
-               this->close_obstacle_avoidance_algorithm->available() &&
-               this->close_obstacle_avoidance_algorithm->compute(output)) {
-    } else if (this->corridor_lidar_algorithm != nullptr &&
-               this->corridor_lidar_algorithm->available() &&
-               this->corridor_lidar_algorithm->compute(output)) {
-    } else {
-        output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
-    }
+    output = this->fusionEngine.computeOutput(this->algorithm_selector);
 
     if (!output.computed_weight)
         this->vesc_controller_api->stop();
     if (iteration % 100 == 0) { // Log every 100 iterations to avoid spamming logs
         ESP_LOGD("MasterManager",
-                 "Iteration %d: mode=%s computed weight=%.3f",
+                 "Iteration %d: selected_mask=0x%02lx computed weight=%.3f",
                  iteration,
-                 this->driving_mode_selector.modeString(),
+                 static_cast<unsigned long>(this->algorithm_selector.getSelectedMask()),
                  output.computed_weight);
     }
     this->vesc_controller_api->set_speed(output.target_speed);

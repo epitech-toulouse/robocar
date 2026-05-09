@@ -4,22 +4,31 @@
 #include <cstdint>
 
 #include <cstddef>
+#include <string>
 
+#include "api/gps_sensor_api.hpp"
+#include "api/lidar_sensor_api.hpp"
 #include "api/user_controller_api.hpp"
 #include "api/vesc_controller_api.hpp"
 #include "esp_err.h"
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "manager/DrivingModeSelector.hpp"
+#include "manager/AlgorithmSelector.hpp"
 
 
 
 
 class WifiControlServerSensor : public UserControllerApi {
 public:
-    WifiControlServerSensor(VescControllerApi &vescController, DrivingModeSelector &drivingModeSelector)
-        : _vescControllerApi(vescController), _drivingModeSelector(drivingModeSelector)
+    WifiControlServerSensor(VescControllerApi &vescController,
+                            AlgorithmSelector &algorithmSelector,
+                            GpsSensorApi &gpsSensorApi,
+                            LidarSensorApi &lidarSensorApi)
+        : _vescControllerApi(vescController),
+          _algorithmSelector(algorithmSelector),
+          _gpsSensorApi(gpsSensorApi),
+          _lidarSensorApi(lidarSensorApi)
     {
         this->start();
     };
@@ -65,14 +74,17 @@ private:
     static esp_err_t httpCmdOptionsHandler(httpd_req_t *req);
     static esp_err_t httpLogsHandler(httpd_req_t *req);
     static esp_err_t httpLogsOptionsHandler(httpd_req_t *req);
-    static esp_err_t httpModeHandler(httpd_req_t *req);
-    static esp_err_t httpModeOptionsHandler(httpd_req_t *req);
+    static esp_err_t httpAlgorithmsHandler(httpd_req_t *req);
+    static esp_err_t httpAlgorithmsOptionsHandler(httpd_req_t *req);
     static esp_err_t httpStatusHandler(httpd_req_t *req);
     static esp_err_t httpStatusOptionsHandler(httpd_req_t *req);
     static esp_err_t httpRootHandler(httpd_req_t *req);
     bool isManualDriveEnabled() const;
+    bool isAlgorithmAvailable(SelectableAlgorithm id) const;
+    std::string buildAlgorithmsJson(bool includeStatusEnvelope) const;
+    std::string buildStatusJson() const;
     void clearManualDriveState();
-    void setAutonomousMode(AutonomousDrivingMode mode);
+    void setSelectedAlgorithmsMask(uint32_t mask);
 
     std::atomic<float> duty_{0.0f};
     std::atomic<float> steer_{STEER_CENTER};
@@ -83,7 +95,9 @@ private:
     std::atomic<bool> right_{false};
     std::atomic<bool> emergency_{false};
     std::atomic<bool> active_{false};
-    DrivingModeSelector &_drivingModeSelector;
+    AlgorithmSelector &_algorithmSelector;
+    GpsSensorApi &_gpsSensorApi;
+    LidarSensorApi &_lidarSensorApi;
     httpd_handle_t httpServer_ = nullptr;
     TaskHandle_t tcpTaskHandle_ = nullptr;
 

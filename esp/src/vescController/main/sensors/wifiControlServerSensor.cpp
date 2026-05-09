@@ -128,22 +128,120 @@ static std::string get_logs_since(uint32_t since)
     return out;
 }
 
-static bool parse_autonomous_mode_value(const char *value, AutonomousDrivingMode &mode)
+enum class AlgorithmSelectionParseError : uint8_t {
+    None = 0,
+    Unknown,
+    NotImplemented,
+};
+
+static bool parse_algorithm_selection_value(const char *value,
+                                            uint32_t &mask,
+                                            AlgorithmSelectionParseError &error,
+                                            char *invalidToken,
+                                            size_t invalidTokenSize)
 {
     if (value == nullptr) {
         return false;
     }
-    if (strcasecmp(value, "fusion") == 0 || strcmp(value, "1") == 0) {
-        mode = AutonomousDrivingMode::Fusion;
+    if (invalidToken != nullptr && invalidTokenSize > 0) {
+        invalidToken[0] = '\0';
+    }
+    mask = 0;
+    error = AlgorithmSelectionParseError::None;
+
+    if (value[0] == '\0') {
         return true;
     }
-    if (strcasecmp(value, "corridor_lidar") == 0 ||
-        strcasecmp(value, "corridor") == 0 ||
-        strcmp(value, "0") == 0) {
-        mode = AutonomousDrivingMode::CorridorLidar;
-        return true;
+
+    const char *cursor = value;
+    while (*cursor != '\0') {
+        while (*cursor == ',' || *cursor == ' ' || *cursor == '\t') {
+            ++cursor;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+
+        char token[32] = {0};
+        size_t tokenLen = 0;
+        while (*cursor != '\0' && *cursor != ',') {
+            if (tokenLen + 1 < sizeof(token)) {
+                token[tokenLen++] = *cursor;
+            }
+            ++cursor;
+        }
+        while (tokenLen > 0 &&
+               (token[tokenLen - 1] == ' ' || token[tokenLen - 1] == '\t')) {
+            token[--tokenLen] = '\0';
+        }
+        if (tokenLen == 0) {
+            continue;
+        }
+
+        const AlgorithmDescriptor *descriptor = findAlgorithmDescriptorByKey(token);
+        if (descriptor == nullptr) {
+            error = AlgorithmSelectionParseError::Unknown;
+        } else if (!descriptor->implemented) {
+            error = AlgorithmSelectionParseError::NotImplemented;
+        } else {
+            mask |= algorithmBit(descriptor->id);
+            continue;
+        }
+        if (invalidToken != nullptr && invalidTokenSize > 0) {
+            std::strncpy(invalidToken, token, invalidTokenSize - 1);
+            invalidToken[invalidTokenSize - 1] = '\0';
+        }
+        return false;
     }
-    return false;
+    return true;
+}
+
+static void append_json_bool(std::string &payload, bool value)
+{
+    payload += value ? "true" : "false";
+}
+
+static void append_selected_algorithms_json(std::string &payload, uint32_t selectedMask)
+{
+    payload += "[";
+    bool first = true;
+    for (const AlgorithmDescriptor &descriptor : kSelectableAlgorithms) {
+        if (!descriptor.implemented) {
+            continue;
+        }
+        if ((selectedMask & algorithmBit(descriptor.id)) == 0) {
+            continue;
+        }
+        if (!first) {
+            payload += ",";
+        }
+        first = false;
+        payload += "\"";
+        payload += descriptor.key;
+        payload += "\"";
+    }
+    payload += "]";
+}
+
+static void append_algorithm_object_json(std::string &payload,
+                                         const AlgorithmDescriptor &descriptor,
+                                         bool enabled,
+                                         bool available)
+{
+    payload += "{";
+    payload += "\"id\":\"";
+    payload += descriptor.key;
+    payload += "\",\"label\":\"";
+    payload += descriptor.label;
+    payload += "\",\"enabled\":";
+    append_json_bool(payload, enabled);
+    payload += ",\"available\":";
+    append_json_bool(payload, available);
+    payload += ",\"implemented\":";
+    append_json_bool(payload, descriptor.implemented);
+    payload += ",\"weight\":";
+    payload += std::to_string(static_cast<double>(descriptor.weight));
+    payload += "}";
 }
 
 void WifiControlServerSensor::setHttpCommonHeaders(httpd_req_t *req)
@@ -162,7 +260,7 @@ WifiControlServerSensor *WifiControlServerSensor::fromRequest(httpd_req_t *req)
 
 bool WifiControlServerSensor::isManualDriveEnabled() const
 {
-    return this->_drivingModeSelector.isManualDriveEnabled();
+    return this->_algorithmSelector.isManualDriveEnabled();
 }
 
 void WifiControlServerSensor::clearManualDriveState()
@@ -176,10 +274,97 @@ void WifiControlServerSensor::clearManualDriveState()
     lastTick_.store(0);
 }
 
-void WifiControlServerSensor::setAutonomousMode(AutonomousDrivingMode mode)
+void WifiControlServerSensor::setSelectedAlgorithmsMask(uint32_t mask)
 {
-    this->_drivingModeSelector.setMode(mode);
-    this->clearManualDriveState();
+    const bool manualWasEnabled = this->isManualDriveEnabled();
+
+    this->_algorithmSelector.setSelectedMask(mask);
+    if (manualWasEnabled && !this->isManualDriveEnabled()) {
+        this->clearManualDriveState();
+    }
+}
+
+bool WifiControlServerSensor::isAlgorithmAvailable(SelectableAlgorithm id) const
+{
+    switch (id) {
+        case SelectableAlgorithm::Manual:
+            return this->active_.load();
+        case SelectableAlgorithm::CloseObstacle:
+        case SelectableAlgorithm::LidarCorridor:
+            return this->_lidarSensorApi.isActive();
+        case SelectableAlgorithm::Gps: {
+            GpsStatus status{};
+            return this->_gpsSensorApi.isActive() &&
+                this->_gpsSensorApi.getStatus(status) &&
+                status.has_fix;
+        }
+        case SelectableAlgorithm::Camera:
+            return false;
+        case SelectableAlgorithm::Count:
+            break;
+    }
+    return false;
+}
+
+std::string WifiControlServerSensor::buildAlgorithmsJson(bool includeStatusEnvelope) const
+{
+    std::string payload;
+    payload.reserve(768);
+    const uint32_t selectedMask = this->_algorithmSelector.getSelectedMask();
+
+    payload += "{\"ok\":true,";
+    if (includeStatusEnvelope) {
+        payload += "\"manualDriveEnabled\":";
+        append_json_bool(payload, this->isManualDriveEnabled());
+        payload += ",";
+    }
+    payload += "\"selectedAlgorithms\":";
+    append_selected_algorithms_json(payload, selectedMask);
+    payload += ",\"algorithms\":[";
+    bool first = true;
+    for (const AlgorithmDescriptor &descriptor : kSelectableAlgorithms) {
+        if (!first) {
+            payload += ",";
+        }
+        first = false;
+        append_algorithm_object_json(payload,
+                                     descriptor,
+                                     (selectedMask & algorithmBit(descriptor.id)) != 0,
+                                     this->isAlgorithmAvailable(descriptor.id));
+    }
+    payload += "]}";
+    return payload;
+}
+
+std::string WifiControlServerSensor::buildStatusJson() const
+{
+    std::string payload;
+    payload.reserve(896);
+
+    payload += "{\"ok\":true,\"service\":\"robocar_ctrl\",\"serviceActive\":";
+    append_json_bool(payload, this->active_.load());
+    payload += ",\"vescActive\":";
+    append_json_bool(payload, this->_vescControllerApi.isActive());
+    payload += ",\"emergency\":";
+    append_json_bool(payload, this->emergency_.load());
+    payload += ",\"manualDriveEnabled\":";
+    append_json_bool(payload, this->isManualDriveEnabled());
+    payload += ",\"selectedAlgorithms\":";
+    append_selected_algorithms_json(payload, this->_algorithmSelector.getSelectedMask());
+    payload += ",\"algorithms\":[";
+    bool first = true;
+    for (const AlgorithmDescriptor &descriptor : kSelectableAlgorithms) {
+        if (!first) {
+            payload += ",";
+        }
+        first = false;
+        append_algorithm_object_json(payload,
+                                     descriptor,
+                                     this->_algorithmSelector.isEnabled(descriptor.id),
+                                     this->isAlgorithmAvailable(descriptor.id));
+    }
+    payload += "]}";
+    return payload;
 }
 
 void WifiControlServerSensor::recomputeOutputFromState()
@@ -401,21 +586,21 @@ void WifiControlServerSensor::startHttpServer()
     httpd_uri_t root_uri = {.uri = "/", .method = HTTP_GET, .handler = httpRootHandler, .user_ctx = this};
     httpd_uri_t cmd_uri = {.uri = "/cmd", .method = HTTP_GET, .handler = httpCmdHandler, .user_ctx = this};
     httpd_uri_t logs_uri = {.uri = "/logs", .method = HTTP_GET, .handler = httpLogsHandler, .user_ctx = this};
-    httpd_uri_t mode_uri = {.uri = "/mode", .method = HTTP_GET, .handler = httpModeHandler, .user_ctx = this};
+    httpd_uri_t algorithms_uri = {.uri = "/algorithms", .method = HTTP_GET, .handler = httpAlgorithmsHandler, .user_ctx = this};
     httpd_uri_t status_uri = {.uri = "/status", .method = HTTP_GET, .handler = httpStatusHandler, .user_ctx = this};
     httpd_uri_t cmd_options_uri = {.uri = "/cmd", .method = HTTP_OPTIONS, .handler = httpCmdOptionsHandler, .user_ctx = this};
     httpd_uri_t logs_options_uri = {.uri = "/logs", .method = HTTP_OPTIONS, .handler = httpLogsOptionsHandler, .user_ctx = this};
-    httpd_uri_t mode_options_uri = {.uri = "/mode", .method = HTTP_OPTIONS, .handler = httpModeOptionsHandler, .user_ctx = this};
+    httpd_uri_t algorithms_options_uri = {.uri = "/algorithms", .method = HTTP_OPTIONS, .handler = httpAlgorithmsOptionsHandler, .user_ctx = this};
     httpd_uri_t status_options_uri = {.uri = "/status", .method = HTTP_OPTIONS, .handler = httpStatusOptionsHandler, .user_ctx = this};
 
     httpd_register_uri_handler(server, &root_uri);
     httpd_register_uri_handler(server, &cmd_uri);
     httpd_register_uri_handler(server, &logs_uri);
-    httpd_register_uri_handler(server, &mode_uri);
+    httpd_register_uri_handler(server, &algorithms_uri);
     httpd_register_uri_handler(server, &status_uri);
     httpd_register_uri_handler(server, &cmd_options_uri);
     httpd_register_uri_handler(server, &logs_options_uri);
-    httpd_register_uri_handler(server, &mode_options_uri);
+    httpd_register_uri_handler(server, &algorithms_options_uri);
     httpd_register_uri_handler(server, &status_options_uri);
     ESP_LOGI(TAG, "HTTP control API listening on port %d", CONTROL_HTTP_PORT);
 }
@@ -595,41 +780,57 @@ esp_err_t WifiControlServerSensor::httpLogsOptionsHandler(httpd_req_t *req)
     return ESP_OK;
 }
 
-esp_err_t WifiControlServerSensor::httpModeHandler(httpd_req_t *req)
+esp_err_t WifiControlServerSensor::httpAlgorithmsHandler(httpd_req_t *req)
 {
     auto *self = fromRequest(req);
-    char query[64] = {0};
-    char value[32] = {0};
-    AutonomousDrivingMode mode = AutonomousDrivingMode::Fusion;
+    char query[192] = {0};
+    char selectedValue[128] = {0};
+    char invalidToken[32] = {0};
+    uint32_t selectedMask = 0;
+    AlgorithmSelectionParseError parseError = AlgorithmSelectionParseError::None;
 
-    if (self != nullptr &&
-        httpd_req_get_url_query_len(req) > 0 &&
+    if (self == nullptr) {
+        httpd_resp_set_type(req, "application/json");
+        setHttpCommonHeaders(req);
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_server_context\"}");
+        return ESP_OK;
+    }
+
+    if (httpd_req_get_url_query_len(req) > 0 &&
         httpd_req_get_url_query_len(req) < static_cast<int>(sizeof(query))) {
         httpd_req_get_url_query_str(req, query, sizeof(query));
-        if (httpd_query_key_value(query, "value", value, sizeof(value)) == ESP_OK &&
-            parse_autonomous_mode_value(value, mode)) {
-            self->setAutonomousMode(mode);
-
-            char payload[128] = {0};
-            std::snprintf(payload, sizeof(payload),
-                          "{\"ok\":true,\"autonomousMode\":\"%s\",\"manualDriveEnabled\":%s}",
-                          self->_drivingModeSelector.modeString(),
-                          self->isManualDriveEnabled() ? "true" : "false");
-            httpd_resp_set_type(req, "application/json");
-            setHttpCommonHeaders(req);
-            httpd_resp_sendstr(req, payload);
-            return ESP_OK;
+        if (httpd_query_key_value(query, "selected", selectedValue, sizeof(selectedValue)) == ESP_OK) {
+            if (!parse_algorithm_selection_value(selectedValue,
+                                                 selectedMask,
+                                                 parseError,
+                                                 invalidToken,
+                                                 sizeof(invalidToken))) {
+                httpd_resp_set_type(req, "application/json");
+                setHttpCommonHeaders(req);
+                httpd_resp_set_status(req, "400 Bad Request");
+                std::string payload = "{\"ok\":false,\"error\":\"";
+                payload += (parseError == AlgorithmSelectionParseError::NotImplemented)
+                    ? "algorithm_not_implemented"
+                    : "unknown_algorithm";
+                payload += "\",\"algorithm\":\"";
+                payload += invalidToken;
+                payload += "\"}";
+                httpd_resp_sendstr(req, payload.c_str());
+                return ESP_OK;
+            }
+            self->setSelectedAlgorithmsMask(selectedMask);
         }
     }
 
+    const std::string payload = self->buildAlgorithmsJson(true);
     httpd_resp_set_type(req, "application/json");
     setHttpCommonHeaders(req);
-    httpd_resp_set_status(req, "400 Bad Request");
-    httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_or_invalid_mode\"}");
+    httpd_resp_sendstr(req, payload.c_str());
     return ESP_OK;
 }
 
-esp_err_t WifiControlServerSensor::httpModeOptionsHandler(httpd_req_t *req)
+esp_err_t WifiControlServerSensor::httpAlgorithmsOptionsHandler(httpd_req_t *req)
 {
     setHttpCommonHeaders(req);
     httpd_resp_set_status(req, "204 No Content");
@@ -640,25 +841,16 @@ esp_err_t WifiControlServerSensor::httpModeOptionsHandler(httpd_req_t *req)
 esp_err_t WifiControlServerSensor::httpStatusHandler(httpd_req_t *req)
 {
     auto *self = fromRequest(req);
-    char payload[192] = {0};
-    const bool serviceActive = self != nullptr && self->active_.load();
-    const bool vescActive = self != nullptr && self->_vescControllerApi.isActive();
-    const bool emergency = self != nullptr && self->emergency_.load();
-    const char *autonomousMode = self != nullptr ? self->_drivingModeSelector.modeString() : "FUSION";
-    const bool manualDriveEnabled = self != nullptr && self->isManualDriveEnabled();
-
-    std::snprintf(payload, sizeof(payload),
-                  "{\"ok\":true,\"service\":\"robocar_ctrl\",\"serviceActive\":%s,\"vescActive\":%s,"
-                  "\"emergency\":%s,\"autonomousMode\":\"%s\",\"manualDriveEnabled\":%s}",
-                  serviceActive ? "true" : "false",
-                  vescActive ? "true" : "false",
-                  emergency ? "true" : "false",
-                  autonomousMode,
-                  manualDriveEnabled ? "true" : "false");
+    const std::string payload = self != nullptr
+        ? self->buildStatusJson()
+        : std::string("{\"ok\":false,\"error\":\"missing_server_context\"}");
 
     httpd_resp_set_type(req, "application/json");
     setHttpCommonHeaders(req);
-    httpd_resp_sendstr(req, payload);
+    if (self == nullptr) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+    httpd_resp_sendstr(req, payload.c_str());
     return ESP_OK;
 }
 

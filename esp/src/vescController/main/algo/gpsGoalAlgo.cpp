@@ -87,7 +87,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
     if (distanceMeters <= this->goalReachedDistanceM) {
         output.target_speed = 0.0f;
-        output.target_steering = 0.0f;
+        output.target_steering = 0.5f;
         output.computed_weight = 1.0f;
         if (shouldLog) {
             ESP_LOGI(this->tag,
@@ -114,8 +114,6 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
             double DegreFromGoalMani = wrap180(desiredBearingDeg - mani_heading);
             ESP_LOGI(tag, "mani_heading to point %f, fixed %d, distance %.2f", DegreFromGoalMani, status.is_rtk_fixed, distanceMeters);
     
-            float maxSteeringDelta = 0.35f;
-
             if (DegreFromGoalMani > 35) {
                 output.target_steering = 1.0f;
             }
@@ -157,7 +155,9 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     const float normalizedError = clampf(static_cast<float>(errorDeg / 90.0), -1.0f, 1.0f);
 
     const float maxSteeringDelta = rtkFixed ? this->maxSteeringDeltaRtkFixed : this->maxSteeringDelta;
+    const float targetMaxSpeed = rtkFixed ? this->maxSpeedRtkFixed : this->maxSpeed;
     output.target_steering = clampf(0.5f + normalizedError * maxSteeringDelta, 0.0f, 1.0f);
+    output.target_speed = this->baseSpeed + (targetMaxSpeed - this->baseSpeed) * distanceScale;
     output.computed_weight = rtkFixed ? this->computedWeightRtkFixed : 1.0f;
 
     if (shouldLog) {

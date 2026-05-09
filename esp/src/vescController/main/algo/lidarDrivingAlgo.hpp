@@ -66,7 +66,7 @@ public:
     }
 
     float getPriority() override {
-        return GPS_WEIGHT;
+        return LIDAR_CORRIDOR_WEIGHT;
     }
 
 private:

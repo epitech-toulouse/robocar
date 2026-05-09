@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "api/driving_algorithm_interface.hpp"
+#include "manager/AlgorithmSelector.hpp"
 
 class AdvancedFusionEngine
 {
@@ -19,10 +20,16 @@ public:
     AdvancedFusionEngine() = default;
     ~AdvancedFusionEngine() = default;
 
-    void addDrivingAlgorithm(std::unique_ptr<DrivingAlgorithmApi> algorithm);
-    DrivingAlgorithmOutput computeOutput(void);
+    void addDrivingAlgorithm(SelectableAlgorithm id,
+                             std::unique_ptr<DrivingAlgorithmApi> algorithm);
+    DrivingAlgorithmOutput computeOutput(const AlgorithmSelector &selector);
 private:
-    std::vector<std::unique_ptr<DrivingAlgorithmApi>> driving_algorithms;
+    struct RegisteredAlgorithm {
+        SelectableAlgorithm id;
+        std::unique_ptr<DrivingAlgorithmApi> algorithm;
+    };
+
+    std::vector<RegisteredAlgorithm> driving_algorithms;
 };
 
 #endif /* ADVANCED_FUSION_ENGINE_HPP */
