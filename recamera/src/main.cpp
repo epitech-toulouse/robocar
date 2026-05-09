@@ -50,6 +50,10 @@ constexpr float kLaneBoundaryFallbackCenterFactor = 0.30f;
 constexpr float kLaneFallbackMaxSteerPercent = 60.0f;
 constexpr float kDefaultLaneWidthAt512 = 280.0f;
 constexpr float kLaneWeightBoundaryZonePercent = 0.35f;
+constexpr float kSingleLineCentralZonePercent = 0.25f;
+constexpr float kSingleLineWideRunPercent = 0.18f;
+constexpr float kRaycastMinScoreMarginPercent = 0.10f;
+constexpr int kRaycastRaysPerSide = 5;
 constexpr float kLaneMean[3] = {123.675f, 116.28f, 103.53f};
 constexpr float kLaneScale[3] = {0.01712475f, 0.01750700f, 0.01742919f};
 constexpr float kLaneMaskThreshold = 0.35f;
@@ -63,11 +67,12 @@ struct LoadedModel {
     int input_height = 0;
 };
 
-struct LaneDecision {
-    float steering_percent = 0.0f;
-    int weight = 0;
-    const char* status = "SEARCHING";
-};
+ struct LaneDecision {
+     float steering_percent = 0.0f;
+     int weight = 0;
+     const char* status = "SEARCHING";
+     bool confident = false;
+ };
 
 int min_centered_lane_rows(int height) {
     return std::max(kLaneMinCenteredRowsMin, static_cast<int>(height * kLaneMinCenteredRowsPercent));
@@ -696,6 +701,145 @@ struct LaneEvidence {
     int boundary_rows = 0;
 };
 
+struct SingleLineCandidate {
+    bool detected = false;
+    int lane_rows = 0;
+    int single_run_rows = 0;
+    int multi_run_rows = 0;
+    int centered_single_run_rows = 0;
+    int wide_single_run_rows = 0;
+};
+
+struct RaycastDecision {
+    bool has_preference = false;
+    bool blocked = false;
+    int left_score = 0;
+    int right_score = 0;
+};
+
+SingleLineCandidate analyze_single_line_candidate(const std::vector<uint8_t>& mask, int width, int height) {
+    SingleLineCandidate candidate;
+    const int y0 = static_cast<int>(height * 0.4f);
+    const int min_run_width = std::max(2, static_cast<int>(width * 8.0f / 512.0f));
+    const int wide_run_width = std::max(min_run_width, static_cast<int>(width * kSingleLineWideRunPercent));
+    const float left_central_limit = width * kSingleLineCentralZonePercent;
+    const float right_central_limit = width * (1.0f - kSingleLineCentralZonePercent);
+    for (int y = y0; y < height; ++y) {
+        int filtered_run_count = 0;
+        int longest_run = 0;
+        int longest_run_start = -1;
+        int run_start = -1;
+        for (int x = 0; x < width; ++x) {
+            if (mask_get(mask, width, x, y)) {
+                if (run_start < 0) {
+                    run_start = x;
+                }
+                continue;
+            }
+            if (run_start >= 0) {
+                const int run_width = x - run_start;
+                if (run_width >= min_run_width) {
+                    ++filtered_run_count;
+                    if (run_width > longest_run) {
+                        longest_run = run_width;
+                        longest_run_start = run_start;
+                    }
+                }
+                run_start = -1;
+            }
+        }
+        if (run_start >= 0) {
+            const int run_width = width - run_start;
+            if (run_width >= min_run_width) {
+                ++filtered_run_count;
+                if (run_width > longest_run) {
+                    longest_run = run_width;
+                    longest_run_start = run_start;
+                }
+            }
+        }
+        if (filtered_run_count == 0) {
+            continue;
+        }
+
+        ++candidate.lane_rows;
+        if (filtered_run_count == 1) {
+            ++candidate.single_run_rows;
+            const float run_center = longest_run_start + longest_run / 2.0f;
+            if (run_center >= left_central_limit && run_center <= right_central_limit) {
+                ++candidate.centered_single_run_rows;
+            }
+            if (longest_run >= wide_run_width) {
+                ++candidate.wide_single_run_rows;
+            }
+        } else {
+            ++candidate.multi_run_rows;
+        }
+    }
+
+    const int min_single_rows = std::max(3, static_cast<int>((height - y0) * 0.08f));
+    candidate.detected = candidate.lane_rows >= min_single_rows &&
+                         candidate.single_run_rows >= min_single_rows &&
+                         candidate.single_run_rows > candidate.multi_run_rows &&
+                         candidate.centered_single_run_rows >= std::max(2, min_single_rows - 1) &&
+                         candidate.wide_single_run_rows >= std::max(2, min_single_rows - 1);
+    return candidate;
+}
+
+int trace_raycast_clearance(const std::vector<uint8_t>& mask,
+                            int width,
+                            int height,
+                            int start_x,
+                            int start_y,
+                            int end_x,
+                            int end_y) {
+    const int dx = end_x - start_x;
+    const int dy = end_y - start_y;
+    const int steps = std::max(std::abs(dx), std::abs(dy));
+    if (steps <= 0) {
+        return 0;
+    }
+
+    for (int step = 1; step <= steps; ++step) {
+        const float t = static_cast<float>(step) / static_cast<float>(steps);
+        const int x = std::clamp(static_cast<int>(std::lround(start_x + dx * t)), 0, width - 1);
+        const int y = std::clamp(static_cast<int>(std::lround(start_y + dy * t)), 0, height - 1);
+        if (mask_get(mask, width, x, y)) {
+            return step;
+        }
+    }
+
+    return steps;
+}
+
+RaycastDecision choose_raycast_turn(const std::vector<uint8_t>& mask, int width, int height) {
+    RaycastDecision decision;
+    const int start_x = width / 2;
+    const int start_y = height - 2;
+    const int top_y = static_cast<int>(height * 0.35f);
+    const int side_y = static_cast<int>(height * 0.55f);
+    const int left_inner_x = static_cast<int>(width * 0.18f);
+    const int right_inner_x = static_cast<int>(width * 0.82f);
+
+    for (int i = 0; i < kRaycastRaysPerSide; ++i) {
+        const float blend = (kRaycastRaysPerSide == 1) ? 0.0f : static_cast<float>(i) / (kRaycastRaysPerSide - 1);
+        const int left_target_x = static_cast<int>(std::lround(left_inner_x * (1.0f - blend)));
+        const int right_target_x =
+            static_cast<int>(std::lround((width - 1) * blend + right_inner_x * (1.0f - blend)));
+        const int target_y = static_cast<int>(std::lround(top_y * blend + side_y * (1.0f - blend)));
+        decision.left_score += trace_raycast_clearance(mask, width, height, start_x, start_y, left_target_x, target_y);
+        decision.right_score +=
+            trace_raycast_clearance(mask, width, height, start_x, start_y, right_target_x, target_y);
+    }
+
+    const int best_score = std::max(decision.left_score, decision.right_score);
+    const int score_margin = std::abs(decision.left_score - decision.right_score);
+    const int min_margin = std::max(2, static_cast<int>(best_score * kRaycastMinScoreMarginPercent));
+    decision.blocked = best_score <= kRaycastRaysPerSide * 3;
+    decision.has_preference = !decision.blocked && score_margin >= min_margin;
+    return decision;
+}
+
 LaneMaskStats analyze_lane_mask(const std::vector<uint8_t>& mask, int width, int height) {
     LaneMaskStats stats;
     stats.total_pixels = width * height;
@@ -978,26 +1122,25 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
 
     float target_x = static_cast<float>(mid_x);
     if (barricaded) {
-        int left_mass = 0;
-        int right_mass = 0;
-        const int y0 = static_cast<int>(height * 0.1f);
-        const int y1 = static_cast<int>(height * 0.5f);
-        for (int y = y0; y < y1; ++y) {
-            for (int x = 0; x < mid_x; ++x) {
-                left_mass += mask_get(mask, width, x, y) ? 1 : 0;
-            }
-            for (int x = mid_x; x < width; ++x) {
-                right_mass += mask_get(mask, width, x, y) ? 1 : 0;
-            }
+        const RaycastDecision raycast = choose_raycast_turn(mask, width, height);
+        if (raycast.left_score > raycast.right_score) {
+            decision.steering_percent = -100.0f;
+            decision.status = "BARRICADE_LEFT";
+        } else if (raycast.right_score > raycast.left_score) {
+            decision.steering_percent = 100.0f;
+            decision.status = "BARRICADE_RIGHT";
+        } else {
+            decision.steering_percent = 100.0f;
+            decision.status = "BARRICADE_EVASIVE_RIGHT";
         }
-        decision.steering_percent = (left_mass > right_mass) ? -100.0f : 100.0f;
-        decision.status = "BARRICADE";
+        decision.confident = true;
         return decision;
     }
 
     if (lx >= 0 && rx >= 0 && found_y >= 0) {
         target_x = static_cast<float>((lx + rx) / 2);
         decision.status = "CENTERED";
+        decision.confident = true;
     } else {
         long long sum_x = 0;
         int count = 0;
@@ -1008,6 +1151,22 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
                     sum_x += x;
                     ++count;
                 }
+            }
+        }
+
+        const SingleLineCandidate single_line = analyze_single_line_candidate(mask, width, height);
+        if (single_line.detected) {
+            const RaycastDecision raycast = choose_raycast_turn(mask, width, height);
+            if (raycast.has_preference) {
+                decision.steering_percent = (raycast.left_score > raycast.right_score) ? -100.0f : 100.0f;
+                decision.status = (raycast.left_score > raycast.right_score) ? "RAYCAST_LEFT" : "RAYCAST_RIGHT";
+                decision.confident = true;
+                return decision;
+            }
+            if (raycast.blocked) {
+                decision.steering_percent = 0.0f;
+                decision.status = "RAYCAST_BLOCKED";
+                return decision;
             }
         }
 
@@ -1038,6 +1197,7 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
 
             decision.steering_percent =
                 std::clamp(deviation * kLaneFallbackScale, -kLaneFallbackMaxSteerPercent, kLaneFallbackMaxSteerPercent);
+            decision.confident = true;
             return decision;
         }
 
@@ -1105,11 +1265,7 @@ bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) 
     const LaneMaskStats stats = analyze_lane_mask(lane_mask, mask_width, mask_height);
     const LaneEvidence evidence = analyze_lane_evidence(lane_mask, mask_width, mask_height);
     *decision = decide_lane(lane_mask, mask_width, mask_height);
-    const int min_centered_rows = min_centered_lane_rows(mask_height);
-    decision->weight = (evidence.barricaded ||
-                        evidence.max_consecutive_valid_rows >= min_centered_rows)
-                           ? 1
-                           : 0;
+    decision->weight = decision->confident ? 1 : 0;
     printf("[LANE_TICK] mask=%dx%d lane_pixels=%d/%d bottom=%d valid_rows=%d first_valid_y=%d decision=%s steer=%+.1f weight=%d barricade=%d max_valid_run=%d boundary_rows=%d lane_rows=%d\n",
            mask_width,
            mask_height,
