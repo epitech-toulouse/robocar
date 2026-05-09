@@ -27,7 +27,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 {
     output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
     const TickType_t now = xTaskGetTickCount();
-    const bool shouldLog = true;//(now - this->lastLogTick) >= this->logPeriodTicks;
+    const bool shouldLog = (now - this->lastLogTick) >= this->logPeriodTicks;
 
     GpsPosition position{};
     GpsHeading heading{};
@@ -58,7 +58,12 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
     ////// MANI HEADING COMPUTATION //////////////////////////////////
     double mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
-    ESP_LOGI(tag, "Comparing Index %04d with Index %04d | Bearing : %f", gps_index, (gps_index + 1) % GPS_POS_BUFFER_SIZE, mani_heading);
+    if (shouldLog) {
+        ESP_LOGI(tag, "Comparing Index %04d with Index %04d | Bearing : %f",
+                 gps_index,
+                 (gps_index + 1) % GPS_POS_BUFFER_SIZE,
+                 mani_heading);
+    }
 
     gps_positions[gps_index].latitude = position.latitude;
     gps_positions[gps_index].longitude = position.longitude;
@@ -105,6 +110,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     }
 
     const bool headingValid = this->gps.getHeading(heading);
+    (void)headingValid;
 
     
     ///////////////////// HEADING UNAVAILABLE CASE - FALLBACK TO MANI HEADING /////////////////////
@@ -113,7 +119,13 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
             const float maxSteeringDelta2 = this->maxSteeringDelta;
             output.target_steering = 0.5;
             double DegreFromGoalMani = wrap180(desiredBearingDeg - mani_heading);
-            ESP_LOGI(tag, "heading to point %f, fixed %d, distance %.2f", DegreFromGoalMani, status.is_rtk_fixed, distanceMeters);
+            if (shouldLog) {
+                ESP_LOGI(tag,
+                         "heading to point %f, fixed %d, distance %.2f",
+                         DegreFromGoalMani,
+                         status.is_rtk_fixed,
+                         distanceMeters);
+            }
     
             if (DegreFromGoalMani > 35) {
                 output.target_steering = 1.0f;

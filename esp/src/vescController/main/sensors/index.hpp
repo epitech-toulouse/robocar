@@ -760,6 +760,8 @@ static const char *INDEX_HTML = R"HTML(
         let logsTimer = null;
         let algorithmEntries = {};
         let selectedAlgorithms = new Set(['manual', 'close_obstacle', 'lidar_corridor']);
+        const maxVisibleLogLines = 200;
+        const visibleLogLines = [];
 
         function isFs() {
             return !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -876,7 +878,11 @@ static const char *INDEX_HTML = R"HTML(
 
         function log(msg) {
             const t = new Date().toLocaleTimeString();
-            logEl.innerHTML += '[' + t + '] ' + msg + '<br>';
+            visibleLogLines.push('[' + t + '] ' + msg);
+            while (visibleLogLines.length > maxVisibleLogLines) {
+                visibleLogLines.shift();
+            }
+            logEl.innerHTML = visibleLogLines.join('<br>') + '<br>';
             logEl.scrollTop = logEl.scrollHeight;
         }
 
@@ -1029,7 +1035,11 @@ static const char *INDEX_HTML = R"HTML(
 
         document.getElementById('connect').addEventListener('click', connect);
         document.getElementById('disconnect').addEventListener('click', disconnect);
-        document.getElementById('clearLog').addEventListener('click', () => { logEl.innerHTML = ''; log('Pret'); });
+        document.getElementById('clearLog').addEventListener('click', () => {
+            visibleLogLines.length = 0;
+            logEl.innerHTML = '';
+            log('Pret');
+        });
         document.getElementById('refreshStatus').addEventListener('click', () => readStatus().then(() => log('Statut actualisé')).catch((e) => log('Statut indisponible : ' + (e.message || e))));
         armBtn.addEventListener('click', () => send('A', 'VESC activé'));
         algorithmCheckboxes.forEach((checkbox) => {

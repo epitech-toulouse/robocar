@@ -19,6 +19,8 @@ void AdvancedFusionEngine::addDrivingAlgorithm
 DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(const AlgorithmSelector &selector)
 {
     std::vector<DrivingAlgorithmOutput> outputs;
+    const TickType_t now = xTaskGetTickCount();
+    const bool shouldLog = (now - this->lastLogTick) >= this->logPeriodTicks;
 
     outputs.reserve(this->driving_algorithms.size());
     for (RegisteredAlgorithm &registered_algorithm : this->driving_algorithms) {
@@ -32,8 +34,14 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(const AlgorithmSelect
         DrivingAlgorithmOutput output;
         if (!driving_algo->compute(output))
             continue;
-        ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
-                 driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);
+        if (shouldLog) {
+            ESP_LOGI("AdvancedFusionEngine",
+                     "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
+                     driving_algo.get(),
+                     output.target_speed,
+                     output.target_steering,
+                     output.computed_weight);
+        }
 
         float coef = priority * output.computed_weight;
         // Offset to allow computations
@@ -54,11 +62,17 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(const AlgorithmSelect
         final_output.computed_weight += output.computed_weight;
     }
     if (final_output.computed_weight <= 0.0) {
+        if (shouldLog) {
+            this->lastLogTick = now;
+        }
         return {0.0, 0.5, 0.0}; // Return null output
     }
     final_output.target_speed /= final_output.computed_weight;
     final_output.target_steering /= final_output.computed_weight;
     // Offset back
     final_output.target_steering += 0.5;
+    if (shouldLog) {
+        this->lastLogTick = now;
+    }
     return final_output;
 }
