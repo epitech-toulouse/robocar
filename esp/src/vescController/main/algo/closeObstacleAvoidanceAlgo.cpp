@@ -130,7 +130,7 @@ bool CloseObstacleAvoidanceAlgo::compute(DrivingAlgorithmOutput &output) {
         
         output.target_speed = SPEED_REVERSE;
         output.target_steering = map_auto_steer(reverseSteer);
-        output.computed_weight = 1.0f;
+        output.computed_weight = 10.0f;
         return true;
     }
     if (escapeUntil != 0 && now >= reverseUntil && now < escapeUntil) {
@@ -159,7 +159,7 @@ bool CloseObstacleAvoidanceAlgo::compute(DrivingAlgorithmOutput &output) {
         
         output.target_speed = SPEED_REVERSE;
         output.target_steering = map_auto_steer(reverseSteer);
-        output.computed_weight = 1.0f;
+        output.computed_weight = 10.0f;
         return true;
     }
 
