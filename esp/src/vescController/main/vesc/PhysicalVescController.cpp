@@ -40,7 +40,7 @@ void PhysicalVescController::set_speed(float speed) {
              this->active ? "X" : " ",
              coupe_circuit_connected ? "X" : " ");
     // (this->active && coupe_circuit_connected) {
-    if (true) {
+    if (this->active && coupe_circuit_connected) {
     speed = speed > VESC_MAX_MOTOR_SPEED ? VESC_MAX_MOTOR_SPEED : speed;
       if (speed < -VESC_MAX_MOTOR_SPEED)
         speed = -VESC_MAX_MOTOR_SPEED;

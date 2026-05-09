@@ -34,12 +34,12 @@ static uint32_t const GPS_UART_BAUDRATE = 460800;
 static gpio_num_t const COUPE_CIRCUIT_PIN = GPIO_NUM_36;
 static gpio_num_t const COUPE_CIRCUIT_GND_PIN = GPIO_NUM_35;
 
-static float const AVOID_DISTANCE_M = 1.00f;
+static float const AVOID_DISTANCE_M = 1.50f;
 
 /* WEIGHTS */
 static float const MANUAL_WEIGHT = 100.0;
-static float const LIDAR_AVOIDANCE_WEIGHT = 100.0;
-static float const LIDAR_CORRIDOR_WEIGHT = 5.0;
+static float const LIDAR_AVOIDANCE_WEIGHT = 10.0;
+static float const LIDAR_CORRIDOR_WEIGHT = 2.0;
 static float const CAMEDAR_WEIGHT = 5.0;
 static float const GPS_WEIGHT = 1.0;
 
