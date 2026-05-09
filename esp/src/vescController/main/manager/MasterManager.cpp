@@ -31,7 +31,7 @@ MasterManager::MasterManager()
     // this->user_controller_api = std::make_unique<WifiControlServerSensor>(
     //     *this->vesc_controller_api,
     //     this->driving_mode_selector);
-    // this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>();
+    this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>();
     this->vesc_controller_api->activate();
 
     this->fusionEngine.addDrivingAlgorithm(std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
