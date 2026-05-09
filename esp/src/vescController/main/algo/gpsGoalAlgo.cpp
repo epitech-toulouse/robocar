@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "api/gps_sensor_api.hpp"
+#include "config.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -177,7 +178,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
 float GpsGoalAlgo::getPriority()
 {
-    return 1.0f;
+    return GPS_WEIGHT;
 }
 
 float GpsGoalAlgo::clampf(float value, float lo, float hi)

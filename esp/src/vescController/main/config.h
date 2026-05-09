@@ -36,4 +36,11 @@ static gpio_num_t const COUPE_CIRCUIT_GND_PIN = GPIO_NUM_35;
 
 static float const AVOID_DISTANCE_M = 0.60f;
 
+/* WEIGHTS */
+static float const MANUAL_WEIGHT = 100.0;
+static float const LIDAR_AVOIDANCE_WEIGHT = 100.0;
+static float const LIDAR_CORRIDOR_WEIGHT = 5.0;
+static float const CAMEDAR_WEIGHT = 5.0;
+static float const GPS_WEIGHT = 1.0;
+
 #endif /* CONFIG_H */

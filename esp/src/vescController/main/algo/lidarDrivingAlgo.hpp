@@ -5,6 +5,7 @@
 #include "api/lidar_sensor_api.hpp"
 #include <esp_log.h>
 #include "algo/corridorLidar/drive.hpp"
+#include "config.h"
 
 #include <vector>
 
@@ -65,7 +66,7 @@ public:
     }
 
     float getPriority() override {
-        return 1.0f;
+        return GPS_WEIGHT;
     }
 
 private:

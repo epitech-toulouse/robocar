@@ -183,5 +183,5 @@ bool CloseObstacleAvoidanceAlgo::compute(DrivingAlgorithmOutput &output) {
 }
 
 float CloseObstacleAvoidanceAlgo::getPriority() {
-    return 5.0f;
+    return LIDAR_AVOIDANCE_WEIGHT;
 }
