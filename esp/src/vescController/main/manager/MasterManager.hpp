@@ -17,6 +17,7 @@
 #include "api/user_controller_api.hpp"
 #include "api/vesc_controller_api.hpp"
 #include "CoupeCircuitManager.hpp"
+#include "gps/gpsGoalState.hpp"
 
 class MasterManager {
 public:
@@ -28,6 +29,7 @@ public:
 private:
     AdvancedFusionEngine fusionEngine;
     AlgorithmSelector algorithm_selector;
+    GpsGoalState gps_goal_state_{43.610382, 1.431465, true};
     std::unique_ptr<GpsSensorApi> gps_sensor_api = nullptr;
     std::unique_ptr<LidarSensorApi> lidar_sensor_api = nullptr;
     std::unique_ptr<VescControllerApi> vesc_controller_api = nullptr;

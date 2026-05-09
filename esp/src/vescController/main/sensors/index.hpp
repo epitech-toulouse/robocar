@@ -40,11 +40,18 @@ static const char *INDEX_HTML = R"HTML(
 
         body {
             min-height: 100dvh;
-            overflow: hidden;
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         button, input {
             font: inherit;
+        }
+
+        input {
+            -webkit-user-select: text;
+            user-select: text;
+            touch-action: auto;
         }
 
         button {
@@ -275,7 +282,8 @@ static const char *INDEX_HTML = R"HTML(
             gap: .75rem;
             border-radius: .75rem;
             padding: .8rem;
-            overflow: hidden;
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         .stop {
@@ -338,6 +346,76 @@ static const char *INDEX_HTML = R"HTML(
         }
 
         .algo-hint {
+            color: var(--muted);
+            font-size: .74rem;
+            line-height: 1.35;
+        }
+
+        .gps-panel {
+            display: grid;
+            gap: .55rem;
+            padding: .7rem;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: .65rem;
+            background: rgba(255,255,255,.03);
+        }
+
+        .gps-copy {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: .5rem;
+            flex-wrap: wrap;
+        }
+
+        .gps-title {
+            font-size: .82rem;
+            font-weight: 800;
+        }
+
+        .gps-current {
+            color: var(--muted);
+            font-size: .72rem;
+            font-weight: 700;
+        }
+
+        .gps-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: .5rem;
+        }
+
+        .gps-field {
+            display: grid;
+            gap: .28rem;
+            min-width: 0;
+        }
+
+        .gps-field span {
+            color: var(--muted);
+            font-size: .72rem;
+            font-weight: 750;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+        }
+
+        .gps-field input {
+            width: 100%;
+            min-width: 0;
+            min-height: 2.35rem;
+            padding: .55rem .65rem;
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: .55rem;
+            background: rgba(0,0,0,.2);
+            color: var(--text);
+        }
+
+        .gps-field input:disabled {
+            opacity: .65;
+            cursor: not-allowed;
+        }
+
+        .gps-help {
             color: var(--muted);
             font-size: .74rem;
             line-height: 1.35;
@@ -626,6 +704,10 @@ static const char *INDEX_HTML = R"HTML(
             .actions .btn-primary {
                 grid-column: auto;
             }
+
+            .gps-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -710,6 +792,24 @@ static const char *INDEX_HTML = R"HTML(
                     </div>
                     <div id="algoHint" class="algo-hint">Actifs : Manual + Close obstacle + Corridor LiDAR</div>
                 </section>
+                <section class="gps-panel" aria-label="Destination GPS">
+                    <div class="gps-copy">
+                        <span class="gps-title">Destination GPS</span>
+                        <span id="gpsGoalCurrent" class="gps-current">Actuelle : inconnue</span>
+                    </div>
+                    <div class="gps-grid">
+                        <label class="gps-field" for="gpsGoalLat">
+                            <span>Latitude</span>
+                            <input id="gpsGoalLat" type="text" inputmode="decimal" placeholder="43.612139" autocomplete="off" spellcheck="false" />
+                        </label>
+                        <label class="gps-field" for="gpsGoalLon">
+                            <span>Longitude</span>
+                            <input id="gpsGoalLon" type="text" inputmode="decimal" placeholder="1.430194" autocomplete="off" spellcheck="false" />
+                        </label>
+                    </div>
+                    <div class="gps-help">Format attendu : degres decimaux signes avec un point (.). Exemples : 43.612139 et 1.430194</div>
+                    <button id="gpsGoalApply" class="btn">Appliquer destination GPS</button>
+                </section>
                 <div class="log-panel">
                     <div class="log-tools">
                         <span>Journal</span>
@@ -744,6 +844,10 @@ static const char *INDEX_HTML = R"HTML(
         const armBtn = document.getElementById('arm');
         const algoCount = document.getElementById('algoCount');
         const algoHint = document.getElementById('algoHint');
+        const gpsGoalCurrent = document.getElementById('gpsGoalCurrent');
+        const gpsGoalLatInput = document.getElementById('gpsGoalLat');
+        const gpsGoalLonInput = document.getElementById('gpsGoalLon');
+        const gpsGoalApplyBtn = document.getElementById('gpsGoalApply');
         const algorithmCheckboxes = Array.from(document.querySelectorAll('[data-algo]'));
         const driveButtons = ['f', 'b', 'l', 'r'].map((id) => document.getElementById(id));
         const algorithmLabels = {
@@ -759,6 +863,7 @@ static const char *INDEX_HTML = R"HTML(
         let logsSince = 0;
         let logsTimer = null;
         let algorithmEntries = {};
+        let gpsGoal = { lat: null, lon: null, enabled: true };
         let selectedAlgorithms = new Set(['manual', 'close_obstacle', 'lidar_corridor']);
         const maxVisibleLogLines = 200;
         const visibleLogLines = [];
@@ -805,6 +910,33 @@ static const char *INDEX_HTML = R"HTML(
             }
         }
 
+        function applyGpsGoalPayload(data) {
+            if (!data || !data.gpsGoal) return;
+            const lat = Number(data.gpsGoal.lat);
+            const lon = Number(data.gpsGoal.lon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+            gpsGoal = {
+                lat,
+                lon,
+                enabled: data.gpsGoal.enabled !== false,
+            };
+        }
+
+        function formatCoord(value) {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return '?';
+            return n.toFixed(6);
+        }
+
+        function syncGpsGoalInputs() {
+            if (document.activeElement !== gpsGoalLatInput) {
+                gpsGoalLatInput.value = Number.isFinite(gpsGoal.lat) ? String(gpsGoal.lat) : '';
+            }
+            if (document.activeElement !== gpsGoalLonInput) {
+                gpsGoalLonInput.value = Number.isFinite(gpsGoal.lon) ? String(gpsGoal.lon) : '';
+            }
+        }
+
         function selectedAlgorithmLabels() {
             const labels = [];
             for (const id of selectedAlgorithms) {
@@ -833,6 +965,13 @@ static const char *INDEX_HTML = R"HTML(
             algoHint.textContent = activeLabels.length === 0
                 ? 'Aucun algo actif : sortie nulle, la voiture s arrete.'
                 : 'Actifs : ' + activeLabels.join(' + ');
+
+            gpsGoalCurrent.textContent = (Number.isFinite(gpsGoal.lat) && Number.isFinite(gpsGoal.lon))
+                ? ('Actuelle : ' + formatCoord(gpsGoal.lat) + ', ' + formatCoord(gpsGoal.lon))
+                : 'Actuelle : inconnue';
+            gpsGoalLatInput.disabled = !connected;
+            gpsGoalLonInput.disabled = !connected;
+            gpsGoalApplyBtn.disabled = !connected;
 
             for (const checkbox of algorithmCheckboxes) {
                 const id = checkbox.dataset.algo;
@@ -892,12 +1031,28 @@ static const char *INDEX_HTML = R"HTML(
             return r.text();
         }
 
+        async function apiJson(path) {
+            const r = await fetch(path, { method: 'GET', cache: 'no-store' });
+            const text = await r.text();
+            let data = null;
+            try {
+                data = text ? JSON.parse(text) : null;
+            } catch (_) {
+                data = null;
+            }
+            if (!r.ok) {
+                throw new Error((data && data.error) ? data.error : ('HTTP ' + r.status));
+            }
+            return data;
+        }
+
         async function readStatus() {
-            const text = await apiText('/status');
-            const data = JSON.parse(text);
+            const data = await apiJson('/status');
             connected = true;
             vescActive = !!data.vescActive;
             applyAlgorithmPayload(data);
+            applyGpsGoalPayload(data);
+            syncGpsGoalInputs();
             renderState();
             return data;
         }
@@ -972,8 +1127,7 @@ static const char *INDEX_HTML = R"HTML(
                 return false;
             }
             try {
-                const text = await apiText('/algorithms?selected=' + encodeURIComponent(nextSelected.join(',')));
-                const data = JSON.parse(text);
+                const data = await apiJson('/algorithms?selected=' + encodeURIComponent(nextSelected.join(',')));
                 applyAlgorithmPayload(data);
                 renderState();
                 log('Algorithmes : ' + (nextSelected.length ? nextSelected.join(', ') : 'aucun'));
@@ -992,7 +1146,7 @@ static const char *INDEX_HTML = R"HTML(
                 return false;
             }
             try {
-                await apiText('/cmd?c=' + encodeURIComponent(c));
+                await apiJson('/cmd?c=' + encodeURIComponent(c));
                 if (c === 'A') vescActive = true;
                 if (c === 'S') vescActive = false;
                 renderState();
@@ -1000,6 +1154,32 @@ static const char *INDEX_HTML = R"HTML(
                 return true;
             } catch (e) {
                 log('Erreur : ' + (e.message || e));
+                return false;
+            }
+        }
+
+        async function updateGpsGoal() {
+            if (!connected) {
+                log('Non connecté');
+                return false;
+            }
+
+            const lat = gpsGoalLatInput.value.trim();
+            const lon = gpsGoalLonInput.value.trim();
+            if (!lat || !lon) {
+                log('Coordonnées GPS manquantes');
+                return false;
+            }
+
+            try {
+                const data = await apiJson('/gps-goal?lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lon));
+                applyGpsGoalPayload(data);
+                syncGpsGoalInputs();
+                renderState();
+                log('Destination GPS : ' + formatCoord(gpsGoal.lat) + ', ' + formatCoord(gpsGoal.lon));
+                return true;
+            } catch (e) {
+                log('Erreur destination GPS : ' + (e.message || e));
                 return false;
             }
         }
@@ -1042,6 +1222,7 @@ static const char *INDEX_HTML = R"HTML(
         });
         document.getElementById('refreshStatus').addEventListener('click', () => readStatus().then(() => log('Statut actualisé')).catch((e) => log('Statut indisponible : ' + (e.message || e))));
         armBtn.addEventListener('click', () => send('A', 'VESC activé'));
+        gpsGoalApplyBtn.addEventListener('click', updateGpsGoal);
         algorithmCheckboxes.forEach((checkbox) => {
             checkbox.addEventListener('change', () => {
                 const nextSelected = getSelectedAlgorithmsFromUi();

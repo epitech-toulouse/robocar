@@ -1,6 +1,7 @@
 #include "wifiControlServerSensor.hpp"
 #include "index.hpp"
 
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -288,6 +289,29 @@ static void append_algorithm_object_json(std::string &payload,
     payload += "}";
 }
 
+static void append_gps_goal_json(std::string &payload, const GpsGoalSnapshot &goal)
+{
+    payload += "{";
+    payload += "\"lat\":";
+    payload += std::to_string(goal.lat);
+    payload += ",\"lon\":";
+    payload += std::to_string(goal.lon);
+    payload += ",\"enabled\":";
+    append_json_bool(payload, goal.enabled);
+    payload += "}";
+}
+
+static bool parse_strict_double(const char *value, double &out)
+{
+    if (value == nullptr || value[0] == '\0') {
+        return false;
+    }
+
+    char *end = nullptr;
+    out = std::strtod(value, &end);
+    return end != value && end != nullptr && *end == '\0' && std::isfinite(out);
+}
+
 void WifiControlServerSensor::setHttpCommonHeaders(httpd_req_t *req)
 {
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
@@ -383,7 +407,7 @@ std::string WifiControlServerSensor::buildAlgorithmsJson(bool includeStatusEnvel
 std::string WifiControlServerSensor::buildStatusJson() const
 {
     std::string payload;
-    payload.reserve(896);
+    payload.reserve(1024);
 
     payload += "{\"ok\":true,\"service\":\"robocar_ctrl\",\"serviceActive\":";
     append_json_bool(payload, this->active_.load());
@@ -395,6 +419,8 @@ std::string WifiControlServerSensor::buildStatusJson() const
     append_json_bool(payload, this->isManualDriveEnabled());
     payload += ",\"selectedAlgorithms\":";
     append_selected_algorithms_json(payload, this->_algorithmSelector.getSelectedMask());
+    payload += ",\"gpsGoal\":";
+    append_gps_goal_json(payload, this->_gpsGoalState.get());
     payload += ",\"algorithms\":[";
     bool first = true;
     for (const AlgorithmDescriptor &descriptor : kSelectableAlgorithms) {
@@ -408,6 +434,22 @@ std::string WifiControlServerSensor::buildStatusJson() const
                                      this->isAlgorithmAvailable(descriptor.id));
     }
     payload += "]}";
+    return payload;
+}
+
+std::string WifiControlServerSensor::buildGpsGoalJson(bool includeStatusEnvelope) const
+{
+    std::string payload;
+    payload.reserve(128);
+
+    payload += "{\"ok\":true";
+    if (includeStatusEnvelope) {
+        payload += ",\"serviceActive\":";
+        append_json_bool(payload, this->active_.load());
+    }
+    payload += ",\"gpsGoal\":";
+    append_gps_goal_json(payload, this->_gpsGoalState.get());
+    payload += "}";
     return payload;
 }
 
@@ -631,20 +673,24 @@ void WifiControlServerSensor::startHttpServer()
     httpd_uri_t cmd_uri = {.uri = "/cmd", .method = HTTP_GET, .handler = httpCmdHandler, .user_ctx = this};
     httpd_uri_t logs_uri = {.uri = "/logs", .method = HTTP_GET, .handler = httpLogsHandler, .user_ctx = this};
     httpd_uri_t algorithms_uri = {.uri = "/algorithms", .method = HTTP_GET, .handler = httpAlgorithmsHandler, .user_ctx = this};
+    httpd_uri_t gps_goal_uri = {.uri = "/gps-goal", .method = HTTP_GET, .handler = httpGpsGoalHandler, .user_ctx = this};
     httpd_uri_t status_uri = {.uri = "/status", .method = HTTP_GET, .handler = httpStatusHandler, .user_ctx = this};
     httpd_uri_t cmd_options_uri = {.uri = "/cmd", .method = HTTP_OPTIONS, .handler = httpCmdOptionsHandler, .user_ctx = this};
     httpd_uri_t logs_options_uri = {.uri = "/logs", .method = HTTP_OPTIONS, .handler = httpLogsOptionsHandler, .user_ctx = this};
     httpd_uri_t algorithms_options_uri = {.uri = "/algorithms", .method = HTTP_OPTIONS, .handler = httpAlgorithmsOptionsHandler, .user_ctx = this};
+    httpd_uri_t gps_goal_options_uri = {.uri = "/gps-goal", .method = HTTP_OPTIONS, .handler = httpGpsGoalOptionsHandler, .user_ctx = this};
     httpd_uri_t status_options_uri = {.uri = "/status", .method = HTTP_OPTIONS, .handler = httpStatusOptionsHandler, .user_ctx = this};
 
     httpd_register_uri_handler(server, &root_uri);
     httpd_register_uri_handler(server, &cmd_uri);
     httpd_register_uri_handler(server, &logs_uri);
     httpd_register_uri_handler(server, &algorithms_uri);
+    httpd_register_uri_handler(server, &gps_goal_uri);
     httpd_register_uri_handler(server, &status_uri);
     httpd_register_uri_handler(server, &cmd_options_uri);
     httpd_register_uri_handler(server, &logs_options_uri);
     httpd_register_uri_handler(server, &algorithms_options_uri);
+    httpd_register_uri_handler(server, &gps_goal_options_uri);
     httpd_register_uri_handler(server, &status_options_uri);
     ESP_LOGI(TAG, "HTTP control API listening on port %d", CONTROL_HTTP_PORT);
 }
@@ -876,6 +922,92 @@ esp_err_t WifiControlServerSensor::httpAlgorithmsHandler(httpd_req_t *req)
 }
 
 esp_err_t WifiControlServerSensor::httpAlgorithmsOptionsHandler(httpd_req_t *req)
+{
+    setHttpCommonHeaders(req);
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_send(req, nullptr, 0);
+    return ESP_OK;
+}
+
+esp_err_t WifiControlServerSensor::httpGpsGoalHandler(httpd_req_t *req)
+{
+    auto *self = fromRequest(req);
+    char query[160] = {0};
+    char latValue[32] = {0};
+    char lonValue[32] = {0};
+
+    if (self == nullptr) {
+        httpd_resp_set_type(req, "application/json");
+        setHttpCommonHeaders(req);
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_server_context\"}");
+        return ESP_OK;
+    }
+
+    if (httpd_req_get_url_query_len(req) > 0 &&
+        httpd_req_get_url_query_len(req) < static_cast<int>(sizeof(query))) {
+        httpd_req_get_url_query_str(req, query, sizeof(query));
+
+        const bool hasLat = httpd_query_key_value(query, "lat", latValue, sizeof(latValue)) == ESP_OK;
+        const bool hasLon = httpd_query_key_value(query, "lon", lonValue, sizeof(lonValue)) == ESP_OK;
+
+        if (hasLat || hasLon) {
+            if (!hasLat || !hasLon) {
+                httpd_resp_set_type(req, "application/json");
+                setHttpCommonHeaders(req);
+                httpd_resp_set_status(req, "400 Bad Request");
+                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_lat_or_lon\"}");
+                return ESP_OK;
+            }
+
+            double lat = 0.0;
+            double lon = 0.0;
+            if (!parse_strict_double(latValue, lat)) {
+                httpd_resp_set_type(req, "application/json");
+                setHttpCommonHeaders(req);
+                httpd_resp_set_status(req, "400 Bad Request");
+                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid_latitude_format\"}");
+                return ESP_OK;
+            }
+            if (!parse_strict_double(lonValue, lon)) {
+                httpd_resp_set_type(req, "application/json");
+                setHttpCommonHeaders(req);
+                httpd_resp_set_status(req, "400 Bad Request");
+                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid_longitude_format\"}");
+                return ESP_OK;
+            }
+            if (!GpsGoalState::isValidLatitude(lat)) {
+                httpd_resp_set_type(req, "application/json");
+                setHttpCommonHeaders(req);
+                httpd_resp_set_status(req, "400 Bad Request");
+                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"latitude_out_of_range\"}");
+                return ESP_OK;
+            }
+            if (!GpsGoalState::isValidLongitude(lon)) {
+                httpd_resp_set_type(req, "application/json");
+                setHttpCommonHeaders(req);
+                httpd_resp_set_status(req, "400 Bad Request");
+                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"longitude_out_of_range\"}");
+                return ESP_OK;
+            }
+            if (!self->_gpsGoalState.set(lat, lon, true)) {
+                httpd_resp_set_type(req, "application/json");
+                setHttpCommonHeaders(req);
+                httpd_resp_set_status(req, "400 Bad Request");
+                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid_gps_goal\"}");
+                return ESP_OK;
+            }
+        }
+    }
+
+    const std::string payload = self->buildGpsGoalJson(true);
+    httpd_resp_set_type(req, "application/json");
+    setHttpCommonHeaders(req);
+    httpd_resp_sendstr(req, payload.c_str());
+    return ESP_OK;
+}
+
+esp_err_t WifiControlServerSensor::httpGpsGoalOptionsHandler(httpd_req_t *req)
 {
     setHttpCommonHeaders(req);
     httpd_resp_set_status(req, "204 No Content");

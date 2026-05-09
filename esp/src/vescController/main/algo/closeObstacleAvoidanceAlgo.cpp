@@ -35,6 +35,19 @@ static float min_valid_distance(float a, float b) {
     return std::min(a, b);
 }
 
+static bool choose_left_more_open(float leftNear, float rightNear) {
+    if (leftNear < 0.0f && rightNear < 0.0f) {
+        return true;
+    }
+    if (leftNear < 0.0f) {
+        return false;
+    }
+    if (rightNear < 0.0f) {
+        return true;
+    }
+    return leftNear >= rightNear;
+}
+
 static float map_auto_steer(float steer) {
     steer = clampf(steer, STEER_LEFT, STEER_RIGHT);
     if (AUTO_STEER_REVERSED) {
@@ -45,6 +58,12 @@ static float map_auto_steer(float steer) {
 
 static float opposite_steer(float steer) {
     return clampf((STEER_LEFT + STEER_RIGHT) - steer, STEER_LEFT, STEER_RIGHT);
+}
+
+static float compute_avoid_weight(float frontNear) {
+    const float avoidRange = std::max(AVOID_DISTANCE_M - STOP_DISTANCE_M, 0.01f);
+    const float proximity = clampf((AVOID_DISTANCE_M - frontNear) / avoidRange, 0.0f, 1.0f);
+    return 1.0f + 4.0f * proximity;
 }
 
 CloseObstacleAvoidanceAlgo::CloseObstacleAvoidanceAlgo(LidarSensorApi &lidar)
@@ -77,9 +96,8 @@ bool CloseObstacleAvoidanceAlgo::available(void) {
         });
     }
 
-    const float EMERGENCY_FRONT_WINDOW_DEG = 15.0f;
-    const float frontLeft = nearest_in_sector(scan, 0.0f, EMERGENCY_FRONT_WINDOW_DEG);
-    const float frontRight = nearest_in_sector(scan, 360.0f - EMERGENCY_FRONT_WINDOW_DEG, 360.0f);
+    const float frontLeft = nearest_in_sector(scan, 0.0f, FRONT_WINDOW_DEG);
+    const float frontRight = nearest_in_sector(scan, 360.0f - FRONT_WINDOW_DEG, 360.0f);
     const float frontNear = min_valid_distance(frontLeft, frontRight);
 
     // If an obstacle is closer than AVOID_DISTANCE_M, we take over.
@@ -109,9 +127,8 @@ bool CloseObstacleAvoidanceAlgo::compute(DrivingAlgorithmOutput &output) {
         });
     }
 
-    const float EMERGENCY_FRONT_WINDOW_DEG = 15.0f;
-    const float frontLeft = nearest_in_sector(scan, 0.0f, EMERGENCY_FRONT_WINDOW_DEG);
-    const float frontRight = nearest_in_sector(scan, 360.0f - EMERGENCY_FRONT_WINDOW_DEG, 360.0f);
+    const float frontLeft = nearest_in_sector(scan, 0.0f, FRONT_WINDOW_DEG);
+    const float frontRight = nearest_in_sector(scan, 360.0f - FRONT_WINDOW_DEG, 360.0f);
     const float frontNear = min_valid_distance(frontLeft, frontRight);
     
     const float leftNear = nearest_in_sector(scan, SIDE_WINDOW_MIN_DEG, SIDE_WINDOW_MAX_DEG);
@@ -145,7 +162,7 @@ bool CloseObstacleAvoidanceAlgo::compute(DrivingAlgorithmOutput &output) {
 
     // 2. Too Close (Reverse Mode): Trigger if closer than STOP_DISTANCE_M (0.60m)
     if (now >= recoveryCooldownUntil && frontNear > 0.0f && frontNear <= STOP_DISTANCE_M) {
-        const bool leftMoreOpen = (leftNear < 0.0f) || (rightNear > 0.0f && rightNear > leftNear);
+        const bool leftMoreOpen = choose_left_more_open(leftNear, rightNear);
         // Inverse direction: if left is more open, we want the front to go left.
         // Steering right in reverse makes the rear go right and the front swing left.
         reverseSteer = leftMoreOpen ? STEER_RIGHT : STEER_LEFT;
@@ -165,14 +182,17 @@ bool CloseObstacleAvoidanceAlgo::compute(DrivingAlgorithmOutput &output) {
 
     // 3. Really Close (Avoidance Mode): Trigger if between STOP_DISTANCE_M and AVOID_DISTANCE_M
     if (frontNear > 0.0f && frontNear <= AVOID_DISTANCE_M) {
-        const bool leftMoreOpen = (leftNear < 0.0f) || (rightNear > 0.0f && rightNear > leftNear);
+        const bool leftMoreOpen = choose_left_more_open(leftNear, rightNear);
         float avoidSteer = leftMoreOpen ? STEER_LEFT : STEER_RIGHT;
+        const float avoidWeight = compute_avoid_weight(frontNear);
         
-        std::cout << "CloseObstacle: Avoid Mode, front=" << frontNear << "m steer=" << avoidSteer << std::endl;
+        std::cout << "CloseObstacle: Avoid Mode, front=" << frontNear
+                  << "m steer=" << avoidSteer
+                  << " weight=" << avoidWeight << std::endl;
         
         output.target_speed = SPEED_SLOW;
         output.target_steering = map_auto_steer(avoidSteer);
-        output.computed_weight = 1.0f;
+        output.computed_weight = avoidWeight;
         return true;
     }
 

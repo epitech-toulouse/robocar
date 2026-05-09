@@ -31,13 +31,14 @@ MasterManager::MasterManager()
     this->user_controller_api = std::make_unique<WifiControlServerSensor>(
         *this->vesc_controller_api,
         this->algorithm_selector,
+        this->gps_goal_state_,
         *this->gps_sensor_api,
         *this->lidar_sensor_api);
     this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>();
     this->vesc_controller_api->activate();
 
     this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::Gps,
-                                           std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api));
+                                           std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api, this->gps_goal_state_));
     this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::CloseObstacle,
                                            std::make_unique<CloseObstacleAvoidanceAlgo>(*this->lidar_sensor_api));
     this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::Manual,

@@ -8,12 +8,14 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gps/gpsGoalState.hpp"
 
 class GpsGoalAlgo : public DrivingAlgorithmApi
 {
 public:
-    GpsGoalAlgo(GpsSensorApi &gps)
-        : gps(gps)
+    GpsGoalAlgo(GpsSensorApi &gps, GpsGoalState &goalState)
+        : gps(gps),
+          goalState(goalState)
     {
     }
     ~GpsGoalAlgo() = default;
@@ -36,9 +38,7 @@ private:
 
 
     GpsSensorApi &gps;
-
-    const double goalLatitude =  43.610382;
-    const double goalLongitude = 1.431465;
+    GpsGoalState &goalState;
 
     const float goalReachedDistanceM = 2.0f;
     const float fullSpeedDistanceM = 12.0f;

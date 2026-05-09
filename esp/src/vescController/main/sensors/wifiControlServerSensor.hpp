@@ -14,6 +14,7 @@
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gps/gpsGoalState.hpp"
 #include "manager/AlgorithmSelector.hpp"
 
 
@@ -23,10 +24,12 @@ class WifiControlServerSensor : public UserControllerApi {
 public:
     WifiControlServerSensor(VescControllerApi &vescController,
                             AlgorithmSelector &algorithmSelector,
+                            GpsGoalState &gpsGoalState,
                             GpsSensorApi &gpsSensorApi,
                             LidarSensorApi &lidarSensorApi)
         : _vescControllerApi(vescController),
           _algorithmSelector(algorithmSelector),
+          _gpsGoalState(gpsGoalState),
           _gpsSensorApi(gpsSensorApi),
           _lidarSensorApi(lidarSensorApi)
     {
@@ -76,12 +79,15 @@ private:
     static esp_err_t httpLogsOptionsHandler(httpd_req_t *req);
     static esp_err_t httpAlgorithmsHandler(httpd_req_t *req);
     static esp_err_t httpAlgorithmsOptionsHandler(httpd_req_t *req);
+    static esp_err_t httpGpsGoalHandler(httpd_req_t *req);
+    static esp_err_t httpGpsGoalOptionsHandler(httpd_req_t *req);
     static esp_err_t httpStatusHandler(httpd_req_t *req);
     static esp_err_t httpStatusOptionsHandler(httpd_req_t *req);
     static esp_err_t httpRootHandler(httpd_req_t *req);
     bool isManualDriveEnabled() const;
     bool isAlgorithmAvailable(SelectableAlgorithm id) const;
     std::string buildAlgorithmsJson(bool includeStatusEnvelope) const;
+    std::string buildGpsGoalJson(bool includeStatusEnvelope) const;
     std::string buildStatusJson() const;
     void clearManualDriveState();
     void setSelectedAlgorithmsMask(uint32_t mask);
@@ -96,6 +102,7 @@ private:
     std::atomic<bool> emergency_{false};
     std::atomic<bool> active_{false};
     AlgorithmSelector &_algorithmSelector;
+    GpsGoalState &_gpsGoalState;
     GpsSensorApi &_gpsSensorApi;
     LidarSensorApi &_lidarSensorApi;
     httpd_handle_t httpServer_ = nullptr;

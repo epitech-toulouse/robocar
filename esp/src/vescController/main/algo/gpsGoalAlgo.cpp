@@ -28,10 +28,21 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
     const TickType_t now = xTaskGetTickCount();
     const bool shouldLog = (now - this->lastLogTick) >= this->logPeriodTicks;
+    const GpsGoalSnapshot goal = this->goalState.get();
 
     GpsPosition position{};
     GpsHeading heading{};
     GpsStatus status{};
+
+    if (!goal.enabled) {
+        if (shouldLog) {
+            ESP_LOGI(this->tag,
+                     "return=false reason=goal_disabled weight=%.2f",
+                     static_cast<double>(output.computed_weight));
+            this->lastLogTick = now;
+        }
+        return false;
+    }
 
     if (!this->gps.getPosition(position)) {
         if (shouldLog) {
@@ -46,14 +57,14 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     const double distanceMeters = haversineDistanceMeters(
         position.latitude,
         position.longitude,
-        this->goalLatitude,
-        this->goalLongitude);
+        goal.lat,
+        goal.lon);
     
     const double desiredBearingDeg = initialBearingDegrees(
         position.latitude,
         position.longitude,
-        this->goalLatitude,
-        this->goalLongitude);
+        goal.lat,
+        goal.lon);
 
 
     ////// MANI HEADING COMPUTATION //////////////////////////////////
