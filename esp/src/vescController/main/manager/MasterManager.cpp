@@ -34,7 +34,6 @@ MasterManager::MasterManager()
         *this->gps_sensor_api,
         *this->lidar_sensor_api);
     this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>();
-
     this->vesc_controller_api->activate();
 
     this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::Gps,

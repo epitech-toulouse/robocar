@@ -134,6 +134,50 @@ enum class AlgorithmSelectionParseError : uint8_t {
     NotImplemented,
 };
 
+static int hex_value(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return 10 + (c - 'a');
+    }
+    if (c >= 'A' && c <= 'F') {
+        return 10 + (c - 'A');
+    }
+    return -1;
+}
+
+static void url_decode_in_place(char *value)
+{
+    if (value == nullptr) {
+        return;
+    }
+
+    char *src = value;
+    char *dst = value;
+
+    while (*src != '\0') {
+        if (*src == '%' && src[1] != '\0' && src[2] != '\0') {
+            const int hi = hex_value(src[1]);
+            const int lo = hex_value(src[2]);
+
+            if (hi >= 0 && lo >= 0) {
+                *dst++ = static_cast<char>((hi << 4) | lo);
+                src += 3;
+                continue;
+            }
+        }
+        if (*src == '+') {
+            *dst++ = ' ';
+            ++src;
+            continue;
+        }
+        *dst++ = *src++;
+    }
+    *dst = '\0';
+}
+
 static bool parse_algorithm_selection_value(const char *value,
                                             uint32_t &mask,
                                             AlgorithmSelectionParseError &error,
@@ -801,6 +845,7 @@ esp_err_t WifiControlServerSensor::httpAlgorithmsHandler(httpd_req_t *req)
         httpd_req_get_url_query_len(req) < static_cast<int>(sizeof(query))) {
         httpd_req_get_url_query_str(req, query, sizeof(query));
         if (httpd_query_key_value(query, "selected", selectedValue, sizeof(selectedValue)) == ESP_OK) {
+            url_decode_in_place(selectedValue);
             if (!parse_algorithm_selection_value(selectedValue,
                                                  selectedMask,
                                                  parseError,

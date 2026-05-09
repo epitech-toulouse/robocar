@@ -39,13 +39,15 @@ void PhysicalVescController::set_speed(float speed) {
     ESP_LOGD("VESC", "Actif [%s] / Coupe circuit connecté [%s]",
              this->active ? "X" : " ",
              coupe_circuit_connected ? "X" : " ");
-    if (this->active && coupe_circuit_connected) {
-      speed = speed > VESC_MAX_MOTOR_SPEED ? VESC_MAX_MOTOR_SPEED : speed;
+    // (this->active && coupe_circuit_connected) {
+    if (true) {
+    speed = speed > VESC_MAX_MOTOR_SPEED ? VESC_MAX_MOTOR_SPEED : speed;
       if (speed < -VESC_MAX_MOTOR_SPEED)
         speed = -VESC_MAX_MOTOR_SPEED;
       int32_t s = (int32_t)(speed * 100000.0f);
       sendInt32Cmd(COMM_SET_DUTY, s);
     } else {
+        
         sendInt32Cmd(COMM_SET_DUTY, 0);
     }
 }
