@@ -1,9 +1,10 @@
 #include "userControllerAlgo.hpp"
+#include "config.h"
 #include <limits>
 
 float UserControllerAlgo::getPriority()
 {
-    return 1000.0;
+    return MANUAL_WEIGHT;
 }
 
 bool UserControllerAlgo::compute(DrivingAlgorithmOutput &output)

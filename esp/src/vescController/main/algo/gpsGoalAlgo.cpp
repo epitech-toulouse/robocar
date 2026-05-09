@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "api/gps_sensor_api.hpp"
+#include "config.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -35,7 +36,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     if (!this->gps.getPosition(position)) {
         if (shouldLog) {
             ESP_LOGI(this->tag,
-                     "return=false reason=position_unavailable weight=%.2f",
+                     "return=false reason mani =position_unavailable weight=%.2f",
                      static_cast<double>(output.computed_weight));
             this->lastLogTick = now;
         }
@@ -90,7 +91,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         output.computed_weight = 1.0f;
         if (shouldLog) {
             ESP_LOGI(this->tag,
-                     "return=true reason=goal_reached dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
+                     "return=true mani reason=goal_reached dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
                      distanceMeters,
                      desiredBearingDeg,
                      static_cast<double>(output.target_speed),
@@ -107,11 +108,12 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
     
     ///////////////////// HEADING UNAVAILABLE CASE - FALLBACK TO MANI HEADING /////////////////////
-    if (!headingValid) {
+    // if (!headingValid) {
+    if (true) {
             const float maxSteeringDelta2 = this->maxSteeringDelta;
             output.target_steering = 0.5;
             double DegreFromGoalMani = wrap180(desiredBearingDeg - mani_heading);
-            ESP_LOGI(tag, "mani_heading to point %f, fixed %d, distance %.2f", DegreFromGoalMani, status.is_rtk_fixed, distanceMeters);
+            ESP_LOGI(tag, "heading to point %f, fixed %d, distance %.2f", DegreFromGoalMani, status.is_rtk_fixed, distanceMeters);
     
             float maxSteeringDelta = 0.35f;
 
@@ -125,11 +127,11 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
                 output.target_steering = clampf(0.5f + (DegreFromGoalMani / 180.0f) * maxSteeringDelta2, 0.0f, 1.0f);
             }
             output.computed_weight = 1;
-            output.target_speed = 0.1;
+            output.target_speed = 0.03;
 
             if (shouldLog) {
             ESP_LOGI(this->tag,
-                     "return=false reason=heading_unavailable dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
+                     "return=false reason=heading_unavailable mani dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
                      distanceMeters,
                      DegreFromGoalMani,
                      static_cast<double>(output.target_speed),
@@ -177,7 +179,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
 float GpsGoalAlgo::getPriority()
 {
-    return 1.0f;
+    return GPS_WEIGHT;
 }
 
 float GpsGoalAlgo::clampf(float value, float lo, float hi)

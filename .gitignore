@@ -22,3 +22,4 @@ sg2002_recamera_emmc/
 host-tools/
 components/
 .cache/
+*.FCBak

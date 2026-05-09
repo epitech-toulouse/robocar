@@ -29,15 +29,8 @@ DrivingAlgorithmOutput AdvancedFusionEngine::computeOutput(void)
         DrivingAlgorithmOutput output;
         if (!driving_algo->compute(output))
             continue;
-        /*ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
-                 driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);*/
-        // auto gps_algo = dynamic_cast<GpsGoalAlgo*>(driving_algo.get());
-        // if (gps_algo) {
-        //     ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
-        //          driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);
-        // }
-        // ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
-        //          driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);
+        ESP_LOGI("AdvancedFusionEngine", "Algorithm %p computed output: speed=%.2f steer=%.2f weight=%.3f",
+                 driving_algo.get(), output.target_speed, output.target_steering, output.computed_weight);
 
         float coef = priority * output.computed_weight;
         // Offset to allow computations
