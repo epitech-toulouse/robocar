@@ -60,8 +60,7 @@ bool CameraSensor::getSteeringCommand(CameraSteeringCommand &output)
 
 bool CameraSensor::getStopCommand(CameraStopCommand &output)
 {
-    const TickType_t now = xTaskGetTickCount();
-    if (!stopRequested || !isFresh(lastStopTick, now) || stopWeight <= 0.0f) {
+    if (!stopRequested || stopWeight <= 0.0f) {
         return false;
     }
 
@@ -194,6 +193,17 @@ void CameraSensor::handleLine(const std::string &line)
         lastStopTick = now;
         if (canLogStop) {
             ESP_LOGI(tag, "camera stop requested weight=%.2f", static_cast<double>(stopWeight));
+            lastStopLogTick = now;
+        }
+        return;
+    }
+
+    if (line == "GO") {
+        stopRequested = false;
+        stopWeight = 0.0f;
+        lastStopTick = now;
+        if (canLogStop) {
+            ESP_LOGI(tag, "camera go received, releasing stop hold");
             lastStopLogTick = now;
         }
         return;

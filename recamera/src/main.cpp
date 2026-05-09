@@ -31,10 +31,14 @@ namespace {
 
 constexpr int kStopSignClassId = 11;
 constexpr float kStopSignDistanceConstant = 250.0f;
-constexpr float kStopDistanceCm = 550.0f;
+constexpr float kStopDistanceCm = 1300.0f;
 constexpr int kLaneClassId = 1;
 constexpr int kDefaultLaneTick = 1;
 constexpr int kDefaultStopTick = 5;
+constexpr int kDefaultLaneCaptureSize = 128;
+constexpr int kDefaultStopCaptureSize = 320;
+constexpr int kStopTimeSeconds = 4;
+constexpr int kStopDebounceSeconds = 3;
 constexpr float kDefaultStopThreshold = 0.5f;
 constexpr float kBarricadeThreshold = 0.40f;
 constexpr float kLaneSweepEndAt512 = 100.0f;
@@ -1244,8 +1248,9 @@ int main(int argc, char** argv) {
             value.i32 = camera_channel;
             camera->commandCtrl(Camera::CtrlType::kChannel, Camera::CtrlMode::kWrite, value);
 
-            const int capture_width = env_int("CAMERA_WIDTH", 128);
-            const int capture_height = env_int("CAMERA_HEIGHT", 128);
+            const int default_capture_size = stop_enabled ? kDefaultStopCaptureSize : kDefaultLaneCaptureSize;
+            const int capture_width = env_int("CAMERA_WIDTH", default_capture_size);
+            const int capture_height = env_int("CAMERA_HEIGHT", default_capture_size);
             MA_LOGI(TAG, "camera capture size: %dx%d", capture_width, capture_height);
 
             value.u16s[0] = static_cast<uint16_t>(capture_width);
@@ -1280,6 +1285,7 @@ int main(int argc, char** argv) {
         MA_LOGE(TAG, "Camera stream failed to start");
         if (uart_fd >= 0) {
             close(uart_fd);
+
         }
         return 1;
     }
@@ -1296,6 +1302,9 @@ int main(int argc, char** argv) {
 
     int frame_count = 0;
     int retrieve_fail_count = 0;
+    bool stop_hold_active = false;
+    std::chrono::steady_clock::time_point stop_hold_until;
+    std::chrono::steady_clock::time_point stop_rearm_until{};
     while (true) {
         ma_img_t frame;
         const ma_pixel_format_t frame_format = use_jpeg_path ? MA_PIXEL_FORMAT_JPEG : MA_PIXEL_FORMAT_RGB888;
@@ -1308,6 +1317,20 @@ int main(int argc, char** argv) {
         retrieve_fail_count = 0;
         ++frame_count;
         g_current_frame_count = frame_count;
+
+        if (stop_hold_active) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now < stop_hold_until) {
+                camera->returnFrame(frame);
+                continue;
+            }
+
+            send_uart(uart_fd, "GO\n");
+            stop_hold_active = false;
+            stop_rearm_until = now + std::chrono::seconds(kStopDebounceSeconds);
+            camera->returnFrame(frame);
+            continue;
+        }
 
         std::vector<uint8_t> rgb_buffer;
         ma_img_t rgb_frame{};
@@ -1337,13 +1360,16 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (stop_enabled && frame_count % stop_tick == 0) {
+        const bool stop_detection_armed = std::chrono::steady_clock::now() >= stop_rearm_until;
+        if (stop_enabled && stop_detection_armed && frame_count % stop_tick == 0) {
             ran_tick = true;
             LoadedModel stop = load_model(stop_model_path, "stop");
             bool should_stop = false;
             if (is_loaded(stop) && run_stop_model(stop, *model_frame, stop_threshold, &should_stop, frame_count) && should_stop) {
                 send_uart(uart_fd, "STOP\n");
                 send_uart(uart_fd, "STOP_WEIGHT:1\n");
+                stop_hold_active = true;
+                stop_hold_until = std::chrono::steady_clock::now() + std::chrono::seconds(kStopTimeSeconds);
             }
             release_model(stop);
         }
