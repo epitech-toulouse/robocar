@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <unistd.h>
 
 #include "api/gps_sensor_api.hpp"
 #include "config.h"
@@ -17,7 +18,7 @@ bool GpsGoalAlgo::available(void)
 
 #include <array>
 
-#define GPS_POS_BUFFER_SIZE 5
+#define GPS_POS_BUFFER_SIZE 2
 std::array<GpsPosition, GPS_POS_BUFFER_SIZE> gps_positions = {
     {}
 };
@@ -132,12 +133,10 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     }
 
     const bool headingValid = this->gps.getHeading(heading);
-    (void)headingValid;
 
     
     ///////////////////// HEADING UNAVAILABLE CASE - FALLBACK TO MANI HEADING /////////////////////
-    // if (!headingValid) {
-    if (true) {
+    if (!headingValid) {
             const float maxSteeringDelta2 = this->maxSteeringDelta;
             output.target_steering = 0.5;
             double DegreFromGoalMani = wrap180(desiredBearingDeg - mani_heading);
@@ -163,6 +162,9 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
 
             ESP_LOGI(tag, "DEBUG_03 mani_heading[%.2f] heading_to_point[%.2f] desired[%.2f]", mani_heading, DegreFromGoalMani, desiredBearingDeg);
+            // car_heading;goal_heading;degree_from_goal;lat;long;old_lat;old_long;distance_to_goal
+            ESP_LOGE("CSV", "%f;%f;%f;%f;%f;%f;%f;%f", mani_heading, desiredBearingDeg, DegreFromGoalMani, position.latitude, position.longitude,
+                   gps_positions[old_index].latitude, gps_positions[old_index].longitude, distanceMeters);
             if (shouldLog) {
             ESP_LOGI(this->tag,
                      "return=false reason=heading_unavailable mani dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
@@ -197,9 +199,11 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     output.target_speed = this->baseSpeed + (targetMaxSpeed - this->baseSpeed) * distanceScale;
     output.computed_weight = rtkFixed ? this->computedWeightRtkFixed : 1.0f;
 
+    // car_heading;bearing_to_goal_north;bearing_to_goal_front_of_car;latitude;longitude;distance
+    ESP_LOGE("CSV", "%f;%f;%f;%f;%f;%f", heading.degrees_to_north, desiredBearingDeg, errorDeg, position.latitude, position.longitude, distanceMeters);
     if (shouldLog) {
         ESP_LOGI(this->tag,
-                 "return=true reason=normal dist=%.2fm goal_deg=%.1f heading_err=%.1fdeg speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
+                 "return=true reason=normal dist=%.2fm goal_deg=%.1f heading_err=%.1fdeg speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f\n",
                  distanceMeters,
                  desiredBearingDeg,
                  errorDeg,

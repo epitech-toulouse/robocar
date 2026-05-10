@@ -1,9 +1,11 @@
 #include "gpsSensor.hpp"
 
 #include <cmath>
+#include <cstddef>
 
 #include "esp_log.h"
 #include "freertos/task.h"
+#include "gpsUsbHost.hpp"
 
 namespace {
 const char *TAG = "GpsSensor";
@@ -55,6 +57,37 @@ bool GpsSensor::getStatus(GpsStatus &output)
 
 bool GpsSensor::getHeading(GpsHeading &output)
 {
+    auto fixArray = this->gps.getFixArray();
+    size_t fixArraySize = fixArray.size();
+    GpsFix lastFix = fixArray[0];
+
+    GpsFix oldFix = lastFix;
+    bool found_good_distance = false;
+    for (GpsFix &fix : fixArray) {
+        double dist = planarDistanceMeters
+        (
+            fix.latitude, fix.longitude,
+            lastFix.latitude, lastFix.longitude
+        );
+
+        if (dist <= 0.5)
+            continue;
+        oldFix = fix;
+        found_good_distance = true;
+        ESP_LOGI(TAG, "Found a good point at distance %.2f", dist);
+        break;
+    }
+    if (!found_good_distance)
+        return false;
+    double heading = initialBearingDegrees
+        (
+            oldFix.latitude, oldFix.longitude,
+            lastFix.latitude, lastFix.longitude
+        );
+    ESP_LOGI(TAG, "Found heading %.2f", heading);
+    output.degrees_to_north = heading;
+    return true;
+    /*
     static TickType_t lastHeadingLogTick = 0;
     const TickType_t now = xTaskGetTickCount();
     const bool shouldLog = (now - lastHeadingLogTick) > HEADING_LOG_PERIOD_TICKS;
@@ -123,6 +156,7 @@ bool GpsSensor::getHeading(GpsHeading &output)
         lastHeadingLogTick = now;
     }
     return true;
+    */
 }
 
 double GpsSensor::toRadians(double degrees)

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <queue>
 
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/projdefs.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -33,6 +36,13 @@ public:
 
     bool isRunning() const;
     GpsFix getLatestFix() const;
+    std::array<GpsFix, 20> getFixArray() {
+        if (fixMutex == nullptr || xSemaphoreTake(this->fixMutex, pdMS_TO_TICKS(5)) != pdTRUE)
+            return {};
+        std::array<GpsFix, 20> array = this->fixArray;
+        xSemaphoreGive(this->fixMutex);
+        return array;
+    }
 
 private:
     struct AppMessage;
@@ -73,4 +83,5 @@ private:
     bool running;
     uint32_t fixUpdateCounter;
     GpsFix latestFix;
+    std::array<GpsFix, 20> fixArray;
 };

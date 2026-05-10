@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cinttypes>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -618,6 +619,7 @@ void UsbGpsHost::parseNmeaLine(char *line) {
                  nextFix.satellites,
                  nextFix.latitude,
                  nextFix.longitude);
+        return;
     }
 
     ESP_LOGI(TAG,
@@ -634,6 +636,9 @@ void UsbGpsHost::parseNmeaLine(char *line) {
     if (fixMutex != nullptr && xSemaphoreTake(fixMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
         latestFix = nextFix;
         fixUpdateCounter = nextFix.updateCounter;
+        for (uint16_t i = this->fixArray.size() - 1; i != 0; i--)
+            this->fixArray[i] = this->fixArray[i - 1];
+        this->fixArray[0] = nextFix;
         xSemaphoreGive(fixMutex);
     } else if (fixMutex == nullptr) {
         ESP_LOGW(TAG, "Cannot store fix because mutex is null");
