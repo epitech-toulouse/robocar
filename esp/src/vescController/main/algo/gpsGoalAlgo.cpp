@@ -88,6 +88,9 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         old_index = gps_index;
         gps_index++;    
         gps_index %= GPS_POS_BUFFER_SIZE;
+        ESP_LOGI(tag, "DEBUG_01 Update of position");
+    } else {
+        ESP_LOGI(tag, "DEBUG_01 No update");
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////
