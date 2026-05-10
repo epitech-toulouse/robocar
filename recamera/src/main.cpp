@@ -48,17 +48,30 @@ constexpr float kLaneFallbackDeadbandPercent = 12.5f;
 constexpr float kLaneFallbackScale = 0.85f;
 constexpr float kLaneBoundaryFallbackCenterFactor = 0.30f;
 constexpr float kLaneFallbackMaxSteerPercent = 60.0f;
+constexpr float kLaneSignalLossRememberScale = 0.92f;
+constexpr float kLaneSignalLossMaxRememberedSteerPercent = 55.0f;
 constexpr float kDefaultLaneWidthAt512 = 280.0f;
 constexpr float kLaneWeightBoundaryZonePercent = 0.35f;
 constexpr float kSingleLineCentralZonePercent = 0.25f;
 constexpr float kSingleLineWideRunPercent = 0.18f;
 constexpr float kRaycastMinScoreMarginPercent = 0.10f;
 constexpr int kRaycastRaysPerSide = 5;
+constexpr size_t kLaneCenterHistorySize = 5;
+constexpr int kLaneSignalLossHoldFrames = 6;
 constexpr float kLaneMean[3] = {123.675f, 116.28f, 103.53f};
 constexpr float kLaneScale[3] = {0.01712475f, 0.01750700f, 0.01742919f};
 constexpr float kLaneMaskThreshold = 0.35f;
 int g_current_frame_count = 0;
 int g_last_known_lane_width = 0;
+float g_last_confident_steering_percent = 0.0f;
+int g_frames_since_confident_lane = 1000000;
+
+struct LaneCenterPoint {
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
+std::vector<LaneCenterPoint> g_lane_center_history;
 
 struct LoadedModel {
     ma::engine::EngineCVI* engine = nullptr;
@@ -717,6 +730,100 @@ struct RaycastDecision {
     int right_score = 0;
 };
 
+struct LaneCenterCandidate {
+    int lx = -1;
+    int rx = -1;
+    int start_y = -1;
+    int row_count = 0;
+    float center_x = 0.0f;
+    float center_y = 0.0f;
+};
+
+LaneCenterCandidate make_lane_center_candidate(int lx, int rx, int start_y, int row_count) {
+    LaneCenterCandidate candidate;
+    candidate.lx = lx;
+    candidate.rx = rx;
+    candidate.start_y = start_y;
+    candidate.row_count = row_count;
+    candidate.center_x = (lx + rx) / 2.0f;
+    candidate.center_y = static_cast<float>(start_y);
+    return candidate;
+}
+
+float lane_center_history_distance_sq(const LaneCenterCandidate& candidate) {
+    if (g_lane_center_history.empty()) {
+        return std::numeric_limits<float>::infinity();
+    }
+
+    float best_distance_sq = std::numeric_limits<float>::infinity();
+    for (const LaneCenterPoint& point : g_lane_center_history) {
+        const float dx = candidate.center_x - point.x;
+        const float dy = candidate.center_y - point.y;
+        const float distance_sq = dx * dx + dy * dy;
+        if (distance_sq < best_distance_sq) {
+            best_distance_sq = distance_sq;
+        }
+    }
+    return best_distance_sq;
+}
+
+void remember_lane_center(float center_x, float center_y) {
+    if (g_lane_center_history.size() >= kLaneCenterHistorySize) {
+        g_lane_center_history.erase(g_lane_center_history.begin());
+    }
+    g_lane_center_history.push_back({center_x, center_y});
+}
+
+bool looks_like_lane_signal_loss(const LaneMaskStats& stats,
+                                 const LaneEvidence& evidence,
+                                 int width,
+                                 int height,
+                                 const LaneDecision& decision) {
+    if (decision.confident || evidence.barricaded || g_frames_since_confident_lane > kLaneSignalLossHoldFrames) {
+        return false;
+    }
+
+    const int min_partial_pixels = std::max(6, width * height / 120);
+    const int min_partial_rows = std::max(3, height / 10);
+    const int min_boundary_rows = std::max(3, height / 12);
+    const bool sparse_but_present = stats.lane_pixels >= min_partial_pixels;
+    const bool fragmented_near_car =
+        evidence.lower_band_lane_rows >= min_partial_rows && evidence.lower_band_valid_rows == 0;
+    const bool edge_only = evidence.boundary_rows >= min_boundary_rows;
+    const bool upper_only = stats.first_valid_y >= 0 && stats.first_valid_y < height / 2 &&
+                            evidence.lower_band_valid_rows == 0 && evidence.lower_band_lane_rows <= min_partial_rows;
+    const bool abrupt_dropout = stats.lane_pixels == 0 && g_frames_since_confident_lane <= 2;
+    return abrupt_dropout || (sparse_but_present && (fragmented_near_car || edge_only || upper_only));
+}
+
+void apply_signal_loss_recovery(const LaneMaskStats& stats,
+                                const LaneEvidence& evidence,
+                                int width,
+                                int height,
+                                LaneDecision* decision) {
+    if (decision == nullptr) {
+        return;
+    }
+    if (std::strcmp(decision->status, "SEARCHING") != 0 && std::strcmp(decision->status, "LOST") != 0) {
+        return;
+    }
+    if (!looks_like_lane_signal_loss(stats, evidence, width, height, *decision)) {
+        return;
+    }
+
+    const float remembered_steer =
+        std::clamp(g_last_confident_steering_percent * kLaneSignalLossRememberScale,
+                   -kLaneSignalLossMaxRememberedSteerPercent,
+                   kLaneSignalLossMaxRememberedSteerPercent);
+    if (std::fabs(remembered_steer) < 1.0f) {
+        return;
+    }
+
+    decision->steering_percent = remembered_steer;
+    decision->status = "SIGNAL_LOSS_HOLD";
+    decision->weight = 0;
+}
+
 SingleLineCandidate analyze_single_line_candidate(const std::vector<uint8_t>& mask, int width, int height) {
     SingleLineCandidate candidate;
     const int y0 = static_cast<int>(height * 0.4f);
@@ -1082,6 +1189,7 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
     int lx = -1;
     int rx = -1;
     int found_y = -1;
+    std::vector<LaneCenterCandidate> center_candidates;
     const int sweep_start = std::max(0, height - 15);
     const int sweep_end = std::min(height - 1, static_cast<int>(height * kLaneSweepEndAt512 / 512.0f));
     int current_count = 0;
@@ -1094,11 +1202,10 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
         const bool valid = is_valid_lane_row(mask, width, y, &cur_lx, &cur_rx);
         if (!valid) {
             if (current_count >= min_centered_rows) {
-                lx = current_sum_lx / current_count;
-                rx = current_sum_rx / current_count;
-                found_y = current_start_y;
-                g_last_known_lane_width = rx - lx;
-                break;
+                const int candidate_lx = current_sum_lx / current_count;
+                const int candidate_rx = current_sum_rx / current_count;
+                center_candidates.push_back(
+                    make_lane_center_candidate(candidate_lx, candidate_rx, current_start_y, current_count));
             }
             current_count = 0;
             current_sum_lx = 0;
@@ -1113,10 +1220,32 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
         current_sum_rx += cur_rx;
         ++current_count;
     }
-    if (lx < 0 && current_count >= min_centered_rows) {
-        lx = current_sum_lx / current_count;
-        rx = current_sum_rx / current_count;
-        found_y = current_start_y;
+    if (current_count >= min_centered_rows) {
+        const int candidate_lx = current_sum_lx / current_count;
+        const int candidate_rx = current_sum_rx / current_count;
+        center_candidates.push_back(
+            make_lane_center_candidate(candidate_lx, candidate_rx, current_start_y, current_count));
+    }
+
+    if (!center_candidates.empty()) {
+        size_t best_index = 0;
+        if (!g_lane_center_history.empty()) {
+            float best_distance_sq = lane_center_history_distance_sq(center_candidates.front());
+            for (size_t i = 1; i < center_candidates.size(); ++i) {
+                const float distance_sq = lane_center_history_distance_sq(center_candidates[i]);
+                if (distance_sq < best_distance_sq ||
+                    (distance_sq == best_distance_sq &&
+                     center_candidates[i].row_count > center_candidates[best_index].row_count)) {
+                    best_distance_sq = distance_sq;
+                    best_index = i;
+                }
+            }
+        }
+
+        const LaneCenterCandidate& best_candidate = center_candidates[best_index];
+        lx = best_candidate.lx;
+        rx = best_candidate.rx;
+        found_y = best_candidate.start_y;
         g_last_known_lane_width = rx - lx;
     }
 
@@ -1139,6 +1268,7 @@ LaneDecision decide_lane(const std::vector<uint8_t>& mask, int width, int height
 
     if (lx >= 0 && rx >= 0 && found_y >= 0) {
         target_x = static_cast<float>((lx + rx) / 2);
+        remember_lane_center(target_x, static_cast<float>(found_y));
         decision.status = "CENTERED";
         decision.confident = true;
     } else {
@@ -1265,7 +1395,14 @@ bool run_lane_model(LoadedModel& lane, ma_img_t& frame, LaneDecision* decision) 
     const LaneMaskStats stats = analyze_lane_mask(lane_mask, mask_width, mask_height);
     const LaneEvidence evidence = analyze_lane_evidence(lane_mask, mask_width, mask_height);
     *decision = decide_lane(lane_mask, mask_width, mask_height);
+    apply_signal_loss_recovery(stats, evidence, mask_width, mask_height, decision);
     decision->weight = decision->confident ? 1 : 0;
+    if (decision->confident) {
+        g_last_confident_steering_percent = decision->steering_percent;
+        g_frames_since_confident_lane = 0;
+    } else if (g_frames_since_confident_lane < 1000000) {
+        ++g_frames_since_confident_lane;
+    }
     printf("[LANE_TICK] mask=%dx%d lane_pixels=%d/%d bottom=%d valid_rows=%d first_valid_y=%d decision=%s steer=%+.1f weight=%d barricade=%d max_valid_run=%d boundary_rows=%d lane_rows=%d\n",
            mask_width,
            mask_height,
