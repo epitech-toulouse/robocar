@@ -781,13 +781,13 @@ static const char *INDEX_HTML = R"HTML(
                             </span>
                             <span id="algoStatus-gps" class="algo-status is-waiting">veille</span>
                         </label>
-                        <label class="algo-row is-disabled" for="algo-camera">
-                            <input id="algo-camera" type="checkbox" data-algo="camera" disabled />
+                        <label class="algo-row" for="algo-camera">
+                            <input id="algo-camera" type="checkbox" data-algo="camera" />
                             <span class="algo-main">
                                 <span class="algo-name">Camera</span>
                                 <span id="algoMeta-camera" class="algo-meta">Poids 5</span>
                             </span>
-                            <span id="algoStatus-camera" class="algo-status is-disabled">bientot</span>
+                            <span id="algoStatus-camera" class="algo-status">disponible</span>
                         </label>
                     </div>
                     <div id="algoHint" class="algo-hint">Actifs : Manual + Close obstacle + Corridor LiDAR</div>
@@ -864,7 +864,7 @@ static const char *INDEX_HTML = R"HTML(
         let logsTimer = null;
         let algorithmEntries = {};
         let gpsGoal = { lat: null, lon: null, enabled: true };
-        let selectedAlgorithms = new Set(['manual', 'close_obstacle', 'lidar_corridor']);
+        let selectedAlgorithms = new Set(['camera']);
         const maxVisibleLogLines = 200;
         const visibleLogLines = [];
 
@@ -979,7 +979,7 @@ static const char *INDEX_HTML = R"HTML(
                     id,
                     enabled: selectedAlgorithms.has(id),
                     available: false,
-                    implemented: id !== 'camera',
+                    implemented: true,
                     weight: 0,
                 };
                 const row = checkbox.closest('.algo-row');

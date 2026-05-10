@@ -366,8 +366,13 @@ bool WifiControlServerSensor::isAlgorithmAvailable(SelectableAlgorithm id) const
                 this->_gpsSensorApi.getStatus(status) &&
                 status.has_fix;
         }
-        case SelectableAlgorithm::Camera:
-            return false;
+        case SelectableAlgorithm::Camera: {
+            CameraStatus status{};
+            return this->_cameraSensorApi.isActive() &&
+                this->_cameraSensorApi.getStatus(status) &&
+                status.connected &&
+                status.has_data;
+        }
         case SelectableAlgorithm::Count:
             break;
     }

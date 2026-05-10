@@ -38,7 +38,7 @@ inline const std::array<AlgorithmDescriptor, kSelectableAlgorithmCount> kSelecta
     {SelectableAlgorithm::CloseObstacle, "close_obstacle", "Close obstacle", LIDAR_AVOIDANCE_WEIGHT, true},
     {SelectableAlgorithm::LidarCorridor, "lidar_corridor", "Corridor LiDAR", LIDAR_CORRIDOR_WEIGHT, true},
     {SelectableAlgorithm::Gps, "gps", "GPS", GPS_WEIGHT, true},
-    {SelectableAlgorithm::Camera, "camera", "Camera", CAMEDAR_WEIGHT, false},
+    {SelectableAlgorithm::Camera, "camera", "Camera", CAMEDAR_WEIGHT, true},
 }};
 
 inline constexpr uint32_t selectableAlgorithmKnownMask()
@@ -55,12 +55,13 @@ inline constexpr uint32_t selectableAlgorithmImplementedMask()
     return algorithmBit(SelectableAlgorithm::Manual)
         | algorithmBit(SelectableAlgorithm::CloseObstacle)
         | algorithmBit(SelectableAlgorithm::LidarCorridor)
-        | algorithmBit(SelectableAlgorithm::Gps);
+        | algorithmBit(SelectableAlgorithm::Gps)
+        | algorithmBit(SelectableAlgorithm::Camera);
 }
 
 inline constexpr uint32_t selectableAlgorithmDefaultMask()
 {
-    return algorithmBit(SelectableAlgorithm::Gps);
+    return algorithmBit(SelectableAlgorithm::Camera);
 }
 
 inline const AlgorithmDescriptor *algorithmDescriptor(SelectableAlgorithm id)

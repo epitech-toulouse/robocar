@@ -16,6 +16,7 @@
 #include "sensors/lidarSensor.hpp"
 
 #include "algo/lidarDrivingAlgo.hpp"
+#include "algo/cameraDrivingAlgo.hpp"
 #include "algo/closeObstacleAvoidanceAlgo.hpp"
 #include "algo/gpsGoalAlgo.hpp"
 #include "algo/userControllerAlgo.hpp"
@@ -34,6 +35,7 @@ MasterManager::MasterManager()
         *this->vesc_controller_api,
         this->algorithm_selector,
         this->gps_goal_state_,
+        *this->camera_sensor_api,
         *this->gps_sensor_api,
         *this->lidar_sensor_api);
     this->coupe_circuit_manager = std::make_unique<CoupeCircuitManager>();
@@ -41,6 +43,8 @@ MasterManager::MasterManager()
 
     this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::Gps,
                                            std::make_unique<GpsGoalAlgo>(*this->gps_sensor_api, this->gps_goal_state_));
+    this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::Camera,
+                                           std::make_unique<CameraDrivingAlgo>(*this->camera_sensor_api));
     this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::CloseObstacle,
                                            std::make_unique<CloseObstacleAvoidanceAlgo>(*this->lidar_sensor_api));
     this->fusionEngine.addDrivingAlgorithm(SelectableAlgorithm::Manual,

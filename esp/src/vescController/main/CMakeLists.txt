@@ -8,6 +8,7 @@ idf_component_register(
   "sensors/wifiControlServerSensor.cpp"
 
   "algo/gpsGoalAlgo.cpp"
+  "algo/cameraDrivingAlgo.cpp"
   "algo/userControllerAlgo.cpp"
   "algo/closeObstacleAvoidanceAlgo.cpp"
 

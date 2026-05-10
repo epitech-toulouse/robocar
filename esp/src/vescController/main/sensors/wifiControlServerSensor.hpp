@@ -7,6 +7,7 @@
 #include <string>
 
 #include "api/gps_sensor_api.hpp"
+#include "api/camera_api.hpp"
 #include "api/lidar_sensor_api.hpp"
 #include "api/user_controller_api.hpp"
 #include "api/vesc_controller_api.hpp"
@@ -25,11 +26,13 @@ public:
     WifiControlServerSensor(VescControllerApi &vescController,
                             AlgorithmSelector &algorithmSelector,
                             GpsGoalState &gpsGoalState,
+                            CameraSensorApi &cameraSensorApi,
                             GpsSensorApi &gpsSensorApi,
                             LidarSensorApi &lidarSensorApi)
         : _vescControllerApi(vescController),
           _algorithmSelector(algorithmSelector),
           _gpsGoalState(gpsGoalState),
+          _cameraSensorApi(cameraSensorApi),
           _gpsSensorApi(gpsSensorApi),
           _lidarSensorApi(lidarSensorApi)
     {
@@ -103,6 +106,7 @@ private:
     std::atomic<bool> active_{false};
     AlgorithmSelector &_algorithmSelector;
     GpsGoalState &_gpsGoalState;
+    CameraSensorApi &_cameraSensorApi;
     GpsSensorApi &_gpsSensorApi;
     LidarSensorApi &_lidarSensorApi;
     httpd_handle_t httpServer_ = nullptr;
