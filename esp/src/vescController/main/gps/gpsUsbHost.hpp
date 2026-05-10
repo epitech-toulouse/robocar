@@ -26,6 +26,8 @@ struct GpsFix {
     TickType_t updateTick = 0;
 };
 
+#define GPS_ARRAY_SIZE 1000
+
 class UsbGpsHost {
 public:
     UsbGpsHost();
@@ -36,10 +38,10 @@ public:
 
     bool isRunning() const;
     GpsFix getLatestFix() const;
-    std::array<GpsFix, 20> getFixArray() {
+    std::array<GpsFix, GPS_ARRAY_SIZE> getFixArray() {
         if (fixMutex == nullptr || xSemaphoreTake(this->fixMutex, pdMS_TO_TICKS(5)) != pdTRUE)
             return {};
-        std::array<GpsFix, 20> array = this->fixArray;
+        std::array<GpsFix, GPS_ARRAY_SIZE> array = this->fixArray;
         xSemaphoreGive(this->fixMutex);
         return array;
     }
@@ -83,5 +85,5 @@ private:
     bool running;
     uint32_t fixUpdateCounter;
     GpsFix latestFix;
-    std::array<GpsFix, 20> fixArray;
+    std::array<GpsFix, GPS_ARRAY_SIZE> fixArray;
 };
