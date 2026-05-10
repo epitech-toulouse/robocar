@@ -17,7 +17,7 @@ bool GpsGoalAlgo::available(void)
 
 #include <array>
 
-#define GPS_POS_BUFFER_SIZE 50
+#define GPS_POS_BUFFER_SIZE 5
 std::array<GpsPosition, GPS_POS_BUFFER_SIZE> gps_positions = {
     {}
 };
@@ -74,28 +74,21 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     ////// MANI HEADING COMPUTATION //////////////////////////////////
     bool should_update = gps_positions[old_index].latitude != position.latitude
         || gps_positions[old_index].longitude != position.longitude;
-    double mani_heading = old_mani_heading;
-    if (shouldLog) {
-        ESP_LOGI(tag, "Comparing Index %04d with Index %04d | Bearing : %f",
-                 gps_index,
-                 (gps_index + 1) % GPS_POS_BUFFER_SIZE,
-                 mani_heading);
-    }
 
     TickType_t now_ = xTaskGetTickCount();
 
+    double mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
     if (should_update) {
-        mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
         old_mani_heading = mani_heading;
         gps_positions[gps_index].latitude = position.latitude;
         gps_positions[gps_index].longitude = position.longitude;
         old_index = gps_index;
         gps_index++;    
         gps_index %= GPS_POS_BUFFER_SIZE;
-        ESP_LOGI(tag, "DEBUG_01 Update of position (%d ms since last update)", pdMS_TO_TICKS(now - last_update));
+        ESP_LOGI(tag, "DEBUG_01 Update of position (%d ms since last update)", pdTICKS_TO_MS(now - last_update));
         last_update = now_;
     } else {
-        ESP_LOGI(tag, "DEBUG_01 No update (%d ms since last loop)", pdMS_TO_TICKS(now - last_loop));
+        ESP_LOGI(tag, "DEBUG_02 No update (%d ms since last loop)", pdTICKS_TO_MS(now - last_loop));
     }
     last_loop = now_;
 
@@ -168,6 +161,8 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
             output.computed_weight = 1;
             output.target_speed = 0.03;
 
+
+            ESP_LOGI(tag, "DEBUG_03 mani_heading[%.2f] heading_to_point[%.2f] desired[%.2f]", mani_heading, DegreFromGoalMani, desiredBearingDeg);
             if (shouldLog) {
             ESP_LOGI(this->tag,
                      "return=false reason=heading_unavailable mani dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
