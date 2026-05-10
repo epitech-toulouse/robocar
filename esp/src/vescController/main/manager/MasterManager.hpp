@@ -10,6 +10,7 @@
 
 #include <memory>
 #include "api/driving_algorithm_interface.hpp"
+#include "api/camera_api.hpp"
 #include "manager/AdvancedFusionEngine.hpp"
 #include "manager/AlgorithmSelector.hpp"
 #include "api/gps_sensor_api.hpp"
@@ -30,6 +31,7 @@ private:
     AdvancedFusionEngine fusionEngine;
     AlgorithmSelector algorithm_selector;
     GpsGoalState gps_goal_state_{43.610382, 1.431465, true};
+    std::unique_ptr<CameraSensorApi> camera_sensor_api = nullptr;
     std::unique_ptr<GpsSensorApi> gps_sensor_api = nullptr;
     std::unique_ptr<LidarSensorApi> lidar_sensor_api = nullptr;
     std::unique_ptr<VescControllerApi> vesc_controller_api = nullptr;

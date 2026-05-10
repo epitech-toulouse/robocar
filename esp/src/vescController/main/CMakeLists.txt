@@ -3,6 +3,7 @@ idf_component_register(
   "main.cpp"
   "gps/gpsUsbHost.cpp"
   
+  "sensors/cameraBleSensor.cpp"
   "sensors/gpsSensor.cpp"
   "sensors/wifiControlServerSensor.cpp"
 
@@ -31,6 +32,7 @@ idf_component_register(
   usb
   esp_driver_uart
   esp_driver_gpio
+  bt
 
   INCLUDE_DIRS
   "."

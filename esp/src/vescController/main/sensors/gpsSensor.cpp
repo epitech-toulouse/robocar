@@ -58,7 +58,9 @@ bool GpsSensor::getStatus(GpsStatus &output)
 bool GpsSensor::getHeading(GpsHeading &output)
 {
     auto fixArray = this->gps.getFixArray();
-    size_t fixArraySize = fixArray.size();
+    if (fixArray.empty()) {
+        return false;
+    }
     GpsFix lastFix = fixArray[0];
 
     GpsFix oldFix = lastFix;
