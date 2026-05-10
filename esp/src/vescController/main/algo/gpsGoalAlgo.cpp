@@ -24,6 +24,8 @@ std::array<GpsPosition, GPS_POS_BUFFER_SIZE> gps_positions = {
 uint8_t gps_index = 0;
 uint8_t old_index = 0;
 double old_mani_heading = 0;
+TickType_t last_update = 0;
+TickType_t last_loop = 0;
 
 bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 {
@@ -80,6 +82,8 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
                  mani_heading);
     }
 
+    TickType_t now_ = xTaskGetTickCount();
+
     if (should_update) {
         mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
         old_mani_heading = mani_heading;
@@ -88,10 +92,12 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         old_index = gps_index;
         gps_index++;    
         gps_index %= GPS_POS_BUFFER_SIZE;
-        ESP_LOGI(tag, "DEBUG_01 Update of position");
+        ESP_LOGI(tag, "DEBUG_01 Update of position (%d ms since last update)", pdMS_TO_TICKS(now - last_update));
+        last_update = now_;
     } else {
-        ESP_LOGI(tag, "DEBUG_01 No update");
+        ESP_LOGI(tag, "DEBUG_01 No update (%d ms since last loop)", pdMS_TO_TICKS(now - last_loop));
     }
+    last_loop = now_;
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
