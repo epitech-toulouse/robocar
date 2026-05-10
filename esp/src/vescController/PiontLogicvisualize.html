@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Robocar GPS Visualizer</title>
+  <style>
+    :root {
+      --bg: #0f1216;
+      --panel: #171b22;
+      --text: #e6e6e6;
+      --muted: #9aa3ad;
+      --accent: #4dd0e1;
+      --grid: #2a2f3a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      background: radial-gradient(1200px 600px at 20% 0%, #1a2230, var(--bg));
+      color: var(--text);
+    }
+    header {
+      padding: 20px 24px 8px;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 6px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+      padding: 16px 24px 24px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid #1f2630;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+    .panel h2 {
+      font-size: 14px;
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input[type="file"], button {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #2a3240;
+      background: #12161d;
+      color: var(--text);
+      font-size: 12px;
+    }
+    button {
+      margin-top: 8px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    button:hover { background: #1a202a; }
+    .stat {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .stat div {
+      padding: 8px;
+      border: 1px solid #242b36;
+      border-radius: 8px;
+      background: #12161d;
+    }
+    .canvas-wrap {
+      position: relative;
+      height: 70vh;
+      min-height: 420px;
+      background: #0b0f14;
+      border-radius: 12px;
+      border: 1px solid #1f2630;
+      overflow: hidden;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+    .slider-wrap {
+      margin-top: 12px;
+      display: grid;
+      gap: 6px;
+    }
+    input[type="range"] { width: 100%; }
+    .legend {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(15, 18, 22, 0.8);
+      border: 1px solid #1f2630;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .canvas-wrap { height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Robocar GPS Visualizer</h1>
+    <div class="sub">Load output_clean.csv, use the slider to scrub time.</div>
+  </header>
+
+  <section class="layout">
+    <div class="panel">
+      <h2>Data</h2>
+      <label for="fileInput">CSV file</label>
+      <input id="fileInput" type="file" accept=".csv" />
+      <button id="loadDefault">Try load output_clean.csv</button>
+
+      <div class="slider-wrap">
+        <label for="timeSlider">Time</label>
+        <input id="timeSlider" type="range" min="0" max="0" step="1" value="0" disabled />
+        <div id="timeLabel" class="sub">time: -</div>
+      </div>
+
+      <div class="slider-wrap">
+        <label for="sampleSlider">Sampling (1 point over N)</label>
+        <input id="sampleSlider" type="range" min="1" max="200" step="1" value="1" />
+        <div id="sampleLabel" class="sub">N: 1</div>
+      </div>
+
+      <div class="slider-wrap">
+        <label for="avgSlider">Avg heading window</label>
+        <input id="avgSlider" type="range" min="1" max="200" step="1" value="5" />
+        <div id="avgLabel" class="sub">window: 5</div>
+      </div>
+
+      <div class="slider-wrap">
+        <label>Display</label>
+        <div class="sub">
+          <label><input id="toggleArrows" type="checkbox" checked /> show arrows</label>
+        </div>
+        <div class="sub">
+          <label><input id="toggleCarHeading" type="checkbox" checked /> car heading</label>
+        </div>
+        <div class="sub">
+          <label><input id="toggleGoalHeading" type="checkbox" checked /> goal heading</label>
+        </div>
+        <div class="sub">
+          <label><input id="toggleTurnHeading" type="checkbox" checked /> car turn heading</label>
+        </div>
+        <div class="sub">
+          <label><input id="toggleAvgHeading" type="checkbox" /> avg heading</label>
+        </div>
+        <div class="sub">
+          <label><input id="toggleInfo" type="checkbox" checked /> show CSV info</label>
+        </div>
+      </div>
+
+      <div class="stat">
+        <div id="countStat">points: 0</div>
+        <div id="rangeStat">range: -</div>
+        <div id="latStat">lat: -</div>
+        <div id="lonStat">long: -</div>
+      </div>
+
+      <div id="currentPanel" class="panel" style="margin-top: 12px; padding: 12px;">
+        <h2>Current Point</h2>
+        <div id="currentInfo" class="sub">-</div>
+      </div>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="plot"></canvas>
+      <div class="legend">
+        cyan = path + car heading<br />
+        orange = goal heading (0.3 alpha)<br />
+        green = avg line (px to px+y)<br />
+        white = current point<br />
+        red = goal
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const loadDefaultBtn = document.getElementById("loadDefault");
+    const timeSlider = document.getElementById("timeSlider");
+    const timeLabel = document.getElementById("timeLabel");
+    const sampleSlider = document.getElementById("sampleSlider");
+    const sampleLabel = document.getElementById("sampleLabel");
+    const avgSlider = document.getElementById("avgSlider");
+    const avgLabel = document.getElementById("avgLabel");
+    const toggleArrows = document.getElementById("toggleArrows");
+    const toggleCarHeading = document.getElementById("toggleCarHeading");
+    const toggleGoalHeading = document.getElementById("toggleGoalHeading");
+    const toggleTurnHeading = document.getElementById("toggleTurnHeading");
+    const toggleAvgHeading = document.getElementById("toggleAvgHeading");
+    const toggleInfo = document.getElementById("toggleInfo");
+    const countStat = document.getElementById("countStat");
+    const rangeStat = document.getElementById("rangeStat");
+    const latStat = document.getElementById("latStat");
+    const lonStat = document.getElementById("lonStat");
+    const currentInfo = document.getElementById("currentInfo");
+    const currentPanel = document.getElementById("currentPanel");
+    const canvas = document.getElementById("plot");
+    const ctx = canvas.getContext("2d");
+
+    const GOAL_LAT = 43.610382;
+    const GOAL_LON = 1.431465;
+
+    let data = [];
+    let bounds = null;
+
+    function resizeCanvas() {
+      const { width, height } = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawPlot();
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+
+    function parseCsv(text) {
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length === 0) return [];
+      const header = lines[0].split(";").map((h) => h.trim());
+      const timeIndex = header.indexOf("time");
+      const carHeadingIndex = header.indexOf("car_heading");
+      const goalHeadingIndex = header.indexOf("goal_heading");
+      const carTurnHeadingIndex = header.indexOf("car_turn_heading");
+      const latIndex = header.indexOf("lat");
+      const lonIndex = header.indexOf("long");
+      const oldLatIndex = header.indexOf("old_lat");
+      const oldLonIndex = header.indexOf("old_long");
+      const distanceIndex = header.indexOf("distance_to_goal");
+
+      if (timeIndex === -1 || latIndex === -1 || lonIndex === -1) {
+        throw new Error("Missing required columns: time, lat, long");
+      }
+
+      const rows = [];
+      for (let i = 1; i < lines.length; i += 1) {
+        const parts = lines[i].split(";");
+        if (parts.length <= Math.max(timeIndex, latIndex, lonIndex)) continue;
+        const time = Number(parts[timeIndex]);
+        const carHeading = carHeadingIndex === -1 ? NaN : Number(parts[carHeadingIndex]);
+        const goalHeading = goalHeadingIndex === -1 ? NaN : Number(parts[goalHeadingIndex]);
+        const carTurnHeading = carTurnHeadingIndex === -1 ? NaN : Number(parts[carTurnHeadingIndex]);
+        const lat = Number(parts[latIndex]);
+        const lon = Number(parts[lonIndex]);
+        const oldLat = oldLatIndex === -1 ? NaN : Number(parts[oldLatIndex]);
+        const oldLon = oldLonIndex === -1 ? NaN : Number(parts[oldLonIndex]);
+        const distanceToGoal = distanceIndex === -1 ? NaN : Number(parts[distanceIndex]);
+        if (!Number.isFinite(time) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        rows.push({
+          time,
+          lat,
+          lon,
+          oldLat,
+          oldLon,
+          distanceToGoal,
+          carHeading,
+          goalHeading,
+          carTurnHeading,
+        });
+      }
+      return rows;
+    }
+
+    function computeBounds(rows) {
+      let minLat = Infinity;
+      let maxLat = -Infinity;
+      let minLon = Infinity;
+      let maxLon = -Infinity;
+      rows.forEach((r) => {
+        minLat = Math.min(minLat, r.lat);
+        maxLat = Math.max(maxLat, r.lat);
+        minLon = Math.min(minLon, r.lon);
+        maxLon = Math.max(maxLon, r.lon);
+      });
+      minLat = Math.min(minLat, GOAL_LAT);
+      maxLat = Math.max(maxLat, GOAL_LAT);
+      minLon = Math.min(minLon, GOAL_LON);
+      maxLon = Math.max(maxLon, GOAL_LON);
+      return { minLat, maxLat, minLon, maxLon };
+    }
+
+    function drawGrid() {
+      const { width, height } = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = "#1b222c";
+      ctx.lineWidth = 1;
+      const step = 60;
+      for (let x = 0; x <= width; x += step) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= height; y += step) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+    }
+
+    function projectPoint(lat, lon) {
+      const { width, height } = canvas.getBoundingClientRect();
+      const pad = 24;
+      const spanLat = bounds.maxLat - bounds.minLat || 1;
+      const spanLon = bounds.maxLon - bounds.minLon || 1;
+      const x = pad + ((lon - bounds.minLon) / spanLon) * (width - pad * 2);
+      const y = height - pad - ((lat - bounds.minLat) / spanLat) * (height - pad * 2);
+      return { x, y };
+    }
+
+    function drawPlot() {
+      const { width, height } = canvas.getBoundingClientRect();
+      if (!width || !height) return;
+      drawGrid();
+      if (!data.length || !bounds) return;
+
+      const maxIndex = Number(timeSlider.value);
+      ctx.strokeStyle = "#4dd0e1";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const sampleStep = Math.max(1, Number(sampleSlider.value));
+      for (let i = 0; i <= maxIndex; i += 1) {
+        const p = projectPoint(data[i].lat, data[i].lon);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+
+      if (toggleArrows.checked) {
+        for (let i = 0; i <= maxIndex; i += sampleStep) {
+          const p = projectPoint(data[i].lat, data[i].lon);
+          if (toggleCarHeading.checked) {
+            drawHeadingArrow(p.x, p.y, data[i].carHeading, "#4dd0e1");
+          }
+          if (toggleGoalHeading.checked) {
+            drawHeadingArrow(p.x, p.y, data[i].goalHeading, "rgba(255, 183, 77, 0.3)");
+          }
+          if (toggleTurnHeading.checked) {
+            const relativeTurn = data[i].carHeading + data[i].carTurnHeading;
+            drawHeadingArrow(p.x, p.y, relativeTurn, "#ffffff", 4, 36);
+          }
+          if (toggleAvgHeading.checked) {
+            drawAvgLineAt(i, Number(avgSlider.value), "#8bc34a", 4);
+          }
+        }
+      }
+
+      const goalPoint = projectPoint(GOAL_LAT, GOAL_LON);
+      ctx.fillStyle = "#e53935";
+      ctx.beginPath();
+      ctx.arc(goalPoint.x, goalPoint.y, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      const last = data[maxIndex];
+      if (last) {
+        const p = projectPoint(last.lat, last.lon);
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (toggleArrows.checked) {
+          if (toggleCarHeading.checked) {
+            drawHeadingArrow(p.x, p.y, last.carHeading, "#4dd0e1", 3, 56);
+          }
+          if (toggleGoalHeading.checked) {
+            drawHeadingArrow(p.x, p.y, last.goalHeading, "rgba(255, 183, 77, 0.3)", 3, 56);
+          }
+          if (toggleTurnHeading.checked) {
+            const relativeTurn = last.carHeading + last.carTurnHeading;
+            drawHeadingArrow(p.x, p.y, relativeTurn, "#ffffff", 6, 72);
+          }
+          if (toggleAvgHeading.checked) {
+            drawAvgLineAt(maxIndex, Number(avgSlider.value), "#8bc34a", 6);
+          }
+        }
+      }
+
+      ctx.fillStyle = "#8a93a0";
+      ctx.font = "12px 'IBM Plex Mono', monospace";
+      ctx.fillText(`points: ${maxIndex + 1}`, 12, 18);
+    }
+
+    function drawHeadingArrow(x, y, headingDeg, color, width = 2, length = 28) {
+      if (!Number.isFinite(headingDeg)) return;
+      const angle = (headingDeg - 90) * (Math.PI / 180);
+      const endX = x + Math.cos(angle) * length;
+      const endY = y + Math.sin(angle) * length;
+      const headSize = 6;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+
+      const leftAngle = angle + Math.PI * 0.75;
+      const rightAngle = angle - Math.PI * 0.75;
+      ctx.beginPath();
+      ctx.moveTo(endX, endY);
+      ctx.lineTo(endX + Math.cos(leftAngle) * headSize, endY + Math.sin(leftAngle) * headSize);
+      ctx.lineTo(endX + Math.cos(rightAngle) * headSize, endY + Math.sin(rightAngle) * headSize);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    function drawAvgLineAt(index, windowSize, color, width) {
+      const size = Math.max(1, Math.floor(windowSize));
+      const start = Math.max(0, index);
+      const end = Math.min(data.length - 1, index + size - 1);
+      if (start === end) return;
+      const startPoint = data[start];
+      const endPoint = data[end];
+      if (!Number.isFinite(startPoint.lat) || !Number.isFinite(startPoint.lon)) return;
+      if (!Number.isFinite(endPoint.lat) || !Number.isFinite(endPoint.lon)) return;
+      const a = projectPoint(startPoint.lat, startPoint.lon);
+      const b = projectPoint(endPoint.lat, endPoint.lon);
+      const minLen = 20;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy);
+      let endX = b.x;
+      let endY = b.y;
+      if (dist > 0 && dist < minLen) {
+        const scale = minLen / dist;
+        endX = a.x + dx * scale;
+        endY = a.y + dy * scale;
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+    }
+
+    function updateStats(index) {
+      if (!data.length) return;
+      const item = data[index];
+      countStat.textContent = `points: ${data.length}`;
+      rangeStat.textContent = `range: ${bounds.minLat.toFixed(6)}..${bounds.maxLat.toFixed(6)}`;
+      latStat.textContent = `lat: ${item.lat.toFixed(6)}`;
+      lonStat.textContent = `long: ${item.lon.toFixed(6)}`;
+      timeLabel.textContent = `time: ${item.time}`;
+      currentInfo.textContent = [
+        `time: ${item.time}`,
+        `car_heading: ${Number.isFinite(item.carHeading) ? item.carHeading.toFixed(3) : "-"}`,
+        `goal_heading: ${Number.isFinite(item.goalHeading) ? item.goalHeading.toFixed(3) : "-"}`,
+        `car_turn_heading: ${Number.isFinite(item.carTurnHeading) ? item.carTurnHeading.toFixed(3) : "-"}`,
+        `lat: ${item.lat.toFixed(6)}`,
+        `long: ${item.lon.toFixed(6)}`,
+        `old_lat: ${Number.isFinite(item.oldLat) ? item.oldLat.toFixed(6) : "-"}`,
+        `old_long: ${Number.isFinite(item.oldLon) ? item.oldLon.toFixed(6) : "-"}`,
+        `distance_to_goal: ${Number.isFinite(item.distanceToGoal) ? item.distanceToGoal.toFixed(3) : "-"}`,
+      ].join(" | ");
+      currentPanel.style.display = toggleInfo.checked ? "block" : "none";
+    }
+
+    function loadRows(rows) {
+      data = rows.sort((a, b) => a.time - b.time);
+      bounds = computeBounds(data);
+      timeSlider.min = 0;
+      timeSlider.max = Math.max(0, data.length - 1);
+      timeSlider.value = timeSlider.max;
+      timeSlider.disabled = data.length === 0;
+      updateStats(Number(timeSlider.value));
+      drawPlot();
+    }
+
+    fileInput.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          loadRows(parseCsv(reader.result));
+        } catch (err) {
+          alert(err.message);
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    loadDefaultBtn.addEventListener("click", async () => {
+      try {
+        const response = await fetch("output_clean.csv");
+        if (!response.ok) throw new Error("Could not load output_clean.csv");
+        const text = await response.text();
+        loadRows(parseCsv(text));
+      } catch (err) {
+        alert("Load failed. Use the file picker instead.");
+      }
+    });
+
+    timeSlider.addEventListener("input", () => {
+      updateStats(Number(timeSlider.value));
+      drawPlot();
+    });
+
+    sampleSlider.addEventListener("input", () => {
+      sampleLabel.textContent = `N: ${sampleSlider.value}`;
+      drawPlot();
+    });
+
+    avgSlider.addEventListener("input", () => {
+      avgLabel.textContent = `window: ${avgSlider.value}`;
+      drawPlot();
+    });
+
+    toggleArrows.addEventListener("change", () => {
+      drawPlot();
+    });
+
+    toggleCarHeading.addEventListener("change", () => {
+      drawPlot();
+    });
+
+    toggleGoalHeading.addEventListener("change", () => {
+      drawPlot();
+    });
+
+    toggleTurnHeading.addEventListener("change", () => {
+      drawPlot();
+    });
+
+    toggleAvgHeading.addEventListener("change", () => {
+      drawPlot();
+    });
+
+    sampleLabel.textContent = `N: ${sampleSlider.value}`;
+    avgLabel.textContent = `window: ${avgSlider.value}`;
+
+    toggleInfo.addEventListener("change", () => {
+      updateStats(Number(timeSlider.value));
+    });
+
+    resizeCanvas();
+  </script>
+</body>
+</html>
