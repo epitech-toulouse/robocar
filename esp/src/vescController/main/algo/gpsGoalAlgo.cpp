@@ -22,6 +22,8 @@ std::array<GpsPosition, GPS_POS_BUFFER_SIZE> gps_positions = {
     {}
 };
 uint8_t gps_index = 0;
+uint8_t old_index = 0;
+double old_mani_heading = 0;
 
 bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 {
@@ -68,7 +70,9 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
 
     ////// MANI HEADING COMPUTATION //////////////////////////////////
-    double mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
+    bool should_update = gps_positions[old_index].latitude != position.latitude
+        || gps_positions[old_index].longitude != position.longitude;
+    double mani_heading = old_mani_heading;
     if (shouldLog) {
         ESP_LOGI(tag, "Comparing Index %04d with Index %04d | Bearing : %f",
                  gps_index,
@@ -76,10 +80,15 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
                  mani_heading);
     }
 
-    gps_positions[gps_index].latitude = position.latitude;
-    gps_positions[gps_index].longitude = position.longitude;
-    gps_index++;
-    gps_index %= GPS_POS_BUFFER_SIZE;
+    if (should_update) {
+        mani_heading = initialBearingDegrees(gps_positions[gps_index].latitude, gps_positions[gps_index].longitude, position.latitude, position.longitude);
+        old_mani_heading = mani_heading;
+        gps_positions[gps_index].latitude = position.latitude;
+        gps_positions[gps_index].longitude = position.longitude;
+        old_index = gps_index;
+        gps_index++;    
+        gps_index %= GPS_POS_BUFFER_SIZE;
+    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
