@@ -28,7 +28,7 @@ static float nearest_in_sector(const std::vector<LidarPoint>& scan, float minDeg
     }
     return nearest;
 }
-
+    
 static float min_valid_distance(float a, float b) {
     if (a < 0.0f) return b;
     if (b < 0.0f) return a;

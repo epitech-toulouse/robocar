@@ -52,6 +52,9 @@ private:
     const float fallbackWeightRtkFixed = 0.50f;
     const float computedWeightRtkFixed = 1.20f;
 
+    const double goalLatitude =  43.610382;
+    const double goalLongitude = 1.431465;
+
     static constexpr TickType_t logPeriodTicks = pdMS_TO_TICKS(500);
     const char *const tag = "GpsGoalAlgo";
     TickType_t lastLogTick = 0;

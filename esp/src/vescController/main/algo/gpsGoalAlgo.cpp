@@ -57,14 +57,14 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     const double distanceMeters = haversineDistanceMeters(
         position.latitude,
         position.longitude,
-        goal.lat,
-        goal.lon);
+        this->goalLatitude,
+        this->goalLongitude);
     
     const double desiredBearingDeg = initialBearingDegrees(
         position.latitude,
         position.longitude,
-        goal.lat,
-        goal.lon);
+        this->goalLatitude,
+        this->goalLongitude);
 
 
     ////// MANI HEADING COMPUTATION //////////////////////////////////
