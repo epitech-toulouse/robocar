@@ -60,7 +60,7 @@ constexpr size_t kLaneCenterHistorySize = 5;
 constexpr int kLaneSignalLossHoldFrames = 6;
 constexpr float kLaneMean[3] = {123.675f, 116.28f, 103.53f};
 constexpr float kLaneScale[3] = {0.01712475f, 0.01750700f, 0.01742919f};
-constexpr float kLaneMaskThreshold = 0.35f;
+constexpr float kLaneMaskThreshold = 0.25f;
 int g_current_frame_count = 0;
 int g_last_known_lane_width = 0;
 float g_last_confident_steering_percent = 0.0f;
@@ -1104,10 +1104,8 @@ void erode_5x5(const std::vector<uint8_t>& src, int width, int height, std::vect
 
 void close_5x5(std::vector<uint8_t>& mask, int width, int height) {
     std::vector<uint8_t> tmp(mask.size());
-    std::vector<uint8_t> closed(mask.size());
     dilate_5x5(mask, width, height, tmp);
-    erode_5x5(tmp, width, height, closed);
-    mask.swap(closed);
+    mask.swap(tmp);
 }
 
 bool is_valid_lane_row(const std::vector<uint8_t>& mask, int width, int y, int* lx, int* rx) {
