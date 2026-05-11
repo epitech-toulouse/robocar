@@ -216,6 +216,8 @@ static bool parse_algorithm_selection_value(const char *value,
         const AlgorithmDescriptor *descriptor = findAlgorithmDescriptorByKey(token);
         if (descriptor == nullptr && std::strcmp(token, "close_obs") == 0) {
             descriptor = algorithmDescriptor(SelectableAlgorithm::CloseObstacle);
+        } else if (descriptor == nullptr && std::strcmp(token, "lidar_cor") == 0) {
+            descriptor = algorithmDescriptor(SelectableAlgorithm::LidarCorridor);
         }
         if (descriptor == nullptr) {
             error = AlgorithmSelectionParseError::Unknown;

@@ -7,6 +7,7 @@
 #include "esp_bt.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "sdkconfig.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
@@ -21,6 +22,11 @@
 namespace {
 const char *TAG = "BleManager";
 constexpr const char *kDeviceName = "ROBOCAR_BLE";
+
+#ifndef CONFIG_BT_NIMBLE_MAX_CONNECTIONS
+#define CONFIG_BT_NIMBLE_MAX_CONNECTIONS 1
+#endif
+constexpr int kMaxBleConnections = CONFIG_BT_NIMBLE_MAX_CONNECTIONS;
 
 ble_uuid128_t g_serviceUuid = BLE_UUID128_INIT(
     0x31, 0x56, 0x26, 0xc0, 0xa8, 0x60, 0x4d, 0x2f,
@@ -275,7 +281,17 @@ int BleManager::gapEventHandler(struct ble_gap_event *event, void *arg)
         case BLE_GAP_EVENT_CONNECT:
             if (event->connect.status == 0) {
                 manager.addConnection(event->connect.conn_handle);
-                ESP_LOGI(TAG, "BLE client connected handle=%d", event->connect.conn_handle);
+                const int clientCount = manager.connectedClientCount();
+                ESP_LOGI(TAG,
+                         "BLE client connected handle=%d clients=%d/%d",
+                         event->connect.conn_handle,
+                         clientCount,
+                         kMaxBleConnections);
+                if (clientCount < kMaxBleConnections) {
+                    manager.restartAdvertising();
+                } else {
+                    ESP_LOGI(TAG, "BLE max clients reached; advertising paused");
+                }
             } else {
                 ESP_LOGW(TAG, "BLE connect failed status=%d", event->connect.status);
                 manager.restartAdvertising();
