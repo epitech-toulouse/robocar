@@ -68,6 +68,7 @@ class BleClient(private val context: Context) {
     var connectionState by mutableStateOf(BleConnectionState.Idle)
     var statusText by mutableStateOf("Idle")
     var lastValueHex by mutableStateOf("")
+    var lastValueText by mutableStateOf("")
     var useServiceFilter by mutableStateOf(false)
     var systemConnectionSummary by mutableStateOf("System BLE: unknown")
 
@@ -186,6 +187,7 @@ class BleClient(private val context: Context) {
             targetCharacteristic = characteristic
             statusText = "Service ready"
             connectRetryCount = 0
+            setNotify(true)
         }
 
         override fun onCharacteristicChanged(
@@ -194,6 +196,7 @@ class BleClient(private val context: Context) {
         ) {
             if (characteristic.uuid == CHARACTERISTIC_UUID) {
                 lastValueHex = characteristic.value.toHexString()
+                lastValueText = characteristic.value.toString(Charsets.UTF_8)
             }
         }
 
@@ -204,6 +207,7 @@ class BleClient(private val context: Context) {
         ) {
             if (status == BluetoothGatt.GATT_SUCCESS && characteristic.uuid == CHARACTERISTIC_UUID) {
                 lastValueHex = characteristic.value.toHexString()
+                lastValueText = characteristic.value.toString(Charsets.UTF_8)
             }
         }
 
@@ -517,6 +521,34 @@ class BleClient(private val context: Context) {
     fun sendGoCommand(): Boolean {
         Log.d(TAG, "sendGoCommand payload=GO")
         return writePayload("GO\n".encodeToByteArray())
+    }
+
+    fun sendProtocolChar(command: Char): Boolean {
+        Log.d(TAG, "sendProtocolChar payload=$command")
+        return writePayload(byteArrayOf(command.code.toByte()))
+    }
+
+    fun sendAlgorithms(selected: Collection<String>): Boolean {
+        val payload = "ALG:${selected.joinToString(",")}\n"
+        Log.d(TAG, "sendAlgorithms payload=$payload")
+        return writePayload(payload.encodeToByteArray())
+    }
+
+    fun sendGpsGoal(latitude: String, longitude: String): Boolean {
+        val payload = "GPS:${latitude.trim()},${longitude.trim()}\n"
+        Log.d(TAG, "sendGpsGoal payload=$payload")
+        return writePayload(payload.encodeToByteArray())
+    }
+
+    fun requestStatus(): Boolean {
+        Log.d(TAG, "requestStatus payload=STATUS?")
+        return writePayload("STATUS?\n".encodeToByteArray())
+    }
+
+    fun requestLogs(since: Int = 0): Boolean {
+        val payload = "LOGS:$since\n"
+        Log.d(TAG, "requestLogs payload=$payload")
+        return writePayload(payload.encodeToByteArray())
     }
 
     @SuppressLint("MissingPermission")

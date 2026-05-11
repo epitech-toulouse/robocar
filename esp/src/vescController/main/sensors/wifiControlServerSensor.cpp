@@ -1,6 +1,6 @@
 #include "wifiControlServerSensor.hpp"
-#include "index.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -8,24 +8,23 @@
 #include <cstring>
 #include <string>
 
-#include "esp_event.h"
 #include "esp_log.h"
-#include "esp_netif.h"
-#include "esp_wifi.h"
-#include "lwip/inet.h"
-#include "lwip/sockets.h"
 #include "nvs_flash.h"
-#include <atomic>
+#include "host/ble_hs.h"
+#include "host/ble_uuid.h"
+#include "nimble/nimble_port.h"
+#include "nimble/nimble_port_freertos.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
 
 static constexpr size_t WEB_LOG_MAX_ENTRIES = 128;
 static constexpr size_t WEB_LOG_LINE_MAX = 192;
-
 struct WebLogEntry {
     uint32_t seq;
     char line[WEB_LOG_LINE_MAX];
 };
 
-static const char TAG[] = "WifiControlServerSensor";
+static const char TAG[] = "BleControlSensor";
 
 static WebLogEntry s_webLogEntries[WEB_LOG_MAX_ENTRIES];
 static std::atomic<uint32_t> s_webLogSeq;
@@ -34,8 +33,21 @@ static portMUX_TYPE s_webLogMux = portMUX_INITIALIZER_UNLOCKED;
 using LogVprintfFn = int (*)(const char *, va_list);
 static LogVprintfFn s_prevLogVprintf;
 static std::atomic<bool> s_logRedirectInstalled;
+static std::atomic<bool> s_bleStarted;
+static WifiControlServerSensor *s_bleService;
 
+static ble_uuid128_t s_serviceUuid = BLE_UUID128_INIT(
+    0x31, 0x56, 0x26, 0xc0, 0xa8, 0x60, 0x4d, 0x2f,
+    0x98, 0x7b, 0x66, 0x6d, 0xaf, 0xaa, 0x00, 0x01);
+static ble_uuid128_t s_characteristicUuid = BLE_UUID128_INIT(
+    0x31, 0x56, 0x26, 0xc0, 0xa8, 0x60, 0x4d, 0x2f,
+    0x98, 0x7b, 0x66, 0x6d, 0xaf, 0xaa, 0x00, 0x02);
 
+enum class AlgorithmSelectionParseError : uint8_t {
+    None = 0,
+    Unknown,
+    NotImplemented,
+};
 
 static void store_web_log_line(const char *text)
 {
@@ -120,7 +132,7 @@ static std::string get_logs_since(uint32_t since)
             continue;
         }
 
-        out += std::to_string(entry.seq);
+        out += std::to_string(seq);
         out += "|";
         out += entry.line;
         out += "\n";
@@ -129,54 +141,47 @@ static std::string get_logs_since(uint32_t since)
     return out;
 }
 
-enum class AlgorithmSelectionParseError : uint8_t {
-    None = 0,
-    Unknown,
-    NotImplemented,
-};
-
-static int hex_value(char c)
+static bool parse_strict_double(const char *value, double &out)
 {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
+    if (value == nullptr || value[0] == '\0') {
+        return false;
     }
-    if (c >= 'a' && c <= 'f') {
-        return 10 + (c - 'a');
-    }
-    if (c >= 'A' && c <= 'F') {
-        return 10 + (c - 'A');
-    }
-    return -1;
+
+    char *end = nullptr;
+    out = std::strtod(value, &end);
+    return end != value && end != nullptr && *end == '\0' && std::isfinite(out);
 }
 
-static void url_decode_in_place(char *value)
+static bool parse_strict_float(const char *value, float &out)
 {
-    if (value == nullptr) {
-        return;
+    if (value == nullptr || value[0] == '\0') {
+        return false;
     }
 
-    char *src = value;
-    char *dst = value;
-
-    while (*src != '\0') {
-        if (*src == '%' && src[1] != '\0' && src[2] != '\0') {
-            const int hi = hex_value(src[1]);
-            const int lo = hex_value(src[2]);
-
-            if (hi >= 0 && lo >= 0) {
-                *dst++ = static_cast<char>((hi << 4) | lo);
-                src += 3;
-                continue;
-            }
-        }
-        if (*src == '+') {
-            *dst++ = ' ';
-            ++src;
-            continue;
-        }
-        *dst++ = *src++;
+    char *end = nullptr;
+    const float parsed = std::strtof(value, &end);
+    if (end == value || end == nullptr || *end != '\0' || !std::isfinite(parsed)) {
+        return false;
     }
-    *dst = '\0';
+    out = parsed;
+    return true;
+}
+
+static void trim_in_place(std::string &value)
+{
+    while (!value.empty() && (value.back() == '\r' || value.back() == '\n' ||
+                              value.back() == ' ' || value.back() == '\t')) {
+        value.pop_back();
+    }
+    size_t start = 0;
+    while (start < value.size() &&
+           (value[start] == ' ' || value[start] == '\t' ||
+            value[start] == '\r' || value[start] == '\n')) {
+        ++start;
+    }
+    if (start > 0) {
+        value.erase(0, start);
+    }
 }
 
 static bool parse_algorithm_selection_value(const char *value,
@@ -301,29 +306,271 @@ static void append_gps_goal_json(std::string &payload, const GpsGoalSnapshot &go
     payload += "}";
 }
 
-static bool parse_strict_double(const char *value, double &out)
+void WifiControlServerSensor::bleHostTask(void *arg)
 {
-    if (value == nullptr || value[0] == '\0') {
-        return false;
+    (void)arg;
+    nimble_port_run();
+    nimble_port_freertos_deinit();
+}
+
+int WifiControlServerSensor::bleGapEvent(struct ble_gap_event *event, void *arg)
+{
+    auto *self = static_cast<WifiControlServerSensor *>(arg);
+    if (self == nullptr) {
+        self = s_bleService;
     }
 
-    char *end = nullptr;
-    out = std::strtod(value, &end);
-    return end != value && end != nullptr && *end == '\0' && std::isfinite(out);
+    switch (event->type) {
+        case BLE_GAP_EVENT_CONNECT:
+            if (event->connect.status == 0) {
+                if (self != nullptr) {
+                    self->addConnection(event->connect.conn_handle);
+                }
+                ESP_LOGI(TAG, "BLE client connected handle=%d", event->connect.conn_handle);
+            } else {
+                ESP_LOGW(TAG, "BLE connect failed status=%d", event->connect.status);
+                if (self != nullptr) {
+                    self->restartAdvertising();
+                }
+            }
+            return 0;
+        case BLE_GAP_EVENT_DISCONNECT:
+            if (self != nullptr) {
+                self->removeConnection(event->disconnect.conn.conn_handle);
+                self->restartAdvertising();
+            }
+            ESP_LOGI(TAG, "BLE client disconnected handle=%d",
+                     event->disconnect.conn.conn_handle);
+            return 0;
+        case BLE_GAP_EVENT_SUBSCRIBE:
+            ESP_LOGI(TAG, "BLE subscribe conn=%d attr=%d notify=%d",
+                     event->subscribe.conn_handle,
+                     event->subscribe.attr_handle,
+                     event->subscribe.cur_notify);
+            return 0;
+        case BLE_GAP_EVENT_MTU:
+            ESP_LOGI(TAG, "BLE mtu conn=%d mtu=%d",
+                     event->mtu.conn_handle,
+                     event->mtu.value);
+            return 0;
+        default:
+            return 0;
+    }
 }
 
-void WifiControlServerSensor::setHttpCommonHeaders(httpd_req_t *req)
+int WifiControlServerSensor::bleGattAccess(uint16_t connHandle,
+                                           uint16_t attrHandle,
+                                           struct ble_gatt_access_ctxt *ctxt,
+                                           void *arg)
 {
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "GET, OPTIONS");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Private-Network", "true");
-    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    (void)connHandle;
+    (void)attrHandle;
+    (void)arg;
+    WifiControlServerSensor *self = s_bleService;
+    if (self == nullptr) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    switch (ctxt->op) {
+        case BLE_GATT_ACCESS_OP_READ_CHR: {
+            const int rc = os_mbuf_append(ctxt->om,
+                                          self->bleValue_.data(),
+                                          self->bleValue_.size());
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        case BLE_GATT_ACCESS_OP_WRITE_CHR: {
+            std::string payload;
+            payload.resize(OS_MBUF_PKTLEN(ctxt->om));
+            if (!payload.empty()) {
+                const int rc = ble_hs_mbuf_to_flat(ctxt->om,
+                                                   payload.data(),
+                                                   payload.size(),
+                                                   nullptr);
+                if (rc != 0) {
+                    return BLE_ATT_ERR_UNLIKELY;
+                }
+            }
+            self->handleBleCommand(payload);
+            return 0;
+        }
+        default:
+            return BLE_ATT_ERR_UNLIKELY;
+    }
 }
 
-WifiControlServerSensor *WifiControlServerSensor::fromRequest(httpd_req_t *req)
+void WifiControlServerSensor::bleOnSync()
 {
-    return static_cast<WifiControlServerSensor *>(req->user_ctx);
+    if (s_bleService != nullptr) {
+        s_bleService->restartAdvertising();
+    }
+}
+
+void WifiControlServerSensor::restartAdvertising()
+{
+    ble_gap_adv_stop();
+
+    ble_hs_adv_fields fields = {};
+    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+    fields.name = reinterpret_cast<const uint8_t *>("ROBOCAR_BLE");
+    fields.name_len = std::strlen("ROBOCAR_BLE");
+    fields.name_is_complete = 1;
+    fields.appearance = BLE_APPEARANCE_GENERIC_REMOTE;
+    fields.uuids128 = &s_serviceUuid;
+    fields.num_uuids128 = 1;
+    fields.uuids128_is_complete = 1;
+    int rc = ble_gap_adv_set_fields(&fields);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Failed to set BLE advertising fields rc=%d", rc);
+        return;
+    }
+
+    ble_gap_adv_params advParams = {};
+    advParams.conn_mode = BLE_GAP_CONN_MODE_UND;
+    advParams.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    rc = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC,
+                           nullptr,
+                           BLE_HS_FOREVER,
+                           &advParams,
+                           bleGapEvent,
+                           this);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Failed to start BLE advertising rc=%d", rc);
+    } else {
+        ESP_LOGI(TAG, "BLE advertising as ROBOCAR_BLE");
+    }
+}
+
+void WifiControlServerSensor::startBleServer()
+{
+    bool expected = false;
+    if (!s_bleStarted.compare_exchange_strong(expected, true)) {
+        ESP_LOGW(TAG, "BLE host already started");
+        return;
+    }
+
+    s_bleService = this;
+
+    int rc = nimble_port_init();
+    if (rc != 0) {
+        ESP_LOGE(TAG, "nimble_port_init failed rc=%d", rc);
+        active_.store(false);
+        return;
+    }
+
+    ble_svc_gap_init();
+    ble_svc_gatt_init();
+    ble_svc_gap_device_name_set("ROBOCAR_BLE");
+    ble_hs_cfg.sync_cb = bleOnSync;
+    ble_hs_cfg.store_status_cb = nullptr;
+
+    static ble_gatt_chr_def characteristicDefs[] = {
+        {
+            .uuid = &s_characteristicUuid.u,
+            .access_cb = WifiControlServerSensor::bleGattAccess,
+            .arg = nullptr,
+            .descriptors = nullptr,
+            .flags = BLE_GATT_CHR_F_READ |
+                     BLE_GATT_CHR_F_WRITE |
+                     BLE_GATT_CHR_F_WRITE_NO_RSP |
+                     BLE_GATT_CHR_F_NOTIFY,
+            .min_key_size = 0,
+            .val_handle = &s_bleService->bleCharacteristicHandle_,
+            .cpfd = nullptr,
+        },
+        {
+            .uuid = nullptr,
+            .access_cb = nullptr,
+            .arg = nullptr,
+            .descriptors = nullptr,
+            .flags = 0,
+            .min_key_size = 0,
+            .val_handle = nullptr,
+            .cpfd = nullptr,
+        }
+    };
+    static ble_gatt_svc_def services[] = {
+        {
+            .type = BLE_GATT_SVC_TYPE_PRIMARY,
+            .uuid = &s_serviceUuid.u,
+            .includes = nullptr,
+            .characteristics = characteristicDefs,
+        },
+        {
+            .type = 0,
+            .uuid = nullptr,
+            .includes = nullptr,
+            .characteristics = nullptr,
+        }
+    };
+
+    rc = ble_gatts_count_cfg(services);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gatts_count_cfg failed rc=%d", rc);
+        return;
+    }
+    rc = ble_gatts_add_svcs(services);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gatts_add_svcs failed rc=%d", rc);
+        return;
+    }
+
+    nimble_port_freertos_init(bleHostTask);
+}
+
+void WifiControlServerSensor::stopBleServer()
+{
+    if (!s_bleStarted.load()) {
+        return;
+    }
+    ble_gap_adv_stop();
+    nimble_port_stop();
+}
+
+void WifiControlServerSensor::addConnection(uint16_t connHandle)
+{
+    if (std::find(connHandles_.begin(), connHandles_.end(), connHandle) == connHandles_.end()) {
+        connHandles_.push_back(connHandle);
+    }
+    connectedClients_.store(static_cast<int>(connHandles_.size()));
+}
+
+void WifiControlServerSensor::removeConnection(uint16_t connHandle)
+{
+    connHandles_.erase(std::remove(connHandles_.begin(), connHandles_.end(), connHandle),
+                       connHandles_.end());
+    connectedClients_.store(static_cast<int>(connHandles_.size()));
+    if (connHandles_.empty()) {
+        clearManualDriveState();
+    }
+}
+
+void WifiControlServerSensor::setBleResponse(const std::string &payload)
+{
+    if (payload.size() > BLE_VALUE_MAX_SIZE) {
+        bleValue_ = payload.substr(0, BLE_VALUE_MAX_SIZE);
+    } else {
+        bleValue_ = payload;
+    }
+    notifySubscribers(bleValue_);
+}
+
+void WifiControlServerSensor::notifySubscribers(const std::string &payload)
+{
+    if (bleCharacteristicHandle_ == 0) {
+        return;
+    }
+
+    const size_t notifyLen = std::min(payload.size(), BLE_VALUE_MAX_SIZE);
+    for (uint16_t connHandle : connHandles_) {
+        os_mbuf *om = ble_hs_mbuf_from_flat(payload.data(), notifyLen);
+        if (om == nullptr) {
+            continue;
+        }
+        const int rc = ble_gatts_notify_custom(connHandle, bleCharacteristicHandle_, om);
+        if (rc != 0) {
+            ESP_LOGW(TAG, "notify failed conn=%d rc=%d", connHandle, rc);
+        }
+    }
 }
 
 bool WifiControlServerSensor::isManualDriveEnabled() const
@@ -356,7 +603,7 @@ bool WifiControlServerSensor::isAlgorithmAvailable(SelectableAlgorithm id) const
 {
     switch (id) {
         case SelectableAlgorithm::Manual:
-            return this->active_.load();
+            return this->active_.load() && this->connectedClients_.load() > 0;
         case SelectableAlgorithm::CloseObstacle:
         case SelectableAlgorithm::LidarCorridor:
             return this->_lidarSensorApi.isActive();
@@ -409,8 +656,10 @@ std::string WifiControlServerSensor::buildStatusJson() const
     std::string payload;
     payload.reserve(1024);
 
-    payload += "{\"ok\":true,\"service\":\"robocar_ctrl\",\"serviceActive\":";
+    payload += "{\"ok\":true,\"service\":\"robocar_ble\",\"serviceActive\":";
     append_json_bool(payload, this->active_.load());
+    payload += ",\"connectedClients\":";
+    payload += std::to_string(this->connectedClients_.load());
     payload += ",\"vescActive\":";
     append_json_bool(payload, this->_vescControllerApi.isActive());
     payload += ",\"emergency\":";
@@ -526,13 +775,18 @@ bool WifiControlServerSensor::applyProtocolChar(char c)
             right_.store(false);
             recomputeOutputFromState();
             return true;
-        case 'S': emergencyStop(); return true;
+        case 'S':
+            emergencyStop();
+            setBleResponse("STATUS:" + buildStatusJson());
+            return true;
         case 'A':
             emergency_.store(false);
             _vescControllerApi.activate();
             lastTick_.store(static_cast<int>(xTaskGetTickCount()));
+            setBleResponse("STATUS:" + buildStatusJson());
             return true;
-        default: return false;
+        default:
+            return false;
     }
 }
 
@@ -549,150 +803,179 @@ void WifiControlServerSensor::parseAndStore(const uint8_t *buf, int len)
         }
         if (!applyProtocolChar(static_cast<char>(b))) {
             ESP_LOGW(TAG, "Unknown protocol char: '%c' (0x%02X)", static_cast<char>(b), b);
+            setBleResponse("ERR:unknown_protocol_char");
         }
     }
-
-    // ESP_LOGI(TAG, "State F=%d B=%d L=%d R=%d -> duty=%.3f steer=%.3f",
-    //          forward_.load(), backward_.load(), left_.load(), right_.load(),
-    //          duty_.load(), steer_.load());
 }
 
-void WifiControlServerSensor::runTcpServerTask()
+void WifiControlServerSensor::handleAlgorithmCommand(const char *value)
 {
-    uint8_t rx_buf[RX_BUFFER_SIZE];
+    uint32_t selectedMask = 0;
+    AlgorithmSelectionParseError parseError = AlgorithmSelectionParseError::None;
+    char invalidToken[32] = {0};
 
-    while (true) {
-        int listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-        if (listen_sock < 0) {
-            ESP_LOGE(TAG, "Unable to create socket: errno=%d", errno);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-
-        int opt = 1;
-        setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-        sockaddr_in addr = {};
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(CONTROL_TCP_PORT);
-        addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-        if (bind(listen_sock, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
-            ESP_LOGE(TAG, "Socket bind failed: errno=%d", errno);
-            close(listen_sock);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-
-        if (listen(listen_sock, 1) < 0) {
-            ESP_LOGE(TAG, "Socket listen failed: errno=%d", errno);
-            close(listen_sock);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-
-        ESP_LOGI(TAG, "Wi-Fi control server listening on TCP port %d", CONTROL_TCP_PORT);
-
-        while (true) {
-            sockaddr_in6 source_addr = {};
-            socklen_t addr_len = sizeof(source_addr);
-            int sock = accept(listen_sock, reinterpret_cast<sockaddr *>(&source_addr), &addr_len);
-            if (sock < 0) {
-                ESP_LOGE(TAG, "Socket accept failed: errno=%d", errno);
-                break;
-            }
-
-            ESP_LOGI(TAG, "Controller connected");
-            while (true) {
-                const int len = recv(sock, rx_buf, sizeof(rx_buf), 0);
-                if (len < 0) {
-                    ESP_LOGE(TAG, "Socket recv failed: errno=%d", errno);
-                    break;
-                }
-                if (len == 0) {
-                    ESP_LOGI(TAG, "Controller disconnected");
-                    break;
-                }
-                parseAndStore(rx_buf, len);
-            }
-
-            emergencyStop();
-            shutdown(sock, 0);
-            close(sock);
-        }
-
-        close(listen_sock);
-        vTaskDelay(pdMS_TO_TICKS(200));
-    }
-}
-
-void WifiControlServerSensor::tcpServerTask(void *arg)
-{
-    static_cast<WifiControlServerSensor *>(arg)->runTcpServerTask();
-}
-
-void WifiControlServerSensor::initWifiSoftAp()
-{
-    esp_netif_create_default_wifi_ap();
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-    wifi_config_t wifi_config = {};
-    std::strncpy(reinterpret_cast<char *>(wifi_config.ap.ssid), WIFI_AP_SSID, sizeof(wifi_config.ap.ssid));
-    std::strncpy(reinterpret_cast<char *>(wifi_config.ap.password), WIFI_AP_PASSWORD, sizeof(wifi_config.ap.password));
-    wifi_config.ap.channel = WIFI_AP_CHANNEL;
-    wifi_config.ap.max_connection = WIFI_AP_MAX_CONN;
-    wifi_config.ap.ssid_len = std::strlen(WIFI_AP_SSID);
-    wifi_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
-
-    if (std::strlen(WIFI_AP_PASSWORD) == 0) {
-        wifi_config.ap.authmode = WIFI_AUTH_OPEN;
-    }
-
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
-
-    ESP_LOGI(TAG, "Wi-Fi AP started: ssid=%s channel=%u", WIFI_AP_SSID, WIFI_AP_CHANNEL);
-}
-
-void WifiControlServerSensor::startHttpServer()
-{
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = CONTROL_HTTP_PORT;
-    httpd_handle_t server = nullptr;
-    if (httpd_start(&server, &config) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start HTTP control API on port %d", CONTROL_HTTP_PORT);
+    if (!parse_algorithm_selection_value(value,
+                                         selectedMask,
+                                         parseError,
+                                         invalidToken,
+                                         sizeof(invalidToken))) {
+        std::string payload = "ERR:";
+        payload += (parseError == AlgorithmSelectionParseError::NotImplemented)
+            ? "algorithm_not_implemented:"
+            : "unknown_algorithm:";
+        payload += invalidToken;
+        setBleResponse(payload);
         return;
     }
 
-    httpServer_ = server;
+    setSelectedAlgorithmsMask(selectedMask);
+    setBleResponse("ALGORITHMS:" + buildAlgorithmsJson(true));
+}
 
-    httpd_uri_t root_uri = {.uri = "/", .method = HTTP_GET, .handler = httpRootHandler, .user_ctx = this};
-    httpd_uri_t cmd_uri = {.uri = "/cmd", .method = HTTP_GET, .handler = httpCmdHandler, .user_ctx = this};
-    httpd_uri_t logs_uri = {.uri = "/logs", .method = HTTP_GET, .handler = httpLogsHandler, .user_ctx = this};
-    httpd_uri_t algorithms_uri = {.uri = "/algorithms", .method = HTTP_GET, .handler = httpAlgorithmsHandler, .user_ctx = this};
-    httpd_uri_t gps_goal_uri = {.uri = "/gps-goal", .method = HTTP_GET, .handler = httpGpsGoalHandler, .user_ctx = this};
-    httpd_uri_t status_uri = {.uri = "/status", .method = HTTP_GET, .handler = httpStatusHandler, .user_ctx = this};
-    httpd_uri_t cmd_options_uri = {.uri = "/cmd", .method = HTTP_OPTIONS, .handler = httpCmdOptionsHandler, .user_ctx = this};
-    httpd_uri_t logs_options_uri = {.uri = "/logs", .method = HTTP_OPTIONS, .handler = httpLogsOptionsHandler, .user_ctx = this};
-    httpd_uri_t algorithms_options_uri = {.uri = "/algorithms", .method = HTTP_OPTIONS, .handler = httpAlgorithmsOptionsHandler, .user_ctx = this};
-    httpd_uri_t gps_goal_options_uri = {.uri = "/gps-goal", .method = HTTP_OPTIONS, .handler = httpGpsGoalOptionsHandler, .user_ctx = this};
-    httpd_uri_t status_options_uri = {.uri = "/status", .method = HTTP_OPTIONS, .handler = httpStatusOptionsHandler, .user_ctx = this};
+void WifiControlServerSensor::handleGpsGoalCommand(const char *value)
+{
+    if (value == nullptr) {
+        setBleResponse("ERR:missing_gps_goal");
+        return;
+    }
 
-    httpd_register_uri_handler(server, &root_uri);
-    httpd_register_uri_handler(server, &cmd_uri);
-    httpd_register_uri_handler(server, &logs_uri);
-    httpd_register_uri_handler(server, &algorithms_uri);
-    httpd_register_uri_handler(server, &gps_goal_uri);
-    httpd_register_uri_handler(server, &status_uri);
-    httpd_register_uri_handler(server, &cmd_options_uri);
-    httpd_register_uri_handler(server, &logs_options_uri);
-    httpd_register_uri_handler(server, &algorithms_options_uri);
-    httpd_register_uri_handler(server, &gps_goal_options_uri);
-    httpd_register_uri_handler(server, &status_options_uri);
-    ESP_LOGI(TAG, "HTTP control API listening on port %d", CONTROL_HTTP_PORT);
+    const char *sep = std::strchr(value, ',');
+    if (sep == nullptr) {
+        setBleResponse("ERR:missing_lat_or_lon");
+        return;
+    }
+
+    std::string latText(value, sep - value);
+    std::string lonText(sep + 1);
+    trim_in_place(latText);
+    trim_in_place(lonText);
+
+    double lat = 0.0;
+    double lon = 0.0;
+    if (!parse_strict_double(latText.c_str(), lat)) {
+        setBleResponse("ERR:invalid_latitude_format");
+        return;
+    }
+    if (!parse_strict_double(lonText.c_str(), lon)) {
+        setBleResponse("ERR:invalid_longitude_format");
+        return;
+    }
+    if (!GpsGoalState::isValidLatitude(lat)) {
+        setBleResponse("ERR:latitude_out_of_range");
+        return;
+    }
+    if (!GpsGoalState::isValidLongitude(lon)) {
+        setBleResponse("ERR:longitude_out_of_range");
+        return;
+    }
+    if (!_gpsGoalState.set(lat, lon, true)) {
+        setBleResponse("ERR:invalid_gps_goal");
+        return;
+    }
+    setBleResponse("GPS:" + buildGpsGoalJson(true));
+}
+
+void WifiControlServerSensor::handleSteeringCommand(const char *value)
+{
+    float steeringPercent = 0.0f;
+    if (!parse_strict_float(value, steeringPercent)) {
+        setBleResponse("ERR:invalid_steering");
+        return;
+    }
+
+    const float clamped = std::max(-100.0f, std::min(100.0f, steeringPercent));
+    steer_.store((clamped + 100.0f) / 200.0f);
+    forward_.store(true);
+    backward_.store(false);
+    left_.store(false);
+    right_.store(false);
+    duty_.store(DUTY_FORWARD);
+    lastTick_.store(static_cast<int>(xTaskGetTickCount()));
+}
+
+void WifiControlServerSensor::handleLineCommand(const std::string &command)
+{
+    if (command.empty()) {
+        return;
+    }
+
+    if (command == "STATUS?") {
+        setBleResponse("STATUS:" + buildStatusJson());
+        return;
+    }
+    if (command.rfind("LOGS:", 0) == 0) {
+        const uint32_t since = static_cast<uint32_t>(std::strtoul(command.c_str() + 5, nullptr, 10));
+        setBleResponse("LOGS:" + get_logs_since(since));
+        return;
+    }
+    if (command.rfind("ALG:", 0) == 0) {
+        handleAlgorithmCommand(command.c_str() + 4);
+        return;
+    }
+    if (command.rfind("GPS:", 0) == 0) {
+        handleGpsGoalCommand(command.c_str() + 4);
+        return;
+    }
+    if (command.rfind("STEER:", 0) == 0) {
+        handleSteeringCommand(command.c_str() + 6);
+        return;
+    }
+    if (command.rfind("CV:", 0) == 0) {
+        lastTick_.store(static_cast<int>(xTaskGetTickCount()));
+        return;
+    }
+    if (command == "STOP") {
+        emergencyStop();
+        setBleResponse("STATUS:" + buildStatusJson());
+        return;
+    }
+    if (command == "GO") {
+        emergency_.store(false);
+        _vescControllerApi.activate();
+        lastTick_.store(static_cast<int>(xTaskGetTickCount()));
+        setBleResponse("STATUS:" + buildStatusJson());
+        return;
+    }
+    if (command.size() == 1 && applyProtocolChar(command[0])) {
+        return;
+    }
+
+    setBleResponse("ERR:unknown_command");
+}
+
+void WifiControlServerSensor::handleBleCommand(const std::string &payload)
+{
+    if (payload.empty()) {
+        return;
+    }
+
+    bool hasSeparator = false;
+    for (char c : payload) {
+        if (c == ':' || c == '?' || c == '\n' || c == '\r') {
+            hasSeparator = true;
+            break;
+        }
+    }
+
+    if (!hasSeparator) {
+        parseAndStore(reinterpret_cast<const uint8_t *>(payload.data()),
+                      static_cast<int>(payload.size()));
+        return;
+    }
+
+    size_t start = 0;
+    while (start < payload.size()) {
+        size_t end = payload.find_first_of("\r\n", start);
+        std::string command = payload.substr(start, end == std::string::npos
+            ? std::string::npos
+            : end - start);
+        trim_in_place(command);
+        handleLineCommand(command);
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
 }
 
 void WifiControlServerSensor::start(void)
@@ -708,34 +991,11 @@ void WifiControlServerSensor::start(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    ret = esp_netif_init();
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        ESP_ERROR_CHECK(ret);
-    }
-
-    ret = esp_event_loop_create_default();
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        ESP_ERROR_CHECK(ret);
-    }
-
     ensure_log_redirect_installed();
-
-    initWifiSoftAp();
-    startHttpServer();
-
-    BaseType_t created = xTaskCreate(tcpServerTask, "wifi_ctrl_srv", 4096, this, 5, &tcpTaskHandle_);
-    if (created != pdTRUE) {
-        ESP_LOGE(TAG, "Failed to create wifi control TCP task");
-        if (httpServer_ != nullptr) {
-            httpd_stop(httpServer_);
-            httpServer_ = nullptr;
-        }
-        tcpTaskHandle_ = nullptr;
-        return;
-    }
-
     active_.store(true);
-    ESP_LOGI(TAG, "Wi-Fi control service initialized");
+    setBleResponse("STATUS:" + buildStatusJson());
+    startBleServer();
+    ESP_LOGI(TAG, "BLE control service initialized; Wi-Fi/HTTP control disabled");
 }
 
 void WifiControlServerSensor::stop(void)
@@ -743,19 +1003,10 @@ void WifiControlServerSensor::stop(void)
     if (!active_.load()) {
         return;
     }
-
-    if (tcpTaskHandle_ != nullptr) {
-        vTaskDelete(tcpTaskHandle_);
-        tcpTaskHandle_ = nullptr;
-    }
-
-    if (httpServer_ != nullptr) {
-        httpd_stop(httpServer_);
-        httpServer_ = nullptr;
-    }
-
+    clearManualDriveState();
+    stopBleServer();
     active_.store(false);
-    ESP_LOGI(TAG, "Wi-Fi control service stopped");
+    ESP_LOGI(TAG, "BLE control service stopped");
 }
 
 bool WifiControlServerSensor::isActivated(void)
@@ -765,7 +1016,7 @@ bool WifiControlServerSensor::isActivated(void)
 
 bool WifiControlServerSensor::isConnected(void)
 {
-    if (!active_.load()) {
+    if (!active_.load() || connectedClients_.load() <= 0) {
         return false;
     }
 
@@ -806,243 +1057,4 @@ float WifiControlServerSensor::getSteering(void)
         return STEER_CENTER;
     }
     return steer_.load();
-}
-
-
-
-esp_err_t WifiControlServerSensor::httpCmdHandler(httpd_req_t *req)
-{
-    auto *self = fromRequest(req);
-    char buf[10] = {0};
-    if (httpd_req_get_url_query_len(req) > 0 && httpd_req_get_url_query_len(req) < sizeof(buf)) {
-        httpd_req_get_url_query_str(req, buf, sizeof(buf));
-        const char *p = strstr(buf, "c=");
-        if (p && p[2] != 0 && self != nullptr) {
-            self->parseAndStore(reinterpret_cast<const uint8_t *>(&p[2]), 1);
-            httpd_resp_set_type(req, "application/json");
-            setHttpCommonHeaders(req);
-            httpd_resp_sendstr(req, "{\"ok\":true}");
-            return ESP_OK;
-        }
-    }
-
-    httpd_resp_set_type(req, "application/json");
-    setHttpCommonHeaders(req);
-    httpd_resp_set_status(req, "400 Bad Request");
-    httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_or_invalid_c\"}");
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpCmdOptionsHandler(httpd_req_t *req)
-{
-    setHttpCommonHeaders(req);
-    httpd_resp_set_status(req, "204 No Content");
-    httpd_resp_send(req, nullptr, 0);
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpLogsHandler(httpd_req_t *req)
-{
-    char query[32] = {0};
-    char since_value[16] = {0};
-    uint32_t since = 0;
-
-    if (httpd_req_get_url_query_len(req) > 0 &&
-        httpd_req_get_url_query_len(req) < static_cast<int>(sizeof(query))) {
-        httpd_req_get_url_query_str(req, query, sizeof(query));
-        if (httpd_query_key_value(query, "since", since_value, sizeof(since_value)) == ESP_OK) {
-            since = static_cast<uint32_t>(std::strtoul(since_value, nullptr, 10));
-        }
-    }
-
-    const std::string payload = get_logs_since(since);
-    httpd_resp_set_type(req, "text/plain; charset=utf-8");
-    setHttpCommonHeaders(req);
-    httpd_resp_send(req, payload.c_str(), static_cast<ssize_t>(payload.size()));
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpLogsOptionsHandler(httpd_req_t *req)
-{
-    setHttpCommonHeaders(req);
-    httpd_resp_set_status(req, "204 No Content");
-    httpd_resp_send(req, nullptr, 0);
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpAlgorithmsHandler(httpd_req_t *req)
-{
-    auto *self = fromRequest(req);
-    char query[192] = {0};
-    char selectedValue[128] = {0};
-    char invalidToken[32] = {0};
-    uint32_t selectedMask = 0;
-    AlgorithmSelectionParseError parseError = AlgorithmSelectionParseError::None;
-
-    if (self == nullptr) {
-        httpd_resp_set_type(req, "application/json");
-        setHttpCommonHeaders(req);
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_server_context\"}");
-        return ESP_OK;
-    }
-
-    if (httpd_req_get_url_query_len(req) > 0 &&
-        httpd_req_get_url_query_len(req) < static_cast<int>(sizeof(query))) {
-        httpd_req_get_url_query_str(req, query, sizeof(query));
-        if (httpd_query_key_value(query, "selected", selectedValue, sizeof(selectedValue)) == ESP_OK) {
-            url_decode_in_place(selectedValue);
-            if (!parse_algorithm_selection_value(selectedValue,
-                                                 selectedMask,
-                                                 parseError,
-                                                 invalidToken,
-                                                 sizeof(invalidToken))) {
-                httpd_resp_set_type(req, "application/json");
-                setHttpCommonHeaders(req);
-                httpd_resp_set_status(req, "400 Bad Request");
-                std::string payload = "{\"ok\":false,\"error\":\"";
-                payload += (parseError == AlgorithmSelectionParseError::NotImplemented)
-                    ? "algorithm_not_implemented"
-                    : "unknown_algorithm";
-                payload += "\",\"algorithm\":\"";
-                payload += invalidToken;
-                payload += "\"}";
-                httpd_resp_sendstr(req, payload.c_str());
-                return ESP_OK;
-            }
-            self->setSelectedAlgorithmsMask(selectedMask);
-        }
-    }
-
-    const std::string payload = self->buildAlgorithmsJson(true);
-    httpd_resp_set_type(req, "application/json");
-    setHttpCommonHeaders(req);
-    httpd_resp_sendstr(req, payload.c_str());
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpAlgorithmsOptionsHandler(httpd_req_t *req)
-{
-    setHttpCommonHeaders(req);
-    httpd_resp_set_status(req, "204 No Content");
-    httpd_resp_send(req, nullptr, 0);
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpGpsGoalHandler(httpd_req_t *req)
-{
-    auto *self = fromRequest(req);
-    char query[160] = {0};
-    char latValue[32] = {0};
-    char lonValue[32] = {0};
-
-    if (self == nullptr) {
-        httpd_resp_set_type(req, "application/json");
-        setHttpCommonHeaders(req);
-        httpd_resp_set_status(req, "500 Internal Server Error");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_server_context\"}");
-        return ESP_OK;
-    }
-
-    if (httpd_req_get_url_query_len(req) > 0 &&
-        httpd_req_get_url_query_len(req) < static_cast<int>(sizeof(query))) {
-        httpd_req_get_url_query_str(req, query, sizeof(query));
-
-        const bool hasLat = httpd_query_key_value(query, "lat", latValue, sizeof(latValue)) == ESP_OK;
-        const bool hasLon = httpd_query_key_value(query, "lon", lonValue, sizeof(lonValue)) == ESP_OK;
-
-        if (hasLat || hasLon) {
-            if (!hasLat || !hasLon) {
-                httpd_resp_set_type(req, "application/json");
-                setHttpCommonHeaders(req);
-                httpd_resp_set_status(req, "400 Bad Request");
-                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_lat_or_lon\"}");
-                return ESP_OK;
-            }
-
-            double lat = 0.0;
-            double lon = 0.0;
-            if (!parse_strict_double(latValue, lat)) {
-                httpd_resp_set_type(req, "application/json");
-                setHttpCommonHeaders(req);
-                httpd_resp_set_status(req, "400 Bad Request");
-                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid_latitude_format\"}");
-                return ESP_OK;
-            }
-            if (!parse_strict_double(lonValue, lon)) {
-                httpd_resp_set_type(req, "application/json");
-                setHttpCommonHeaders(req);
-                httpd_resp_set_status(req, "400 Bad Request");
-                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid_longitude_format\"}");
-                return ESP_OK;
-            }
-            if (!GpsGoalState::isValidLatitude(lat)) {
-                httpd_resp_set_type(req, "application/json");
-                setHttpCommonHeaders(req);
-                httpd_resp_set_status(req, "400 Bad Request");
-                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"latitude_out_of_range\"}");
-                return ESP_OK;
-            }
-            if (!GpsGoalState::isValidLongitude(lon)) {
-                httpd_resp_set_type(req, "application/json");
-                setHttpCommonHeaders(req);
-                httpd_resp_set_status(req, "400 Bad Request");
-                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"longitude_out_of_range\"}");
-                return ESP_OK;
-            }
-            if (!self->_gpsGoalState.set(lat, lon, true)) {
-                httpd_resp_set_type(req, "application/json");
-                setHttpCommonHeaders(req);
-                httpd_resp_set_status(req, "400 Bad Request");
-                httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid_gps_goal\"}");
-                return ESP_OK;
-            }
-        }
-    }
-
-    const std::string payload = self->buildGpsGoalJson(true);
-    httpd_resp_set_type(req, "application/json");
-    setHttpCommonHeaders(req);
-    httpd_resp_sendstr(req, payload.c_str());
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpGpsGoalOptionsHandler(httpd_req_t *req)
-{
-    setHttpCommonHeaders(req);
-    httpd_resp_set_status(req, "204 No Content");
-    httpd_resp_send(req, nullptr, 0);
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpStatusHandler(httpd_req_t *req)
-{
-    auto *self = fromRequest(req);
-    const std::string payload = self != nullptr
-        ? self->buildStatusJson()
-        : std::string("{\"ok\":false,\"error\":\"missing_server_context\"}");
-
-    httpd_resp_set_type(req, "application/json");
-    setHttpCommonHeaders(req);
-    if (self == nullptr) {
-        httpd_resp_set_status(req, "500 Internal Server Error");
-    }
-    httpd_resp_sendstr(req, payload.c_str());
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpStatusOptionsHandler(httpd_req_t *req)
-{
-    setHttpCommonHeaders(req);
-    httpd_resp_set_status(req, "204 No Content");
-    httpd_resp_send(req, nullptr, 0);
-    return ESP_OK;
-}
-
-esp_err_t WifiControlServerSensor::httpRootHandler(httpd_req_t *req)
-{
-    httpd_resp_set_type(req, "text/html; charset=utf-8");
-    setHttpCommonHeaders(req);
-    httpd_resp_sendstr(req, INDEX_HTML);
-    return ESP_OK;
 }

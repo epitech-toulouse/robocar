@@ -5,20 +5,16 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include "api/gps_sensor_api.hpp"
 #include "api/lidar_sensor_api.hpp"
 #include "api/user_controller_api.hpp"
 #include "api/vesc_controller_api.hpp"
 #include "esp_err.h"
-#include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "gps/gpsGoalState.hpp"
 #include "manager/AlgorithmSelector.hpp"
-
-
-
 
 class WifiControlServerSensor : public UserControllerApi {
 public:
@@ -52,38 +48,35 @@ private:
     static constexpr float DUTY_FORWARD = 0.05f;
     static constexpr float DUTY_BACKWARD = -0.05f;
     static constexpr TickType_t MANUAL_TIMEOUT_MS = 2000;
-    static constexpr const char *WIFI_AP_SSID = "ROBOCAR_CTRL";
-    static constexpr const char *WIFI_AP_PASSWORD = "YohannBoniface";
-    static constexpr uint8_t WIFI_AP_CHANNEL = 1;
-    static constexpr uint8_t WIFI_AP_MAX_CONN = 1;
-    static constexpr int CONTROL_HTTP_PORT = 3333;
-    static constexpr int CONTROL_TCP_PORT = 3334;
-    static constexpr int RX_BUFFER_SIZE = 64;
+    static constexpr size_t BLE_VALUE_MAX_SIZE = 512;
+    static constexpr uint16_t BLE_APPEARANCE_GENERIC_REMOTE = 384;
 
     VescControllerApi &_vescControllerApi;
 
-    void initWifiSoftAp();
-    void startHttpServer();
-    void runTcpServerTask();
+    void startBleServer();
+    void stopBleServer();
+    void restartAdvertising();
     void recomputeOutputFromState();
     void emergencyStop();
     bool applyProtocolChar(char c);
     void parseAndStore(const uint8_t *buf, int len);
+    void handleBleCommand(const std::string &command);
+    void handleLineCommand(const std::string &command);
+    void handleAlgorithmCommand(const char *value);
+    void handleGpsGoalCommand(const char *value);
+    void handleSteeringCommand(const char *value);
+    void setBleResponse(const std::string &payload);
+    void notifySubscribers(const std::string &payload);
+    void addConnection(uint16_t connHandle);
+    void removeConnection(uint16_t connHandle);
 
-    static void tcpServerTask(void *arg);
-    static void setHttpCommonHeaders(httpd_req_t *req);
-    static WifiControlServerSensor *fromRequest(httpd_req_t *req);
-    static esp_err_t httpCmdHandler(httpd_req_t *req);
-    static esp_err_t httpCmdOptionsHandler(httpd_req_t *req);
-    static esp_err_t httpLogsHandler(httpd_req_t *req);
-    static esp_err_t httpLogsOptionsHandler(httpd_req_t *req);
-    static esp_err_t httpAlgorithmsHandler(httpd_req_t *req);
-    static esp_err_t httpAlgorithmsOptionsHandler(httpd_req_t *req);
-    static esp_err_t httpGpsGoalHandler(httpd_req_t *req);
-    static esp_err_t httpGpsGoalOptionsHandler(httpd_req_t *req);
-    static esp_err_t httpStatusHandler(httpd_req_t *req);
-    static esp_err_t httpStatusOptionsHandler(httpd_req_t *req);
-    static esp_err_t httpRootHandler(httpd_req_t *req);
+    static void bleHostTask(void *arg);
+    static int bleGapEvent(struct ble_gap_event *event, void *arg);
+    static int bleGattAccess(uint16_t connHandle,
+                             uint16_t attrHandle,
+                             struct ble_gatt_access_ctxt *ctxt,
+                             void *arg);
+    static void bleOnSync();
     bool isManualDriveEnabled() const;
     bool isAlgorithmAvailable(SelectableAlgorithm id) const;
     std::string buildAlgorithmsJson(bool includeStatusEnvelope) const;
@@ -101,13 +94,12 @@ private:
     std::atomic<bool> right_{false};
     std::atomic<bool> emergency_{false};
     std::atomic<bool> active_{false};
+    std::atomic<int> connectedClients_{0};
     AlgorithmSelector &_algorithmSelector;
     GpsGoalState &_gpsGoalState;
     GpsSensorApi &_gpsSensorApi;
     LidarSensorApi &_lidarSensorApi;
-    httpd_handle_t httpServer_ = nullptr;
-    TaskHandle_t tcpTaskHandle_ = nullptr;
-
-  
-
+    uint16_t bleCharacteristicHandle_ = 0;
+    std::string bleValue_ = "STATUS:{\"ok\":true,\"service\":\"robocar_ble\"}";
+    std::vector<uint16_t> connHandles_;
 };

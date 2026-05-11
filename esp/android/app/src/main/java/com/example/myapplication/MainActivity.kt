@@ -8,9 +8,12 @@ import android.graphics.Bitmap
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.util.Size
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.EditText
@@ -98,6 +101,13 @@ class MainActivity : AppCompatActivity() {
     private var stopHoldUntilMs = 0L
     private var stopCooldownUntilMs = 0L
     private lateinit var shiftedFrame: Mat
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val blePanelRefresh = object : Runnable {
+        override fun run() {
+            updateBlePanel()
+            uiHandler.postDelayed(this, 500L)
+        }
+    }
 
     private val zoomStateObserver = Observer<androidx.camera.core.ZoomState> {
         updateWideAngleAvailability(boundCamera)
@@ -149,6 +159,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupZoomControls()
+        setupBleControls()
         updateDisplayModeButton()
         updateLensButton()
         updatePreviewMode()
@@ -160,6 +171,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        uiHandler.removeCallbacks(blePanelRefresh)
+        uiHandler.post(blePanelRefresh)
         openCvReady = OpenCVLoader.initLocal()
         if (!openCvReady) {
             binding.statusText.text = getString(R.string.opencv_init_failed)
@@ -182,11 +195,13 @@ class MainActivity : AppCompatActivity() {
             shiftedFrame = Mat()
         }
         startCameraIfReady()
+        uiHandler.post(blePanelRefresh)
     }
 
     override fun onPause() {
         super.onPause()
         stopCamera()
+        uiHandler.removeCallbacks(blePanelRefresh)
     }
 
     override fun onDestroy() {
@@ -201,6 +216,7 @@ class MainActivity : AppCompatActivity() {
             shiftedFrame.release()
         }
         cameraExecutor.shutdown()
+        uiHandler.removeCallbacks(blePanelRefresh)
         super.onDestroy()
     }
 
@@ -545,6 +561,103 @@ class MainActivity : AppCompatActivity() {
             toggleSection(binding.sectionStop)
         }
         updatePanelVisibility()
+    }
+
+    private fun setupBleControls() {
+        binding.buttonBleStatus.setOnClickListener {
+            lastBlePayload = "STATUS?"
+            lastBleSendOk = bleClient.requestStatus()
+            updateBlePanel()
+        }
+        binding.buttonBleLogs.setOnClickListener {
+            lastBlePayload = "LOGS:0"
+            lastBleSendOk = bleClient.requestLogs(0)
+            updateBlePanel()
+        }
+        binding.buttonBleArm.setOnClickListener {
+            lastBlePayload = "A"
+            lastBleSendOk = bleClient.sendProtocolChar('A')
+            updateBlePanel()
+        }
+        binding.buttonBleStop.setOnClickListener {
+            lastBlePayload = "S"
+            lastBleSendOk = bleClient.sendProtocolChar('S')
+            updateBlePanel()
+        }
+        binding.buttonApplyAlgorithms.setOnClickListener {
+            val selected = mutableListOf<String>()
+            if (binding.checkAlgoManual.isChecked) selected += "manual"
+            if (binding.checkAlgoCloseObstacle.isChecked) selected += "close_obstacle"
+            if (binding.checkAlgoLidarCorridor.isChecked) selected += "lidar_corridor"
+            if (binding.checkAlgoGps.isChecked) selected += "gps"
+            lastBlePayload = "ALG:${selected.joinToString(",")}"
+            lastBleSendOk = bleClient.sendAlgorithms(selected)
+            updateBlePanel()
+        }
+        binding.buttonApplyGpsGoal.setOnClickListener {
+            val lat = binding.editGpsLat.text?.toString().orEmpty()
+            val lon = binding.editGpsLon.text?.toString().orEmpty()
+            lastBlePayload = "GPS:${lat.trim()},${lon.trim()}"
+            lastBleSendOk = bleClient.sendGpsGoal(lat, lon)
+            updateBlePanel()
+        }
+
+        bindHoldButton(binding.buttonManualForward, 'F', 'f')
+        bindHoldButton(binding.buttonManualBackward, 'B', 'b')
+        bindHoldButton(binding.buttonManualLeft, 'L', 'l')
+        bindHoldButton(binding.buttonManualRight, 'R', 'r')
+        updateBlePanel()
+    }
+
+    private fun bindHoldButton(button: View, down: Char, up: Char) {
+        var pressed = false
+        button.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    if (!pressed) {
+                        pressed = true
+                        view.isPressed = true
+                        lastBlePayload = down.toString()
+                        lastBleSendOk = bleClient.sendProtocolChar(down)
+                        updateBlePanel()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (pressed) {
+                        pressed = false
+                        view.isPressed = false
+                        lastBlePayload = up.toString()
+                        lastBleSendOk = bleClient.sendProtocolChar(up)
+                        updateBlePanel()
+                    }
+                    if (event.actionMasked == MotionEvent.ACTION_UP) {
+                        view.performClick()
+                    }
+                    true
+                }
+                else -> true
+            }
+        }
+    }
+
+    private fun updateBlePanel() {
+        if (!::bleClient.isInitialized) {
+            return
+        }
+        val sendState = when (lastBleSendOk) {
+            true -> "OK"
+            false -> "FAILED"
+            null -> "WAITING"
+        }
+        binding.textBleStatus.text = buildString {
+            appendLine("BLE: ${bleClient.connectionState.name}")
+            appendLine(bleClient.statusText)
+            appendLine("lastSend: $sendState $lastBlePayload")
+        }.trimEnd()
+        binding.textBleResponse.text = bleClient.lastValueText.ifBlank {
+            bleClient.lastValueHex.ifBlank { "-" }
+        }
     }
 
     private fun setupZoomControls() {
