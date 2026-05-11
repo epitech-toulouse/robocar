@@ -22,7 +22,8 @@ import com.example.myapplication.bluetooth.BleViewModelFactory
 @Composable
 fun AppRoot(
     modifier: Modifier = Modifier,
-    onOpenOpenCvCamera: () -> Unit
+    onOpenOpenCvCamera: () -> Unit,
+    onOpenCommandCenter: () -> Unit
 ) {
     val context = LocalContext.current
     val bleClient: BleClient = BleClientProvider.get(context)
@@ -38,7 +39,8 @@ fun AppRoot(
             modifier = Modifier.padding(innerPadding)
         ) {
             HomeScreen(
-                onOpenOpenCvCamera = onOpenOpenCvCamera
+                onOpenOpenCvCamera = onOpenOpenCvCamera,
+                onOpenCommandCenter = onOpenCommandCenter
             )
             BleScreen(
                 viewModel = bleViewModel,
@@ -50,7 +52,8 @@ fun AppRoot(
 
 @Composable
 private fun HomeScreen(
-    onOpenOpenCvCamera: () -> Unit
+    onOpenOpenCvCamera: () -> Unit,
+    onOpenCommandCenter: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -58,13 +61,20 @@ private fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("Parametres Bluetooth")
-        Text("Configure d'abord le Bluetooth puis ouvre la camera OpenCV quand tu es pret.")
+        Text("Configure d'abord le Bluetooth puis ouvre ensuite la page camera ou la page commandes voiture.")
 
         Button(
             onClick = onOpenOpenCvCamera,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Ouvrir la camera OpenCV")
+        }
+
+        Button(
+            onClick = onOpenCommandCenter,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Ouvrir les commandes voiture")
         }
     }
 }

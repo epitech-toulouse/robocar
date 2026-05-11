@@ -1,4 +1,4 @@
-#include "wifiControlServerSensor.hpp"
+#include "bluetoothControlServer.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -7,15 +7,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "esp_log.h"
-#include "nvs_flash.h"
-#include "host/ble_hs.h"
-#include "host/ble_uuid.h"
-#include "nimble/nimble_port.h"
-#include "nimble/nimble_port_freertos.h"
-#include "services/gap/ble_svc_gap.h"
-#include "services/gatt/ble_svc_gatt.h"
 
 static constexpr size_t WEB_LOG_MAX_ENTRIES = 128;
 static constexpr size_t WEB_LOG_LINE_MAX = 192;
@@ -33,15 +27,6 @@ static portMUX_TYPE s_webLogMux = portMUX_INITIALIZER_UNLOCKED;
 using LogVprintfFn = int (*)(const char *, va_list);
 static LogVprintfFn s_prevLogVprintf;
 static std::atomic<bool> s_logRedirectInstalled;
-static std::atomic<bool> s_bleStarted;
-static WifiControlServerSensor *s_bleService;
-
-static ble_uuid128_t s_serviceUuid = BLE_UUID128_INIT(
-    0x31, 0x56, 0x26, 0xc0, 0xa8, 0x60, 0x4d, 0x2f,
-    0x98, 0x7b, 0x66, 0x6d, 0xaf, 0xaa, 0x00, 0x01);
-static ble_uuid128_t s_characteristicUuid = BLE_UUID128_INIT(
-    0x31, 0x56, 0x26, 0xc0, 0xa8, 0x60, 0x4d, 0x2f,
-    0x98, 0x7b, 0x66, 0x6d, 0xaf, 0xaa, 0x00, 0x02);
 
 enum class AlgorithmSelectionParseError : uint8_t {
     None = 0,
@@ -306,279 +291,17 @@ static void append_gps_goal_json(std::string &payload, const GpsGoalSnapshot &go
     payload += "}";
 }
 
-void WifiControlServerSensor::bleHostTask(void *arg)
+void BluetoothControlServer::setBleResponse(const std::string &payload)
 {
-    (void)arg;
-    nimble_port_run();
-    nimble_port_freertos_deinit();
+    bleManager_.setControlResponse(payload);
 }
 
-int WifiControlServerSensor::bleGapEvent(struct ble_gap_event *event, void *arg)
-{
-    auto *self = static_cast<WifiControlServerSensor *>(arg);
-    if (self == nullptr) {
-        self = s_bleService;
-    }
-
-    switch (event->type) {
-        case BLE_GAP_EVENT_CONNECT:
-            if (event->connect.status == 0) {
-                if (self != nullptr) {
-                    self->addConnection(event->connect.conn_handle);
-                }
-                ESP_LOGI(TAG, "BLE client connected handle=%d", event->connect.conn_handle);
-            } else {
-                ESP_LOGW(TAG, "BLE connect failed status=%d", event->connect.status);
-                if (self != nullptr) {
-                    self->restartAdvertising();
-                }
-            }
-            return 0;
-        case BLE_GAP_EVENT_DISCONNECT:
-            if (self != nullptr) {
-                self->removeConnection(event->disconnect.conn.conn_handle);
-                self->restartAdvertising();
-            }
-            ESP_LOGI(TAG, "BLE client disconnected handle=%d",
-                     event->disconnect.conn.conn_handle);
-            return 0;
-        case BLE_GAP_EVENT_SUBSCRIBE:
-            ESP_LOGI(TAG, "BLE subscribe conn=%d attr=%d notify=%d",
-                     event->subscribe.conn_handle,
-                     event->subscribe.attr_handle,
-                     event->subscribe.cur_notify);
-            return 0;
-        case BLE_GAP_EVENT_MTU:
-            ESP_LOGI(TAG, "BLE mtu conn=%d mtu=%d",
-                     event->mtu.conn_handle,
-                     event->mtu.value);
-            return 0;
-        default:
-            return 0;
-    }
-}
-
-int WifiControlServerSensor::bleGattAccess(uint16_t connHandle,
-                                           uint16_t attrHandle,
-                                           struct ble_gatt_access_ctxt *ctxt,
-                                           void *arg)
-{
-    (void)connHandle;
-    (void)attrHandle;
-    (void)arg;
-    WifiControlServerSensor *self = s_bleService;
-    if (self == nullptr) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
-
-    switch (ctxt->op) {
-        case BLE_GATT_ACCESS_OP_READ_CHR: {
-            const int rc = os_mbuf_append(ctxt->om,
-                                          self->bleValue_.data(),
-                                          self->bleValue_.size());
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-        }
-        case BLE_GATT_ACCESS_OP_WRITE_CHR: {
-            std::string payload;
-            payload.resize(OS_MBUF_PKTLEN(ctxt->om));
-            if (!payload.empty()) {
-                const int rc = ble_hs_mbuf_to_flat(ctxt->om,
-                                                   payload.data(),
-                                                   payload.size(),
-                                                   nullptr);
-                if (rc != 0) {
-                    return BLE_ATT_ERR_UNLIKELY;
-                }
-            }
-            self->handleBleCommand(payload);
-            return 0;
-        }
-        default:
-            return BLE_ATT_ERR_UNLIKELY;
-    }
-}
-
-void WifiControlServerSensor::bleOnSync()
-{
-    if (s_bleService != nullptr) {
-        s_bleService->restartAdvertising();
-    }
-}
-
-void WifiControlServerSensor::restartAdvertising()
-{
-    ble_gap_adv_stop();
-
-    ble_hs_adv_fields fields = {};
-    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    fields.name = reinterpret_cast<const uint8_t *>("ROBOCAR_BLE");
-    fields.name_len = std::strlen("ROBOCAR_BLE");
-    fields.name_is_complete = 1;
-    fields.appearance = BLE_APPEARANCE_GENERIC_REMOTE;
-    fields.uuids128 = &s_serviceUuid;
-    fields.num_uuids128 = 1;
-    fields.uuids128_is_complete = 1;
-    int rc = ble_gap_adv_set_fields(&fields);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "Failed to set BLE advertising fields rc=%d", rc);
-        return;
-    }
-
-    ble_gap_adv_params advParams = {};
-    advParams.conn_mode = BLE_GAP_CONN_MODE_UND;
-    advParams.disc_mode = BLE_GAP_DISC_MODE_GEN;
-    rc = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC,
-                           nullptr,
-                           BLE_HS_FOREVER,
-                           &advParams,
-                           bleGapEvent,
-                           this);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "Failed to start BLE advertising rc=%d", rc);
-    } else {
-        ESP_LOGI(TAG, "BLE advertising as ROBOCAR_BLE");
-    }
-}
-
-void WifiControlServerSensor::startBleServer()
-{
-    bool expected = false;
-    if (!s_bleStarted.compare_exchange_strong(expected, true)) {
-        ESP_LOGW(TAG, "BLE host already started");
-        return;
-    }
-
-    s_bleService = this;
-
-    int rc = nimble_port_init();
-    if (rc != 0) {
-        ESP_LOGE(TAG, "nimble_port_init failed rc=%d", rc);
-        active_.store(false);
-        return;
-    }
-
-    ble_svc_gap_init();
-    ble_svc_gatt_init();
-    ble_svc_gap_device_name_set("ROBOCAR_BLE");
-    ble_hs_cfg.sync_cb = bleOnSync;
-    ble_hs_cfg.store_status_cb = nullptr;
-
-    static ble_gatt_chr_def characteristicDefs[] = {
-        {
-            .uuid = &s_characteristicUuid.u,
-            .access_cb = WifiControlServerSensor::bleGattAccess,
-            .arg = nullptr,
-            .descriptors = nullptr,
-            .flags = BLE_GATT_CHR_F_READ |
-                     BLE_GATT_CHR_F_WRITE |
-                     BLE_GATT_CHR_F_WRITE_NO_RSP |
-                     BLE_GATT_CHR_F_NOTIFY,
-            .min_key_size = 0,
-            .val_handle = &s_bleService->bleCharacteristicHandle_,
-            .cpfd = nullptr,
-        },
-        {
-            .uuid = nullptr,
-            .access_cb = nullptr,
-            .arg = nullptr,
-            .descriptors = nullptr,
-            .flags = 0,
-            .min_key_size = 0,
-            .val_handle = nullptr,
-            .cpfd = nullptr,
-        }
-    };
-    static ble_gatt_svc_def services[] = {
-        {
-            .type = BLE_GATT_SVC_TYPE_PRIMARY,
-            .uuid = &s_serviceUuid.u,
-            .includes = nullptr,
-            .characteristics = characteristicDefs,
-        },
-        {
-            .type = 0,
-            .uuid = nullptr,
-            .includes = nullptr,
-            .characteristics = nullptr,
-        }
-    };
-
-    rc = ble_gatts_count_cfg(services);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_gatts_count_cfg failed rc=%d", rc);
-        return;
-    }
-    rc = ble_gatts_add_svcs(services);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_gatts_add_svcs failed rc=%d", rc);
-        return;
-    }
-
-    nimble_port_freertos_init(bleHostTask);
-}
-
-void WifiControlServerSensor::stopBleServer()
-{
-    if (!s_bleStarted.load()) {
-        return;
-    }
-    ble_gap_adv_stop();
-    nimble_port_stop();
-}
-
-void WifiControlServerSensor::addConnection(uint16_t connHandle)
-{
-    if (std::find(connHandles_.begin(), connHandles_.end(), connHandle) == connHandles_.end()) {
-        connHandles_.push_back(connHandle);
-    }
-    connectedClients_.store(static_cast<int>(connHandles_.size()));
-}
-
-void WifiControlServerSensor::removeConnection(uint16_t connHandle)
-{
-    connHandles_.erase(std::remove(connHandles_.begin(), connHandles_.end(), connHandle),
-                       connHandles_.end());
-    connectedClients_.store(static_cast<int>(connHandles_.size()));
-    if (connHandles_.empty()) {
-        clearManualDriveState();
-    }
-}
-
-void WifiControlServerSensor::setBleResponse(const std::string &payload)
-{
-    if (payload.size() > BLE_VALUE_MAX_SIZE) {
-        bleValue_ = payload.substr(0, BLE_VALUE_MAX_SIZE);
-    } else {
-        bleValue_ = payload;
-    }
-    notifySubscribers(bleValue_);
-}
-
-void WifiControlServerSensor::notifySubscribers(const std::string &payload)
-{
-    if (bleCharacteristicHandle_ == 0) {
-        return;
-    }
-
-    const size_t notifyLen = std::min(payload.size(), BLE_VALUE_MAX_SIZE);
-    for (uint16_t connHandle : connHandles_) {
-        os_mbuf *om = ble_hs_mbuf_from_flat(payload.data(), notifyLen);
-        if (om == nullptr) {
-            continue;
-        }
-        const int rc = ble_gatts_notify_custom(connHandle, bleCharacteristicHandle_, om);
-        if (rc != 0) {
-            ESP_LOGW(TAG, "notify failed conn=%d rc=%d", connHandle, rc);
-        }
-    }
-}
-
-bool WifiControlServerSensor::isManualDriveEnabled() const
+bool BluetoothControlServer::isManualDriveEnabled() const
 {
     return this->_algorithmSelector.isManualDriveEnabled();
 }
 
-void WifiControlServerSensor::clearManualDriveState()
+void BluetoothControlServer::clearManualDriveState()
 {
     forward_.store(false);
     backward_.store(false);
@@ -589,7 +312,7 @@ void WifiControlServerSensor::clearManualDriveState()
     lastTick_.store(0);
 }
 
-void WifiControlServerSensor::setSelectedAlgorithmsMask(uint32_t mask)
+void BluetoothControlServer::setSelectedAlgorithmsMask(uint32_t mask)
 {
     const bool manualWasEnabled = this->isManualDriveEnabled();
 
@@ -599,7 +322,7 @@ void WifiControlServerSensor::setSelectedAlgorithmsMask(uint32_t mask)
     }
 }
 
-bool WifiControlServerSensor::isAlgorithmAvailable(SelectableAlgorithm id) const
+bool BluetoothControlServer::isAlgorithmAvailable(SelectableAlgorithm id) const
 {
     switch (id) {
         case SelectableAlgorithm::Manual:
@@ -626,7 +349,7 @@ bool WifiControlServerSensor::isAlgorithmAvailable(SelectableAlgorithm id) const
     return false;
 }
 
-std::string WifiControlServerSensor::buildAlgorithmsJson(bool includeStatusEnvelope) const
+std::string BluetoothControlServer::buildAlgorithmsJson(bool includeStatusEnvelope) const
 {
     std::string payload;
     payload.reserve(768);
@@ -656,7 +379,7 @@ std::string WifiControlServerSensor::buildAlgorithmsJson(bool includeStatusEnvel
     return payload;
 }
 
-std::string WifiControlServerSensor::buildStatusJson() const
+std::string BluetoothControlServer::buildStatusJson() const
 {
     std::string payload;
     payload.reserve(1024);
@@ -691,7 +414,7 @@ std::string WifiControlServerSensor::buildStatusJson() const
     return payload;
 }
 
-std::string WifiControlServerSensor::buildGpsGoalJson(bool includeStatusEnvelope) const
+std::string BluetoothControlServer::buildGpsGoalJson(bool includeStatusEnvelope) const
 {
     std::string payload;
     payload.reserve(128);
@@ -707,7 +430,7 @@ std::string WifiControlServerSensor::buildGpsGoalJson(bool includeStatusEnvelope
     return payload;
 }
 
-void WifiControlServerSensor::recomputeOutputFromState()
+void BluetoothControlServer::recomputeOutputFromState()
 {
     float duty = 0.0f;
     if (forward_.load() && !backward_.load()) {
@@ -728,7 +451,7 @@ void WifiControlServerSensor::recomputeOutputFromState()
     lastTick_.store(static_cast<int>(xTaskGetTickCount()));
 }
 
-void WifiControlServerSensor::emergencyStop()
+void BluetoothControlServer::emergencyStop()
 {
     clearManualDriveState();
     emergency_.store(true);
@@ -737,7 +460,7 @@ void WifiControlServerSensor::emergencyStop()
     _vescControllerApi.deactivate();
 }
 
-bool WifiControlServerSensor::applyProtocolChar(char c)
+bool BluetoothControlServer::applyProtocolChar(char c)
 {
     switch (c) {
         case 'F':
@@ -795,7 +518,7 @@ bool WifiControlServerSensor::applyProtocolChar(char c)
     }
 }
 
-void WifiControlServerSensor::parseAndStore(const uint8_t *buf, int len)
+void BluetoothControlServer::parseAndStore(const uint8_t *buf, int len)
 {
     if (len <= 0 || buf == nullptr) {
         return;
@@ -813,7 +536,7 @@ void WifiControlServerSensor::parseAndStore(const uint8_t *buf, int len)
     }
 }
 
-void WifiControlServerSensor::handleAlgorithmCommand(const char *value)
+void BluetoothControlServer::handleAlgorithmCommand(const char *value)
 {
     uint32_t selectedMask = 0;
     AlgorithmSelectionParseError parseError = AlgorithmSelectionParseError::None;
@@ -837,7 +560,7 @@ void WifiControlServerSensor::handleAlgorithmCommand(const char *value)
     setBleResponse("ALGORITHMS:" + buildAlgorithmsJson(true));
 }
 
-void WifiControlServerSensor::handleGpsGoalCommand(const char *value)
+void BluetoothControlServer::handleGpsGoalCommand(const char *value)
 {
     if (value == nullptr) {
         setBleResponse("ERR:missing_gps_goal");
@@ -880,7 +603,7 @@ void WifiControlServerSensor::handleGpsGoalCommand(const char *value)
     setBleResponse("GPS:" + buildGpsGoalJson(true));
 }
 
-void WifiControlServerSensor::handleSteeringCommand(const char *value)
+void BluetoothControlServer::handleSteeringCommand(const char *value)
 {
     float steeringPercent = 0.0f;
     if (!parse_strict_float(value, steeringPercent)) {
@@ -898,7 +621,7 @@ void WifiControlServerSensor::handleSteeringCommand(const char *value)
     lastTick_.store(static_cast<int>(xTaskGetTickCount()));
 }
 
-void WifiControlServerSensor::handleLineCommand(const std::string &command)
+void BluetoothControlServer::handleLineCommand(const std::string &command)
 {
     if (command.empty()) {
         return;
@@ -948,7 +671,7 @@ void WifiControlServerSensor::handleLineCommand(const std::string &command)
     setBleResponse("ERR:unknown_command");
 }
 
-void WifiControlServerSensor::handleBleCommand(const std::string &payload)
+void BluetoothControlServer::handleBleCommand(const std::string &payload)
 {
     if (payload.empty()) {
         return;
@@ -983,44 +706,59 @@ void WifiControlServerSensor::handleBleCommand(const std::string &payload)
     }
 }
 
-void WifiControlServerSensor::start(void)
+void BluetoothControlServer::pollIncomingMessages()
+{
+    const int connectedClients = bleManager_.connectedClientCount();
+    if (connectedClients == 0 && connectedClients_.load() > 0) {
+        clearManualDriveState();
+    }
+    connectedClients_.store(connectedClients);
+
+    const std::vector<BleMessage> messages =
+        bleManager_.messagesSince(bleMessageCursor_, BleEndpoint::Control);
+
+    for (const BleMessage &message : messages) {
+        bleMessageCursor_ = std::max(bleMessageCursor_, message.sequence);
+        handleBleCommand(message.payload);
+    }
+}
+
+void BluetoothControlServer::start(void)
 {
     if (active_.load()) {
         return;
     }
 
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-
     ensure_log_redirect_installed();
     active_.store(true);
     setBleResponse("STATUS:" + buildStatusJson());
-    startBleServer();
+    if (!bleManager_.start()) {
+        active_.store(false);
+        ESP_LOGE(TAG, "BLE manager failed to start");
+        return;
+    }
+    bleMessageCursor_ = bleManager_.latestSequence();
     ESP_LOGI(TAG, "BLE control service initialized; Wi-Fi/HTTP control disabled");
 }
 
-void WifiControlServerSensor::stop(void)
+void BluetoothControlServer::stop(void)
 {
     if (!active_.load()) {
         return;
     }
     clearManualDriveState();
-    stopBleServer();
     active_.store(false);
     ESP_LOGI(TAG, "BLE control service stopped");
 }
 
-bool WifiControlServerSensor::isActivated(void)
+bool BluetoothControlServer::isActivated(void)
 {
     return active_.load();
 }
 
-bool WifiControlServerSensor::isConnected(void)
+bool BluetoothControlServer::isConnected(void)
 {
+    pollIncomingMessages();
     if (!active_.load() || connectedClients_.load() <= 0) {
         return false;
     }
@@ -1040,7 +778,7 @@ bool WifiControlServerSensor::isConnected(void)
     return (now - static_cast<TickType_t>(last)) <= pdMS_TO_TICKS(MANUAL_TIMEOUT_MS);
 }
 
-driving_mode_t WifiControlServerSensor::getDrivingMode(void)
+driving_mode_t BluetoothControlServer::getDrivingMode(void)
 {
     if (!isConnected() || !isManualDriveEnabled()) {
         return DRIVING_MODE_DISABLED;
@@ -1048,7 +786,7 @@ driving_mode_t WifiControlServerSensor::getDrivingMode(void)
     return DRIVING_MODE_USER;
 }
 
-float WifiControlServerSensor::getSpeed(void)
+float BluetoothControlServer::getSpeed(void)
 {
     if (!isConnected() || !isManualDriveEnabled()) {
         return 0.0f;
@@ -1056,7 +794,7 @@ float WifiControlServerSensor::getSpeed(void)
     return duty_.load();
 }
 
-float WifiControlServerSensor::getSteering(void)
+float BluetoothControlServer::getSteering(void)
 {
     if (!isConnected() || !isManualDriveEnabled()) {
         return STEER_CENTER;

@@ -16,10 +16,11 @@
 #include "freertos/FreeRTOS.h"
 #include "gps/gpsGoalState.hpp"
 #include "manager/AlgorithmSelector.hpp"
+#include "manager/BleManager.hpp"
 
-class WifiControlServerSensor : public UserControllerApi {
+class BluetoothControlServer : public UserControllerApi {
 public:
-    WifiControlServerSensor(VescControllerApi &vescController,
+    BluetoothControlServer(VescControllerApi &vescController,
                             AlgorithmSelector &algorithmSelector,
                             GpsGoalState &gpsGoalState,
                             CameraSensorApi &cameraSensorApi,
@@ -34,7 +35,7 @@ public:
     {
         this->start();
     };
-    ~WifiControlServerSensor() {};
+    ~BluetoothControlServer() {};
     void start(void);
     void stop(void);
     bool isActivated(void);
@@ -51,14 +52,10 @@ private:
     static constexpr float DUTY_FORWARD = 0.05f;
     static constexpr float DUTY_BACKWARD = -0.05f;
     static constexpr TickType_t MANUAL_TIMEOUT_MS = 2000;
-    static constexpr size_t BLE_VALUE_MAX_SIZE = 512;
-    static constexpr uint16_t BLE_APPEARANCE_GENERIC_REMOTE = 384;
 
     VescControllerApi &_vescControllerApi;
 
-    void startBleServer();
-    void stopBleServer();
-    void restartAdvertising();
+    void pollIncomingMessages();
     void recomputeOutputFromState();
     void emergencyStop();
     bool applyProtocolChar(char c);
@@ -69,17 +66,7 @@ private:
     void handleGpsGoalCommand(const char *value);
     void handleSteeringCommand(const char *value);
     void setBleResponse(const std::string &payload);
-    void notifySubscribers(const std::string &payload);
-    void addConnection(uint16_t connHandle);
-    void removeConnection(uint16_t connHandle);
 
-    static void bleHostTask(void *arg);
-    static int bleGapEvent(struct ble_gap_event *event, void *arg);
-    static int bleGattAccess(uint16_t connHandle,
-                             uint16_t attrHandle,
-                             struct ble_gatt_access_ctxt *ctxt,
-                             void *arg);
-    static void bleOnSync();
     bool isManualDriveEnabled() const;
     bool isAlgorithmAvailable(SelectableAlgorithm id) const;
     std::string buildAlgorithmsJson(bool includeStatusEnvelope) const;
@@ -103,7 +90,6 @@ private:
     CameraSensorApi &_cameraSensorApi;
     GpsSensorApi &_gpsSensorApi;
     LidarSensorApi &_lidarSensorApi;
-    uint16_t bleCharacteristicHandle_ = 0;
-    std::string bleValue_ = "STATUS:{\"ok\":true,\"service\":\"robocar_ble\"}";
-    std::vector<uint16_t> connHandles_;
+    BleManager &bleManager_ = BleManager::instance();
+    uint32_t bleMessageCursor_ = 0;
 };

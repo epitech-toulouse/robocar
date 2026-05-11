@@ -5,7 +5,7 @@ idf_component_register(
   
   "sensors/cameraBleSensor.cpp"
   "sensors/gpsSensor.cpp"
-  "sensors/wifiControlServerSensor.cpp"
+  "sensors/bluetoothControlServer.cpp"
 
   "algo/gpsGoalAlgo.cpp"
   "algo/cameraDrivingAlgo.cpp"
@@ -14,6 +14,7 @@ idf_component_register(
 
   "manager/MasterManager.cpp"
   "manager/AdvancedFusionEngine.cpp"
+  "manager/BleManager.cpp"
   "manager/CoupeCircuitManager.cpp"
 
   "lidarReader.cpp"

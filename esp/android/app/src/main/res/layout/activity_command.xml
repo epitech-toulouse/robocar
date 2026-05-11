@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#081018"
+    android:orientation="vertical"
+    tools:context=".CommandActivity">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#102030"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="12dp"
+        android:text="Commandes voiture"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <Button
+                android:id="@+id/button_back_home"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:text="Retour" />
+
+            <TextView
+                android:id="@+id/text_ble_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#183040"
+                android:fontFamily="monospace"
+                android:padding="12dp"
+                android:text="BLE: idle"
+                android:textColor="@android:color/white"
+                android:textSize="12sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/button_ble_status"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Status" />
+
+                <Button
+                    android:id="@+id/button_ble_logs"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="Logs" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/button_ble_arm"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Arm" />
+
+                <Button
+                    android:id="@+id/button_ble_stop"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:backgroundTint="#CC8A1020"
+                    android:text="STOP"
+                    android:textColor="@android:color/white" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Manual drive"
+                android:textColor="@android:color/white"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/button_manual_forward"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Forward" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/button_manual_left"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Left" />
+
+                <Button
+                    android:id="@+id/button_manual_right"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="Right" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/button_manual_backward"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Backward" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Algorithms"
+                android:textColor="@android:color/white"
+                android:textStyle="bold" />
+
+            <CheckBox
+                android:id="@+id/check_algo_manual"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Manual"
+                android:textColor="@android:color/white" />
+
+            <CheckBox
+                android:id="@+id/check_algo_close_obstacle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Close obstacle"
+                android:textColor="@android:color/white" />
+
+            <CheckBox
+                android:id="@+id/check_algo_lidar_corridor"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Corridor LiDAR"
+                android:textColor="@android:color/white" />
+
+            <CheckBox
+                android:id="@+id/check_algo_gps"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="GPS"
+                android:textColor="@android:color/white" />
+
+            <CheckBox
+                android:id="@+id/check_algo_camera"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Camera"
+                android:textColor="@android:color/white" />
+
+            <Button
+                android:id="@+id/button_apply_algorithms"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Apply algorithms" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="GPS goal"
+                android:textColor="@android:color/white"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/edit_gps_lat"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Latitude"
+                android:inputType="numberDecimal|numberSigned"
+                android:text="43.610382"
+                android:textColor="@android:color/white"
+                android:textColorHint="#CCFFFFFF" />
+
+            <EditText
+                android:id="@+id/edit_gps_lon"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Longitude"
+                android:inputType="numberDecimal|numberSigned"
+                android:text="1.431465"
+                android:textColor="@android:color/white"
+                android:textColorHint="#CCFFFFFF" />
+
+            <Button
+                android:id="@+id/button_apply_gps_goal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Apply GPS goal" />
+
+            <TextView
+                android:id="@+id/text_ble_response"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="#183040"
+                android:fontFamily="monospace"
+                android:minHeight="96dp"
+                android:padding="12dp"
+                android:text="-"
+                android:textColor="@android:color/white"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

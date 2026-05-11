@@ -10,7 +10,7 @@
 
 #include "CoupeCircuitManager.hpp"
 
-#include "sensors/wifiControlServerSensor.hpp"
+#include "sensors/bluetoothControlServer.hpp"
 #include "sensors/cameraBleSensor.hpp"
 #include "sensors/gpsSensor.hpp"
 #include "sensors/lidarSensor.hpp"
@@ -31,7 +31,7 @@ MasterManager::MasterManager()
     this->camera_sensor_api = std::make_unique<CameraBleSensor>();
     this->gps_sensor_api = std::make_unique<GpsSensor>();
     this->lidar_sensor_api = std::make_unique<LidarSensor>();
-    this->user_controller_api = std::make_unique<WifiControlServerSensor>(
+    this->user_controller_api = std::make_unique<BluetoothControlServer>(
         *this->vesc_controller_api,
         this->algorithm_selector,
         this->gps_goal_state_,

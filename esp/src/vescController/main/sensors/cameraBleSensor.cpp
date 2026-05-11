@@ -4,50 +4,13 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
-#include "esp_bt.h"
-#include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/task.h"
-#include "host/ble_gap.h"
-#include "host/ble_gatt.h"
-#include "host/ble_hs.h"
-#include "os/os_mbuf.h"
-#include "nimble/nimble_port.h"
-#include "nimble/nimble_port_freertos.h"
-#include "nvs_flash.h"
-#include "services/gap/ble_svc_gap.h"
-#include "services/gatt/ble_svc_gatt.h"
 
 namespace {
 const char *TAG = "CameraBleSensor";
-
-const ble_uuid128_t kCameraServiceUuid =
-    BLE_UUID128_INIT(0x31, 0x56, 0x26, 0xc0, 0xa8, 0x60, 0x4d, 0x2f,
-                     0x98, 0x7b, 0x66, 0x6d, 0xaf, 0xaa, 0x00, 0x01);
-const ble_uuid128_t kCameraRxCharUuid =
-    BLE_UUID128_INIT(0x31, 0x56, 0x26, 0xc0, 0xa8, 0x60, 0x4d, 0x2f,
-                     0x98, 0x7b, 0x66, 0x6d, 0xaf, 0xaa, 0x00, 0x02);
-
-uint16_t g_cameraRxHandle = 0;
-ble_gatt_chr_def gattCharacteristics[] = {
-    {
-        .uuid = &kCameraRxCharUuid.u,
-        .access_cb = CameraBleSensor::gattAccessHandler,
-        .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
-        .val_handle = &g_cameraRxHandle,
-    },
-    {},
-};
-
-const ble_gatt_svc_def gattServices[] = {
-    {
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = &kCameraServiceUuid.u,
-        .characteristics = gattCharacteristics,
-    },
-    {},
-};
 } // namespace
 
 CameraBleSensor *CameraBleSensor::instance_ = nullptr;
@@ -67,6 +30,7 @@ bool CameraBleSensor::getStop(bool &output)
     if (!this->ensureStarted()) {
         return false;
     }
+    this->pollIncomingMessages();
 
     std::lock_guard<std::mutex> lock(this->mutex_);
     output = this->stopRequested_;
@@ -78,6 +42,7 @@ bool CameraBleSensor::getHeading(float &output)
     if (!this->ensureStarted()) {
         return false;
     }
+    this->pollIncomingMessages();
 
     std::lock_guard<std::mutex> lock(this->mutex_);
     output = this->steerPercent_;
@@ -95,6 +60,7 @@ bool CameraBleSensor::getStatus(CameraStatus &output)
     if (!this->ensureStarted()) {
         return false;
     }
+    this->pollIncomingMessages();
 
     const TickType_t now = xTaskGetTickCount();
 
@@ -114,149 +80,19 @@ bool CameraBleSensor::getStatus(CameraStatus &output)
     return true;
 }
 
-int CameraBleSensor::gapEventHandler(struct ble_gap_event *event, void *arg)
+void CameraBleSensor::pollIncomingMessages()
 {
-    (void) arg;
+    const std::vector<BleMessage> messages =
+        bleManager_.messagesSince(bleMessageCursor_, BleEndpoint::Camera);
 
-    if (instance_ == nullptr) {
-        return 0;
+    for (const BleMessage &message : messages) {
+        bleMessageCursor_ = std::max(bleMessageCursor_, message.sequence);
+        appendIncomingData(reinterpret_cast<const uint8_t *>(message.payload.data()),
+                           message.payload.size());
     }
 
-    switch (event->type) {
-        case BLE_GAP_EVENT_CONNECT: {
-            bool connected = false;
-            {
-                std::lock_guard<std::mutex> lock(instance_->mutex_);
-                instance_->connected_ = (event->connect.status == 0);
-                connected = instance_->connected_;
-            }
-            if (connected) {
-                ESP_LOGI(TAG, "camera BLE connected");
-            } else {
-                ESP_LOGW(TAG, "camera BLE connect failed, restart advertising");
-                startAdvertising();
-            }
-            break;
-        }
-        case BLE_GAP_EVENT_DISCONNECT: {
-            {
-                std::lock_guard<std::mutex> lock(instance_->mutex_);
-                instance_->connected_ = false;
-            }
-            ESP_LOGW(TAG, "camera BLE disconnected, reason=%d", event->disconnect.reason);
-            startAdvertising();
-            break;
-        }
-        case BLE_GAP_EVENT_ADV_COMPLETE:
-            startAdvertising();
-            break;
-        default:
-            break;
-    }
-
-    return 0;
-}
-
-int CameraBleSensor::gattAccessHandler(uint16_t connHandle,
-                                       uint16_t attrHandle,
-                                       struct ble_gatt_access_ctxt *ctxt,
-                                       void *arg)
-{
-    (void) connHandle;
-    (void) attrHandle;
-    (void) arg;
-
-    if (instance_ == nullptr) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
-    if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
-
-    const uint16_t packetSize = OS_MBUF_PKTLEN(ctxt->om);
-    if (packetSize == 0) {
-        return 0;
-    }
-
-    std::string buffer;
-    buffer.resize(packetSize);
-    if (ble_hs_mbuf_to_flat(ctxt->om, buffer.data(), packetSize, nullptr) != 0) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
-
-    instance_->appendIncomingData(reinterpret_cast<const uint8_t *>(buffer.data()), buffer.size());
-    return 0;
-}
-
-void CameraBleSensor::onReset(int reason)
-{
-    ESP_LOGE(TAG, "BLE host reset, reason=%d", reason);
-}
-
-void CameraBleSensor::onSync(void)
-{
-    uint8_t addrType = 0;
-    const int rc = ble_hs_id_infer_auto(0, &addrType);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_hs_id_infer_auto failed: rc=%d", rc);
-        return;
-    }
-
-    if (ble_svc_gap_device_name_set(kDeviceName) != 0) {
-        ESP_LOGW(TAG, "failed to set BLE device name");
-    }
-
-    ESP_LOGI(TAG, "BLE camera host ready, advertising as %s", kDeviceName);
-    startAdvertising();
-}
-
-void CameraBleSensor::hostTask(void *arg)
-{
-    (void) arg;
-    nimble_port_run();
-    nimble_port_freertos_deinit();
-}
-
-void CameraBleSensor::startAdvertising()
-{
-    ble_hs_adv_fields fields{};
-    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    fields.uuids128 = &kCameraServiceUuid;
-    fields.num_uuids128 = 1;
-    fields.uuids128_is_complete = 1;
-
-    int rc = ble_gap_adv_set_fields(&fields);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_gap_adv_set_fields failed: rc=%d", rc);
-        return;
-    }
-
-    ble_hs_adv_fields scanResponse{};
-    scanResponse.name = reinterpret_cast<const uint8_t *>(kDeviceName);
-    scanResponse.name_len = static_cast<uint8_t>(std::strlen(kDeviceName));
-    scanResponse.name_is_complete = 1;
-
-    rc = ble_gap_adv_rsp_set_fields(&scanResponse);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_gap_adv_rsp_set_fields failed: rc=%d", rc);
-        return;
-    }
-
-    ble_gap_adv_params advParams{};
-    advParams.conn_mode = BLE_GAP_CONN_MODE_UND;
-    advParams.disc_mode = BLE_GAP_DISC_MODE_GEN;
-
-    uint8_t addrType = 0;
-    rc = ble_hs_id_infer_auto(0, &addrType);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_hs_id_infer_auto failed before advertise: rc=%d", rc);
-        return;
-    }
-
-    rc = ble_gap_adv_start(addrType, nullptr, BLE_HS_FOREVER, &advParams, gapEventHandler, nullptr);
-    if (rc != 0 && rc != BLE_HS_EALREADY) {
-        ESP_LOGE(TAG, "ble_gap_adv_start failed: rc=%d", rc);
-    }
+    std::lock_guard<std::mutex> lock(this->mutex_);
+    this->connected_ = bleManager_.isConnected();
 }
 
 void CameraBleSensor::appendIncomingData(const uint8_t *data, size_t size)
@@ -400,51 +236,13 @@ bool CameraBleSensor::ensureStarted()
         return false;
     }
 
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "nvs_flash_init failed: %s", esp_err_to_name(ret));
-        return false;
-    }
-
-    const esp_bt_controller_status_t controllerStatus = esp_bt_controller_get_status();
-    ESP_LOGI(TAG, "BT controller status before init: %d", static_cast<int>(controllerStatus));
-
-    ret = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(TAG, "esp_bt_controller_mem_release failed: %s", esp_err_to_name(ret));
-        return false;
-    }
-
-    ret = nimble_port_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "nimble_port_init failed: %s", esp_err_to_name(ret));
-        return false;
-    }
-
-    ble_hs_cfg.reset_cb = onReset;
-    ble_hs_cfg.sync_cb = onSync;
-
-    ble_svc_gap_init();
-    ble_svc_gatt_init();
-
-    int rc = ble_gatts_count_cfg(gattServices);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_gatts_count_cfg failed: rc=%d", rc);
-        return false;
-    }
-
-    rc = ble_gatts_add_svcs(gattServices);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "ble_gatts_add_svcs failed: rc=%d", rc);
+    if (!bleManager_.start()) {
+        ESP_LOGE(TAG, "BLE manager failed to start");
         return false;
     }
 
     instance_ = this;
-    nimble_port_freertos_init(hostTask);
+    bleMessageCursor_ = bleManager_.latestSequence();
     this->started_ = true;
     return true;
 }

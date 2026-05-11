@@ -7,9 +7,7 @@
 
 #include "api/camera_api.hpp"
 #include "freertos/FreeRTOS.h"
-
-struct ble_gap_event;
-struct ble_gatt_access_ctxt;
+#include "manager/BleManager.hpp"
 
 class CameraBleSensor : public CameraSensorApi {
 public:
@@ -22,25 +20,13 @@ public:
     bool getSpeed(float &output) override;
     bool getStatus(CameraStatus &output) override;
 
-    static int gapEventHandler(struct ble_gap_event *event, void *arg);
-    static int gattAccessHandler(uint16_t connHandle,
-                                 uint16_t attrHandle,
-                                 struct ble_gatt_access_ctxt *ctxt,
-                                 void *arg);
-
 private:
-    static constexpr const char *kDeviceName = "robocar-camera";
     static constexpr TickType_t kFreshDataTimeoutTicks = pdMS_TO_TICKS(1500);
     static constexpr size_t kMaxLineLength = 128;
 
     static CameraBleSensor *instance_;
 
-    static void onReset(int reason);
-    static void onSync(void);
-    static void hostTask(void *arg);
-
-    static void startAdvertising();
-
+    void pollIncomingMessages();
     void appendIncomingData(const uint8_t *data, size_t size);
     void handleLine(const std::string &line);
     bool ensureStarted();
@@ -50,7 +36,9 @@ private:
     static float clampf(float value, float minValue, float maxValue);
 
     std::mutex mutex_;
+    BleManager &bleManager_ = BleManager::instance();
     std::string rxBuffer_;
+    uint32_t bleMessageCursor_ = 0;
     bool connected_ = false;
     bool started_ = false;
     bool stopRequested_ = false;
