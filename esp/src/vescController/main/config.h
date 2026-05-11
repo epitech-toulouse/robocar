@@ -43,4 +43,8 @@ static float const LIDAR_CORRIDOR_WEIGHT = 2.0;
 static float const CAMEDAR_WEIGHT = 5.0;
 static float const GPS_WEIGHT = 1.0;
 
+/* SPEEDS */
+static float const HEADING_FOUND_SPEED = 0.05;
+static float const WAIT_FOR_HEADING_SPEED = 0.03;
+
 #endif /* CONFIG_H */
