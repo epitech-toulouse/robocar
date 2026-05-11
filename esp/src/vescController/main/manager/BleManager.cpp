@@ -291,14 +291,12 @@ void BleManager::hostTask(void *arg)
 
 void BleManager::restartAdvertising()
 {
-    ble_gap_adv_stop();
+    if (ble_gap_adv_active()) {
+        ble_gap_adv_stop();
+    }
 
     ble_hs_adv_fields fields = {};
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    fields.name = reinterpret_cast<const uint8_t *>(kDeviceName);
-    fields.name_len = std::strlen(kDeviceName);
-    fields.name_is_complete = 1;
-    fields.appearance = kAppearanceGenericRemote;
     fields.uuids128 = &g_serviceUuid;
     fields.num_uuids128 = 1;
     fields.uuids128_is_complete = 1;
@@ -306,6 +304,19 @@ void BleManager::restartAdvertising()
     int rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
         ESP_LOGE(TAG, "ble_gap_adv_set_fields failed rc=%d", rc);
+        return;
+    }
+
+    ble_hs_adv_fields scanResponse = {};
+    scanResponse.name = reinterpret_cast<const uint8_t *>(kDeviceName);
+    scanResponse.name_len = std::strlen(kDeviceName);
+    scanResponse.name_is_complete = 1;
+    scanResponse.appearance = kAppearanceGenericRemote;
+    scanResponse.appearance_is_present = 1;
+
+    rc = ble_gap_adv_rsp_set_fields(&scanResponse);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gap_adv_rsp_set_fields failed rc=%d", rc);
         return;
     }
 
