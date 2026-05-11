@@ -8,6 +8,9 @@
 #include "freertos/task.h"
 #include "gpsUsbHost.hpp"
 
+#define LOG_CSV
+#undef LOG_CSV
+
 namespace {
 const char *TAG = "GpsSensor";
 constexpr TickType_t HEADING_LOG_PERIOD_TICKS = pdMS_TO_TICKS(1000);
@@ -59,7 +62,6 @@ bool GpsSensor::getStatus(GpsStatus &output)
 bool GpsSensor::getHeading(GpsHeading &output)
 {
     auto posArray = this->gps.getFixArray();
-    size_t posArraySize = posArray.size();
     GpsFix lastFix_ = this->gps.getLatestFix();
     GpsPosition lastFix = {
         .latitude = lastFix_.latitude,
@@ -82,8 +84,10 @@ bool GpsSensor::getHeading(GpsHeading &output)
             continue;
         if (dist <= 1.5)
             continue;
+        #ifdef LOG_CSV
         // old_lat;old_lon;current_lat;current_lon;dist
         ESP_LOGE("CSV2", "%.7f;%.7f;%.7f;%.7f;%.2f", fix.latitude, fix.longitude, lastFix.latitude, lastFix.longitude, dist);
+        #endif
         found_good_distance = true;
         oldFix = fix;
         break;
@@ -97,7 +101,7 @@ bool GpsSensor::getHeading(GpsHeading &output)
             oldFix.latitude, oldFix.longitude,
             lastFix.latitude, lastFix.longitude
         );
-    ESP_LOGI(TAG, "Found heading %.2f", heading);
+    //ESP_LOGI(TAG, "Found heading %.2f", heading);
     output.degrees_to_north = heading;
     return true;
     /*
