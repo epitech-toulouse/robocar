@@ -317,7 +317,14 @@ void BluetoothControlServer::setSelectedAlgorithmsMask(uint32_t mask)
     const bool manualWasEnabled = this->isManualDriveEnabled();
 
     this->_algorithmSelector.setSelectedMask(mask);
+    const uint32_t appliedMask = this->_algorithmSelector.getSelectedMask();
+    ESP_LOGI(TAG,
+             "Algorithm mask update: requested=0x%02lx applied=0x%02lx manual=%s",
+             static_cast<unsigned long>(mask),
+             static_cast<unsigned long>(appliedMask),
+             this->isManualDriveEnabled() ? "enabled" : "disabled");
     if (manualWasEnabled && !this->isManualDriveEnabled()) {
+        ESP_LOGI(TAG, "Manual disabled by algorithm mask; clearing manual drive state");
         this->clearManualDriveState();
     }
 }
@@ -464,42 +471,74 @@ bool BluetoothControlServer::applyProtocolChar(char c)
 {
     switch (c) {
         case 'F':
-            if (!isManualDriveEnabled()) return true;
+            if (!isManualDriveEnabled()) {
+                ESP_LOGI(TAG, "Manual command '%c' ignored: manual algorithm disabled", c);
+                return true;
+            }
+            ESP_LOGI(TAG, "Manual command '%c' applied: forward on", c);
             forward_.store(true);
             recomputeOutputFromState();
             return true;
         case 'f':
-            if (!isManualDriveEnabled()) return true;
+            if (!isManualDriveEnabled()) {
+                ESP_LOGI(TAG, "Manual command '%c' ignored: manual algorithm disabled", c);
+                return true;
+            }
+            ESP_LOGI(TAG, "Manual command '%c' applied: forward off", c);
             forward_.store(false);
             recomputeOutputFromState();
             return true;
         case 'B':
-            if (!isManualDriveEnabled()) return true;
+            if (!isManualDriveEnabled()) {
+                ESP_LOGI(TAG, "Manual command '%c' ignored: manual algorithm disabled", c);
+                return true;
+            }
+            ESP_LOGI(TAG, "Manual command '%c' applied: backward on", c);
             backward_.store(true);
             recomputeOutputFromState();
             return true;
         case 'b':
-            if (!isManualDriveEnabled()) return true;
+            if (!isManualDriveEnabled()) {
+                ESP_LOGI(TAG, "Manual command '%c' ignored: manual algorithm disabled", c);
+                return true;
+            }
+            ESP_LOGI(TAG, "Manual command '%c' applied: backward off", c);
             backward_.store(false);
             recomputeOutputFromState();
             return true;
         case 'L':
-            if (!isManualDriveEnabled()) return true;
+            if (!isManualDriveEnabled()) {
+                ESP_LOGI(TAG, "Manual command '%c' ignored: manual algorithm disabled", c);
+                return true;
+            }
+            ESP_LOGI(TAG, "Manual command '%c' applied: left on", c);
             left_.store(true);
             recomputeOutputFromState();
             return true;
         case 'l':
-            if (!isManualDriveEnabled()) return true;
+            if (!isManualDriveEnabled()) {
+                ESP_LOGI(TAG, "Manual command '%c' ignored: manual algorithm disabled", c);
+                return true;
+            }
+            ESP_LOGI(TAG, "Manual command '%c' applied: left off", c);
             left_.store(false);
             recomputeOutputFromState();
             return true;
         case 'R':
-            if (!isManualDriveEnabled()) return true;
+            if (!isManualDriveEnabled()) {
+                ESP_LOGI(TAG, "Manual command '%c' ignored: manual algorithm disabled", c);
+                return true;
+            }
+            ESP_LOGI(TAG, "Manual command '%c' applied: right on", c);
             right_.store(true);
             recomputeOutputFromState();
             return true;
         case 'r':
-            if (!isManualDriveEnabled()) return true;
+            if (!isManualDriveEnabled()) {
+                ESP_LOGI(TAG, "Manual command '%c' ignored: manual algorithm disabled", c);
+                return true;
+            }
+            ESP_LOGI(TAG, "Manual command '%c' applied: right off", c);
             right_.store(false);
             recomputeOutputFromState();
             return true;
@@ -556,6 +595,10 @@ void BluetoothControlServer::handleAlgorithmCommand(const char *value)
         return;
     }
 
+    ESP_LOGI(TAG,
+             "Algorithm command received: value=\"%s\" parsed_mask=0x%02lx",
+             value != nullptr ? value : "",
+             static_cast<unsigned long>(selectedMask));
     setSelectedAlgorithmsMask(selectedMask);
     setBleResponse("ALGORITHMS:" + buildAlgorithmsJson(true));
 }
