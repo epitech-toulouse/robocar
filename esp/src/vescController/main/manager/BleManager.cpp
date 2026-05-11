@@ -1,6 +1,7 @@
 #include "manager/BleManager.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 
 #include "esp_bt.h"
@@ -30,6 +31,48 @@ ble_uuid128_t g_controlCharacteristicUuid = BLE_UUID128_INIT(
 ble_uuid128_t g_cameraCharacteristicUuid = BLE_UUID128_INIT(
     0x31, 0x56, 0x26, 0xc0, 0xa8, 0x60, 0x4d, 0x2f,
     0x98, 0x7b, 0x66, 0x6d, 0xaf, 0xaa, 0x00, 0x03);
+
+const char *endpointName(BleEndpoint endpoint)
+{
+    switch (endpoint) {
+        case BleEndpoint::Control:
+            return "control";
+        case BleEndpoint::Camera:
+            return "camera";
+        default:
+            return "unknown";
+    }
+}
+
+std::string payloadPreview(const std::string &payload)
+{
+    std::string preview;
+    preview.reserve(payload.size());
+    for (unsigned char c : payload) {
+        preview.push_back(std::isprint(c) ? static_cast<char>(c) : '.');
+    }
+    return preview;
+}
+
+std::string payloadHex(const std::string &payload)
+{
+    static constexpr char kHex[] = "0123456789ABCDEF";
+
+    std::string hex;
+    if (payload.empty()) {
+        return hex;
+    }
+    hex.reserve(payload.size() * 3 - 1);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        if (i > 0) {
+            hex.push_back(' ');
+        }
+        const uint8_t byte = static_cast<uint8_t>(payload[i]);
+        hex.push_back(kHex[(byte >> 4) & 0x0F]);
+        hex.push_back(kHex[byte & 0x0F]);
+    }
+    return hex;
+}
 } // namespace
 
 BleManager &BleManager::instance()
@@ -416,6 +459,13 @@ int BleManager::handleAccess(uint16_t connHandle,
                     return BLE_ATT_ERR_UNLIKELY;
                 }
             }
+            ESP_LOGI(TAG,
+                     "RX endpoint=%s conn=%u len=%u text=\"%s\" hex=%s",
+                     endpointName(endpoint),
+                     static_cast<unsigned>(connHandle),
+                     static_cast<unsigned>(payload.size()),
+                     payloadPreview(payload).c_str(),
+                     payloadHex(payload).c_str());
             appendMessage(endpoint, connHandle, payload);
             return 0;
         }
