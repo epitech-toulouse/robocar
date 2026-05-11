@@ -555,8 +555,7 @@ bool BluetoothControlServer::applyProtocolChar(char c)
             emergency_.store(false);
             _vescControllerApi.activate();
             lastTick_.store(static_cast<int>(xTaskGetTickCount()));
-            setBleResponse("STATUS:" + buildStatusJson());
-            return true;
+            setBleResponse("STATUS:" + buildStatusJson());            return true;
         default:
             return false;
     }
