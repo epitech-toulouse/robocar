@@ -69,6 +69,7 @@ private:
     void setBleResponse(const std::string &payload);
 
     bool isManualDriveEnabled() const;
+    void notifyCameraStreamState(bool enabled);
     bool isAlgorithmAvailable(SelectableAlgorithm id) const;
     std::string buildAlgorithmsJson(bool includeStatusEnvelope) const;
     std::string buildGpsGoalJson(bool includeStatusEnvelope) const;

@@ -306,6 +306,13 @@ bool BluetoothControlServer::isManualDriveEnabled() const
     return this->_algorithmSelector.isManualDriveEnabled();
 }
 
+void BluetoothControlServer::notifyCameraStreamState(bool enabled)
+{
+    ESP_LOGI(TAG, "Camera stream %s by algorithm mask",
+             enabled ? "enabled" : "disabled");
+    setBleResponse(enabled ? "CAMERA_STREAM:START" : "CAMERA_STREAM:STOP");
+}
+
 void BluetoothControlServer::clearManualDriveState()
 {
     forward_.store(false);
@@ -320,9 +327,13 @@ void BluetoothControlServer::clearManualDriveState()
 void BluetoothControlServer::setSelectedAlgorithmsMask(uint32_t mask)
 {
     const bool manualWasEnabled = this->isManualDriveEnabled();
+    const bool cameraWasEnabled =
+        this->_algorithmSelector.isEnabled(SelectableAlgorithm::Camera);
 
     this->_algorithmSelector.setSelectedMask(mask);
     const uint32_t appliedMask = this->_algorithmSelector.getSelectedMask();
+    const bool cameraIsEnabled =
+        (appliedMask & algorithmBit(SelectableAlgorithm::Camera)) != 0;
     ESP_LOGI(TAG,
              "Algorithm mask update: requested=0x%02lx applied=0x%02lx manual=%s",
              static_cast<unsigned long>(mask),
@@ -331,6 +342,9 @@ void BluetoothControlServer::setSelectedAlgorithmsMask(uint32_t mask)
     if (manualWasEnabled && !this->isManualDriveEnabled()) {
         ESP_LOGI(TAG, "Manual disabled by algorithm mask; clearing manual drive state");
         this->clearManualDriveState();
+    }
+    if (cameraWasEnabled != cameraIsEnabled) {
+        this->notifyCameraStreamState(cameraIsEnabled);
     }
 }
 
