@@ -1,0 +1,38 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.kotlin
+
+# Additional Android/Gradle rules
+*/build/
+*.apk
+*.aar
+*.aab
+*.jks
+*.keystore
+
+# C++ / NDK build files
+*/.cxx/
+*/.externalNativeBuild/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# macOS
+.DS_Store
+
+# Android Studio
+.idea/

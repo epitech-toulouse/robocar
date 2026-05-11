@@ -23,13 +23,9 @@ idf_component_register(
   "rmt-uart/rmt_uart.c"
 
   PRIV_REQUIRES
+  bt
   driver
-  esp_wifi
-  esp_netif
-  esp_event
   nvs_flash
-  lwip
-  esp_http_server
   usb
   esp_driver_uart
   esp_driver_gpio

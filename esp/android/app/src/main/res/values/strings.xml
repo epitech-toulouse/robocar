@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Lane Follower OpenCV</string>
+    <string name="camera_initializing">Initialisation de la camera et d OpenCV...</string>
+    <string name="camera_permission_required">Permission camera requise pour detecter la route.</string>
+    <string name="opencv_init_failed">OpenCV n a pas pu s initialiser.</string>
+    <string name="camera_unavailable">Aucune camera n est disponible sur cet appareil.</string>
+    <string name="back_bluetooth">Retour Bluetooth</string>
+    <string name="show_mask_view">Voir apres masque</string>
+    <string name="show_normal_view">Voir rendu normal</string>
+    <string name="switch_to_wide">Passer en grand angle</string>
+    <string name="switch_to_standard">Revenir en standard</string>
+    <string name="wide_unavailable">Grand angle indisponible</string>
+</resources>
