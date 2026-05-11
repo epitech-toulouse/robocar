@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#8ec5ff" />
+        <stop offset="55%" stop-color="#d8efff" />
+        <stop offset="56%" stop-color="#597551" />
+        <stop offset="100%" stop-color="#41573c" />
+      </linearGradient>
+      <linearGradient id="road" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#505050" />
+        <stop offset="100%" stop-color="#222222" />
+      </linearGradient>
+    </defs>
+    <rect width="1280" height="720" fill="url(#sky)" />
+    <polygon points="280,720 520,280 760,280 1000,720" fill="url(#road)" />
+    
+<polyline points="420.0,700.0 487.5,495.0 555.0,290.0" fill="none" stroke="#f8f8f0" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+<polyline points="860.0,700.0 792.5,495.0 725.0,290.0" fill="none" stroke="#a7a7a0" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+
+<rect x="20" y="20" width="380" height="60" rx="12" fill="#000000" opacity="0.55" /><text x="40" y="58" font-size="28" fill="#ffffff" font-family="monospace">Ligne droite fade</text>
+</svg>
