@@ -40,6 +40,8 @@ class UserControllerApi {
 public:
     virtual ~UserControllerApi() = default;
 
+    virtual void pollControlMessages(void) = 0;
+
     virtual bool isConnected(void) = 0;
 
     // Return current driving mode

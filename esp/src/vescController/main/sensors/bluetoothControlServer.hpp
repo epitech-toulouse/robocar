@@ -40,6 +40,7 @@ public:
     void stop(void);
     bool isActivated(void);
 
+    void pollControlMessages(void) override;
     bool isConnected(void) override;
     driving_mode_t getDrivingMode(void) override;
     float getSpeed(void) override;

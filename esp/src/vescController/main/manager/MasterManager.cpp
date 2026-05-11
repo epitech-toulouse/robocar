@@ -59,6 +59,7 @@ void MasterManager::iterate(void)
     iteration++;
     DrivingAlgorithmOutput output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
 
+    this->user_controller_api->pollControlMessages();
     output = this->fusionEngine.computeOutput(this->algorithm_selector);
 
     if (!output.computed_weight)

@@ -214,6 +214,9 @@ static bool parse_algorithm_selection_value(const char *value,
         }
 
         const AlgorithmDescriptor *descriptor = findAlgorithmDescriptorByKey(token);
+        if (descriptor == nullptr && std::strcmp(token, "close_obs") == 0) {
+            descriptor = algorithmDescriptor(SelectableAlgorithm::CloseObstacle);
+        }
         if (descriptor == nullptr) {
             error = AlgorithmSelectionParseError::Unknown;
         } else if (!descriptor->implemented) {
@@ -797,6 +800,11 @@ void BluetoothControlServer::stop(void)
 bool BluetoothControlServer::isActivated(void)
 {
     return active_.load();
+}
+
+void BluetoothControlServer::pollControlMessages(void)
+{
+    pollIncomingMessages();
 }
 
 bool BluetoothControlServer::isConnected(void)
