@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <queue>
 
+#include "api/gps_sensor_api.hpp"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
@@ -26,7 +27,7 @@ struct GpsFix {
     TickType_t updateTick = 0;
 };
 
-#define GPS_ARRAY_SIZE 1000
+#define GPS_ARRAY_SIZE 20
 
 class UsbGpsHost {
 public:
@@ -38,10 +39,10 @@ public:
 
     bool isRunning() const;
     GpsFix getLatestFix() const;
-    std::array<GpsFix, GPS_ARRAY_SIZE> getFixArray() {
+    std::array<GpsPosition, GPS_ARRAY_SIZE> getFixArray() {
         if (fixMutex == nullptr || xSemaphoreTake(this->fixMutex, pdMS_TO_TICKS(5)) != pdTRUE)
             return {};
-        std::array<GpsFix, GPS_ARRAY_SIZE> array = this->fixArray;
+        std::array<GpsPosition, GPS_ARRAY_SIZE> array = this->posArray;
         xSemaphoreGive(this->fixMutex);
         return array;
     }
@@ -85,5 +86,6 @@ private:
     bool running;
     uint32_t fixUpdateCounter;
     GpsFix latestFix;
-    std::array<GpsFix, GPS_ARRAY_SIZE> fixArray;
+    std::array<GpsPosition, GPS_ARRAY_SIZE> posArray;
+    uint8_t save_count = 0;
 };

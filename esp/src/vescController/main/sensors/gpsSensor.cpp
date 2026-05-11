@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 
+#include "api/gps_sensor_api.hpp"
 #include "esp_log.h"
 #include "freertos/task.h"
 #include "gpsUsbHost.hpp"
@@ -57,28 +58,40 @@ bool GpsSensor::getStatus(GpsStatus &output)
 
 bool GpsSensor::getHeading(GpsHeading &output)
 {
-    auto fixArray = this->gps.getFixArray();
-    size_t fixArraySize = fixArray.size();
-    GpsFix lastFix = fixArray[0];
+    auto posArray = this->gps.getFixArray();
+    size_t posArraySize = posArray.size();
+    GpsFix lastFix_ = this->gps.getLatestFix();
+    GpsPosition lastFix = {
+        .latitude = lastFix_.latitude,
+        .longitude = lastFix_.longitude,
+    };
+    double max_dist = 0.0;
 
-    GpsFix oldFix = lastFix;
+    GpsPosition oldFix = lastFix;
     bool found_good_distance = false;
-    for (GpsFix &fix : fixArray) {
+    for (GpsPosition &fix : posArray) {
         double dist = planarDistanceMeters
         (
             fix.latitude, fix.longitude,
             lastFix.latitude, lastFix.longitude
         );
 
-        if (dist <= 0.5)
+        if (dist > max_dist)
+            max_dist = dist;
+        if (fix.latitude == 0.0 || fix.longitude == 0.0)
             continue;
-        oldFix = fix;
+        if (dist <= 1.5)
+            continue;
+        // old_lat;old_lon;current_lat;current_lon;dist
+        ESP_LOGE("CSV2", "%.7f;%.7f;%.7f;%.7f;%.2f", fix.latitude, fix.longitude, lastFix.latitude, lastFix.longitude, dist);
         found_good_distance = true;
-        ESP_LOGI(TAG, "Found a good point at distance %.2f", dist);
+        oldFix = fix;
         break;
     }
-    if (!found_good_distance)
+    if (!found_good_distance) {
+        ESP_LOGW(TAG, "Distance not sufficient or invalid (%.2f)", max_dist);
         return false;
+    }
     double heading = initialBearingDegrees
         (
             oldFix.latitude, oldFix.longitude,

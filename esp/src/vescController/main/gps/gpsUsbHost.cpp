@@ -636,9 +636,18 @@ void UsbGpsHost::parseNmeaLine(char *line) {
     if (fixMutex != nullptr && xSemaphoreTake(fixMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
         latestFix = nextFix;
         fixUpdateCounter = nextFix.updateCounter;
-        for (uint16_t i = this->fixArray.size() - 1; i != 0; i--)
-            this->fixArray[i] = this->fixArray[i - 1];
-        this->fixArray[0] = nextFix;
+        if (save_count == 0) {
+            for (uint16_t i = this->posArray.size() - 1; i != 0; i--)
+                this->posArray[i] = this->posArray[i - 1];
+            this->posArray[0].latitude = nextFix.latitude;
+            this->posArray[0].longitude = nextFix.longitude;
+            if (this->posArray[GPS_ARRAY_SIZE - 1].latitude == 0.0
+                || this->posArray[GPS_ARRAY_SIZE - 1].longitude == 0.0)
+                save_count = 1;
+            else
+                save_count = 10;
+        }
+        save_count--;
         xSemaphoreGive(fixMutex);
     } else if (fixMutex == nullptr) {
         ESP_LOGW(TAG, "Cannot store fix because mutex is null");

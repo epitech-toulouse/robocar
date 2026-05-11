@@ -163,8 +163,8 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 
             ESP_LOGI(tag, "DEBUG_03 mani_heading[%.2f] heading_to_point[%.2f] desired[%.2f]", mani_heading, DegreFromGoalMani, desiredBearingDeg);
             // car_heading;goal_heading;degree_from_goal;lat;long;old_lat;old_long;distance_to_goal
-            ESP_LOGE("CSV", "%f;%f;%f;%f;%f;%f;%f;%f", mani_heading, desiredBearingDeg, DegreFromGoalMani, position.latitude, position.longitude,
-                   gps_positions[old_index].latitude, gps_positions[old_index].longitude, distanceMeters);
+            //ESP_LOGE("CSV", "%f;%f;%f;%f;%f;%f;%f;%f", mani_heading, desiredBearingDeg, DegreFromGoalMani, position.latitude, position.longitude,
+           //        gps_positions[old_index].latitude, gps_positions[old_index].longitude, distanceMeters);
             if (shouldLog) {
             ESP_LOGI(this->tag,
                      "return=false reason=heading_unavailable mani dist=%.2fm goal_deg=%.1f speed=%.2f steer=%.2f rtk_fixed=%d sats=%d weight=%.2f",
@@ -196,7 +196,7 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     const float maxSteeringDelta = rtkFixed ? this->maxSteeringDeltaRtkFixed : this->maxSteeringDelta;
     const float targetMaxSpeed = rtkFixed ? this->maxSpeedRtkFixed : this->maxSpeed;
     output.target_steering = clampf(0.5f + normalizedError * maxSteeringDelta, 0.0f, 1.0f);
-    output.target_speed = this->baseSpeed + (targetMaxSpeed - this->baseSpeed) * distanceScale;
+    output.target_speed = 0.03;
     output.computed_weight = rtkFixed ? this->computedWeightRtkFixed : 1.0f;
 
     // car_heading;bearing_to_goal_north;bearing_to_goal_front_of_car;latitude;longitude;distance
