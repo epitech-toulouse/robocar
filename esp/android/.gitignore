@@ -13,6 +13,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+.kotlin
 
 # Additional Android/Gradle rules
 */build/
@@ -32,3 +33,6 @@ cmake_install.cmake
 
 # macOS
 .DS_Store
+
+# Android Studio
+.idea/
