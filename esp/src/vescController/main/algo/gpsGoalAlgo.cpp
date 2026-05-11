@@ -86,10 +86,10 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
         old_index = gps_index;
         gps_index++;    
         gps_index %= GPS_POS_BUFFER_SIZE;
-        ESP_LOGI(tag, "DEBUG_01 Update of position (%d ms since last update)", pdTICKS_TO_MS(now - last_update));
+        // ESP_LOGI(tag, "DEBUG_01 Update of position (%d ms since last update)", pdTICKS_TO_MS(now - last_update));
         last_update = now_;
     } else {
-        ESP_LOGI(tag, "DEBUG_02 No update (%d ms since last loop)", pdTICKS_TO_MS(now - last_loop));
+        // ESP_LOGI(tag, "DEBUG_02 No update (%d ms since last loop)", pdTICKS_TO_MS(now - last_loop));
     }
     last_loop = now_;
 
