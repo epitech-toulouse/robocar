@@ -18,18 +18,21 @@ bool GpsGoalAlgo::available(void)
 bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
 {
     output = DEFAULT_DRIVING_ALGORITHM_OUTPUT;
-    const GpsGoalSnapshot goal = this->goalState.get();
+    GpsPosition goal = this->positions[this->goal_index];
+    //const GpsGoalSnapshot goal = this->goalState.get();
 
     GpsPosition position{};
     GpsHeading heading{};
 
     // No goal, wait for one
+    /*
     if (!goal.enabled) {
         ESP_LOGD(this->tag,
                  "return=false reason=goal_disabled weight=%.2f",
                  static_cast<double>(output.computed_weight));
         return false;
     }
+    */
 
     // No position, abort
     if (!this->gps.getPosition(position)) {
@@ -41,20 +44,23 @@ bool GpsGoalAlgo::compute(DrivingAlgorithmOutput &output)
     const double distanceMeters = haversineDistanceMeters(
         position.latitude,
         position.longitude,
-        this->goalLatitude,
-        this->goalLongitude);
+        goal.latitude,
+        goal.longitude);
 
     const double desiredBearingDeg = initialBearingDegrees(
         position.latitude,
         position.longitude,
-        this->goalLatitude,
-        this->goalLongitude);
+        goal.latitude,
+        goal.longitude);
 
     // Goal reached, you won !
     if (distanceMeters <= this->goalReachedDistanceM) {
         output.target_speed = 0.0f;
         output.target_steering = 0.5f;
         output.computed_weight = 1.0f;
+
+        // advance to next goal
+        this->goal_index = (this->goal_index + 1) % this->positions.size();
         return true;
     }
 
