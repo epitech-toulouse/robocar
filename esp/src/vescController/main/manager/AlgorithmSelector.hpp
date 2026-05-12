@@ -60,7 +60,9 @@ inline constexpr uint32_t selectableAlgorithmImplementedMask()
 
 inline constexpr uint32_t selectableAlgorithmDefaultMask()
 {
-    return algorithmBit(SelectableAlgorithm::Gps);
+    return algorithmBit(SelectableAlgorithm::Gps)
+        | algorithmBit(SelectableAlgorithm::CloseObstacle)
+        | algorithmBit(SelectableAlgorithm::Manual);
 }
 
 inline const AlgorithmDescriptor *algorithmDescriptor(SelectableAlgorithm id)
